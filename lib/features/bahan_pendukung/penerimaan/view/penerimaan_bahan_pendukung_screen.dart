@@ -1,5 +1,6 @@
 // lib/features/bahan_pendukung/penerimaan/view/penerimaan_bahan_pendukung_screen.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../common/widgets/confirm_dialog.dart';
@@ -15,7 +16,6 @@ import '../model/penerimaan_bahan_pendukung_model.dart';
 import '../model/tim_penerimaan_model.dart';
 import '../repository/penerimaan_bahan_pendukung_repository.dart';
 import '../widgets/penerimaan_bahan_pendukung_header_form_dialog.dart';
-import 'penerimaan_bahan_pendukung_input_screen.dart';
 import 'penerimaan_bahan_pendukung_label_list_screen.dart';
 
 /// Layar utama modul Penerimaan Bahan Pendukung — 1:1 mengikuti pola
@@ -23,11 +23,11 @@ import 'penerimaan_bahan_pendukung_label_list_screen.dart';
 /// `dbo.MstTimPenerimaan`, bukan tabel khusus per modul) + panel Riwayat
 /// yang bisa di-slide dari kanan. Tim dianggap "aktif" kalau sudah punya
 /// `NoPenerimaan` untuk HARI INI. Tap tim nonaktif → dialog header ringkas
-/// (Tanggal, Shift, Jam, Regu/Operator) → screen input penuh untuk barang
-/// (Nama Barang + Qty + Satuan, TANPA pallet/sak — beda dengan bahan baku
-/// karena barang pendukung dihitung PCS bukan ditimbang). Tap tim AKTIF /
-/// baris riwayat → `PenerimaanBahanPendukungLabelListScreen`, list barang
-/// yang sudah dibuat untuk NoPenerimaan itu. Tidak ada split kategori
+/// (Tanggal, Shift, Jam) membuat NoPenerimaan (fase 1) → LANGSUNG masuk ke
+/// `PenerimaanBahanPendukungLabelListScreen` yang sama dengan tim
+/// AKTIF/baris riwayat. Menambah barang (fase 2) dilakukan di layar itu
+/// lewat FAB yang membuka `PenerimaanBahanPendukungAddLabelDialog` — tidak
+/// ada lagi screen input penuh terpisah. Tidak ada split kategori
 /// (Pakai/Proses) — satu kategori saja, jadi tidak ada tab Stok Item
 /// terpisah seperti bahan baku.
 class PenerimaanBahanPendukungScreen extends StatefulWidget {
@@ -145,26 +145,31 @@ class _PenerimaanBahanPendukungScreenState
 
   static MesinCardData _toCardData(TimPenerimaanInfo tim) {
     String? shiftTimeText;
-    if (tim.isActive) {
-      final parts = <String>[];
-      if (tim.shift != null) parts.add('Shift ${tim.shift}');
-      parts.add('${tim.hourStart ?? '--:--'} – ${tim.hourEnd ?? '--:--'}');
-      shiftTimeText = parts.join('  |  ');
+    final tgl = tim.tglPenerimaan;
+    if (tgl != null) {
+      final today = DateTime.now();
+      final startDay = DateTime(tgl.year, tgl.month, tgl.day);
+      final todayDay = DateTime(today.year, today.month, today.day);
+      final daysSince = todayDay.difference(startDay).inDays;
+      final tglText = DateFormat('dd MMM yyyy', 'id_ID').format(tgl);
+      final daysText = daysSince <= 0 ? 'Hari ini' : 'sudah $daysSince hari';
+      shiftTimeText = '$tglText • $daysText';
     }
     return MesinCardData(
       namaMesin: tim.namaTim,
       isActive: tim.isActive,
       shiftTimeText: shiftTimeText,
-      namaOperators: tim.namaOperators,
+      namaOperators: tim.createBy,
+      outputJenisNama: tgl != null ? '${tim.jumlahItem} label' : null,
     );
   }
 
   static ProduksiRowData _toRowData(PenerimaanBahanPendukung row) {
     return ProduksiRowData(
       tglProduksi: row.tglPenerimaan,
-      hourStart: row.hourStart,
-      hourEnd: row.hourEnd,
-      shift: row.shift,
+      hourStart: null,
+      hourEnd: null,
+      shift: 0,
       isLocked: false,
       namaMesin: row.namaTim,
       noProduksi: row.noPenerimaan,
@@ -183,11 +188,12 @@ class _PenerimaanBahanPendukungScreenState
         );
         return;
       }
-      final headerResult = await showDialog<PenerimaanBahanPendukungHeaderResult>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => PenerimaanBahanPendukungCreateDialog(tim: tim),
-      );
+      final headerResult =
+          await showDialog<PenerimaanBahanPendukungHeaderResult>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => PenerimaanBahanPendukungCreateDialog(tim: tim),
+          );
       if (!mounted) return;
       if (headerResult == null) return;
 
@@ -196,16 +202,7 @@ class _PenerimaanBahanPendukungScreenState
       // status "aktif" walau user belum sempat menambah barang apapun.
       _refreshAll();
 
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PenerimaanBahanPendukungInputScreen(
-            tim: tim,
-            header: headerResult,
-          ),
-        ),
-      );
-      if (!mounted) return;
-      _refreshAll();
+      await _openLabelList(headerResult.noPenerimaan);
       return;
     }
 
@@ -215,9 +212,8 @@ class _PenerimaanBahanPendukungScreenState
   Future<void> _openLabelList(String noPenerimaan) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PenerimaanBahanPendukungLabelListScreen(
-          noPenerimaan: noPenerimaan,
-        ),
+        builder: (_) =>
+            PenerimaanBahanPendukungLabelListScreen(noPenerimaan: noPenerimaan),
       ),
     );
     if (!mounted) return;
@@ -255,10 +251,8 @@ class _PenerimaanBahanPendukungScreenState
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (_) => ErrorStatusDialog(
-          title: 'Gagal Menghapus!',
-          message: e.toString(),
-        ),
+        builder: (_) =>
+            ErrorStatusDialog(title: 'Gagal Menghapus!', message: e.toString()),
       );
     }
     _refreshAll();

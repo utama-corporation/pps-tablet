@@ -1,13 +1,25 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:pdfx/pdfx.dart';
 import 'package:printing/printing.dart';
 
 /// Preview laporan PDF stock opname v2 — mengikuti pola UI
 /// [ReportPdfViewerScreen] (menu Laporan): preview gelap + panel
 /// kiri/bawah berisi tombol Cetak. Tidak ada panel parameter tanggal
 /// karena laporan ini di-scope per stockOpnameNo, bukan rentang tanggal.
-class SoV2LaporanPdfViewerScreen extends StatelessWidget {
+///
+/// Preview memakai `pdfx` (native PDF renderer via pdfium), bukan
+/// `printing`-nya `PdfPreview`. `PdfPreview` merasterisasi SEMUA halaman
+/// di depan lewat platform channel untuk membangun cache-nya, jadi untuk
+/// laporan dengan ribuan halaman (mis. daftar label belum-scan yang
+/// panjang) totalnya menumpuk di memori dan bikin OutOfMemoryError/force
+/// close di tablet. `pdfx` merender per-halaman on-demand cuma untuk
+/// halaman yang sedang/nyaris terlihat (mirip PDF viewer native), jadi
+/// pemakaian memori tidak bertumbuh sebanding jumlah halaman. Cetak tetap
+/// pakai `Printing.layoutPdf` — itu diproses oleh print service Android,
+/// bukan dirender sebagai widget di app ini.
+class SoV2LaporanPdfViewerScreen extends StatefulWidget {
   final String title;
   final Uint8List pdfBytes;
 
@@ -31,14 +43,40 @@ class SoV2LaporanPdfViewerScreen extends StatelessWidget {
     );
   }
 
+  @override
+  State<SoV2LaporanPdfViewerScreen> createState() =>
+      _SoV2LaporanPdfViewerScreenState();
+}
+
+class _SoV2LaporanPdfViewerScreenState
+    extends State<SoV2LaporanPdfViewerScreen> {
   static const _kDark = Color(0xFF0F172A);
   static const _kNavy = Color(0xFF1E293B);
   static const _kBlue = Color(0xFF0D47A1);
   static const _kSurface = Color(0xFFF8FAFC);
   static const _panelW = 300.0;
 
+  late final PdfControllerPinch _pdfController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pdfController = PdfControllerPinch(
+      document: PdfDocument.openData(widget.pdfBytes),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pdfController.dispose();
+    super.dispose();
+  }
+
   Future<void> _print() async {
-    await Printing.layoutPdf(onLayout: (_) async => pdfBytes, name: title);
+    await Printing.layoutPdf(
+      onLayout: (_) async => widget.pdfBytes,
+      name: widget.title,
+    );
   }
 
   // ── Root build ──────────────────────────────────────────────────────────────
@@ -94,23 +132,26 @@ class SoV2LaporanPdfViewerScreen extends StatelessWidget {
   Widget _buildPreview(BuildContext context, {required bool isLandscape}) {
     return Stack(
       children: [
-        PdfPreview(
-          build: (_) async => pdfBytes,
-          allowPrinting: false,
-          allowSharing: false,
-          canChangePageFormat: false,
-          canChangeOrientation: false,
-          // Laporan ini bisa berisi banyak halaman (mis. daftar label
-          // belum discan yang panjang) — tanpa batas ini PdfPreview
-          // merasterisasi tiap halaman di resolusi layar penuh dan
-          // mengirim bitmap-nya lewat platform channel, yang pernah bikin
-          // OOM (force close) di tablet (~87MB/halaman tanpa batas).
-          // 600 dipilih khusus utk laporan A4 padat teks tabel (beda dari
-          // PdfViewerScreen yang 300 — itu untuk label thermal 80mm yang
-          // sempit) — ~10MB/halaman, jauh di bawah level yang bikin OOM,
-          // tapi teks tabel jadi cukup tajam buat dibaca di preview.
-          maxPageWidth: 600,
-          scrollViewDecoration: const BoxDecoration(color: _kDark),
+        PdfViewPinch(
+          controller: _pdfController,
+          scrollDirection: Axis.vertical,
+          backgroundDecoration: const BoxDecoration(color: _kDark),
+          builders: PdfViewPinchBuilders<DefaultBuilderOptions>(
+            options: const DefaultBuilderOptions(),
+            documentLoaderBuilder: (_) => const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+            pageLoaderBuilder: (_) => const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+            errorBuilder: (_, error) => Center(
+              child: Text(
+                'Gagal memuat PDF: $error',
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         ),
 
         // Top bar dengan close + judul
@@ -145,7 +186,7 @@ class SoV2LaporanPdfViewerScreen extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      title,
+                      widget.title,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -182,7 +223,7 @@ class SoV2LaporanPdfViewerScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    title,
+                    widget.title,
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -302,7 +343,7 @@ class SoV2LaporanPdfViewerScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  title,
+                  widget.title,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,

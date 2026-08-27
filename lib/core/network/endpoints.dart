@@ -203,6 +203,12 @@ class ApiConstants {
     return 'http://$host:7500/api/labels/packing/$encoded/pdf/';
   }
 
+  static String bahanPendukungLabelPdf(String noBahanPendukung) {
+    final host = Uri.parse(baseUrl).host;
+    final encoded = Uri.encodeComponent(noBahanPendukung);
+    return 'http://$host:7500/api/labels/bahan-pendukung/$encoded/pdf/';
+  }
+
 
   static String bahanBakuPalletLabelPdf(String noBahanBaku, String noPallet) {
     final host = Uri.parse(baseUrl).host;

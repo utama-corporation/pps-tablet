@@ -92,8 +92,10 @@ class CabinetMaterialCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(12),
@@ -118,8 +120,11 @@ class CabinetMaterialCard extends StatelessWidget {
               child: Center(
                 child: Column(
                   children: [
-                    Icon(Icons.inventory_2_outlined,
-                        size: 48, color: Colors.grey),
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 48,
+                      color: Colors.grey,
+                    ),
                     SizedBox(height: 12),
                     Text(
                       'Belum ada material',
@@ -162,9 +167,7 @@ class CabinetMaterialCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              border: Border(
-                top: BorderSide(color: Colors.grey.shade200),
-              ),
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(12),
                 bottomRight: Radius.circular(12),
@@ -205,7 +208,9 @@ class CabinetMaterialCard extends StatelessWidget {
                     backgroundColor: Colors.deepPurple.shade600,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                   ),
                 ),
               ],
@@ -276,7 +281,9 @@ class _MaterialItemCard extends StatelessWidget {
             child: Icon(
               Icons.category_outlined,
               size: 20,
-              color: isTemp ? Colors.amber.shade700 : Colors.deepPurple.shade600,
+              color: isTemp
+                  ? Colors.amber.shade700
+                  : Colors.deepPurple.shade600,
             ),
           ),
           const SizedBox(width: 12),
@@ -298,7 +305,9 @@ class _MaterialItemCard extends StatelessWidget {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.deepPurple.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
@@ -316,7 +325,9 @@ class _MaterialItemCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.amber.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(4),

@@ -80,11 +80,6 @@ class _HomeSidebarState extends State<HomeSidebar> {
           icon: Icons.cancel_outlined,
           route: '/label/reject',
         ),
-        _SubItem(
-          title: 'Stock',
-          icon: Icons.assessment_outlined,
-          route: '/shell/stock',
-        ),
       ],
     ),
   ];
@@ -221,6 +216,12 @@ class _HomeSidebarState extends State<HomeSidebar> {
   ];
 
   static List<_MenuItem> get _operasionalItems => <_MenuItem>[
+    _MenuItem(
+      title: 'Stock',
+      subtitle: 'Stock per proses',
+      icon: Icons.assessment_outlined,
+      route: '/shell/stock',
+    ),
     _MenuItem(
       title: 'Bongkar Susun',
       subtitle: 'Input data Bongkar Susun',

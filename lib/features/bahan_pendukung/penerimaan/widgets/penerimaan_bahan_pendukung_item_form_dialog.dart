@@ -1,23 +1,30 @@
 // lib/features/bahan_pendukung/penerimaan/widgets/penerimaan_bahan_pendukung_item_form_dialog.dart
 //
-// Dialog tambah 1 barang ("label") bahan pendukung — format meniru
-// `PenerimaanBahanBakuPalletFormDialog` ("Tambah Label"), TAPI jauh lebih
-// sederhana karena tidak ada pallet/sak: cukup Supplier + Nama Barang +
-// Qty + Satuan + Keterangan dalam satu form, tanpa quick-add grid.
+// Dialog tambah 1 barang ("label") bahan pendukung — langsung menyimpan
+// ke server lewat addItems(). Nama barang diambil dari master cabinet
+// material (dropdown). Supplier + Qty + Keterangan diisi manual.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../../../../common/widgets/success_status_dialog.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../production/shared/models/cabinet_material_item.dart';
 import '../../../supplier/widgets/supplier_dropdown.dart';
 import '../repository/penerimaan_bahan_pendukung_repository.dart';
 
 const _kBorder = Color(0xFFE2E6EA);
+const _kAccent = Color(0xFF00897B);
+const int _kDefaultWarehouse = 5;
 
 class PenerimaanBahanPendukungItemFormDialog extends StatefulWidget {
+  final String noPenerimaan;
   final Color accentColor;
 
   const PenerimaanBahanPendukungItemFormDialog({
     super.key,
-    this.accentColor = const Color(0xFF00897B),
+    required this.noPenerimaan,
+    this.accentColor = _kAccent,
   });
 
   @override
@@ -27,30 +34,70 @@ class PenerimaanBahanPendukungItemFormDialog extends StatefulWidget {
 
 class _PenerimaanBahanPendukungItemFormDialogState
     extends State<PenerimaanBahanPendukungItemFormDialog> {
+  late final PenerimaanBahanPendukungRepository _repo;
   int? _selectedSupplierId;
-  final _namaBarangCtrl = TextEditingController();
+  CabinetMaterialItem? _selectedMaterial;
   final _qtyCtrl = TextEditingController();
-  final _satuanCtrl = TextEditingController(text: 'PCS');
   final _keteranganCtrl = TextEditingController();
   String? _saveError;
+  bool _isSaving = false;
+
+  bool _isLoadingMaterials = false;
+  String? _loadMaterialsError;
+  List<CabinetMaterialItem> _materials = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _repo = PenerimaanBahanPendukungRepository(api: context.read<ApiClient>());
+    _loadMaterials();
+  }
 
   @override
   void dispose() {
-    _namaBarangCtrl.dispose();
     _qtyCtrl.dispose();
-    _satuanCtrl.dispose();
     _keteranganCtrl.dispose();
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _loadMaterials() async {
+    setState(() {
+      _isLoadingMaterials = true;
+      _loadMaterialsError = null;
+    });
+    try {
+      final items = await _repo.fetchMasterCabinetMaterials(
+        idWarehouse: _kDefaultWarehouse,
+      );
+      if (!mounted) return;
+      items.sort((a, b) => (a.Nama ?? '').compareTo(b.Nama ?? ''));
+      setState(() {
+        _materials = items;
+        _isLoadingMaterials = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadMaterialsError = e.toString();
+        _isLoadingMaterials = false;
+      });
+    }
+  }
+
+  void _onMaterialSelected(CabinetMaterialItem? material) {
+    setState(() {
+      _selectedMaterial = material;
+      _saveError = null;
+    });
+  }
+
+  Future<void> _save() async {
     if (_selectedSupplierId == null) {
       setState(() => _saveError = 'Supplier wajib dipilih.');
       return;
     }
-    final namaBarang = _namaBarangCtrl.text.trim();
-    if (namaBarang.isEmpty) {
-      setState(() => _saveError = 'Nama barang wajib diisi.');
+    if (_selectedMaterial == null) {
+      setState(() => _saveError = 'Nama barang wajib dipilih dari daftar.');
       return;
     }
     final qty = double.tryParse(_qtyCtrl.text.trim().replaceAll(',', '.'));
@@ -58,17 +105,41 @@ class _PenerimaanBahanPendukungItemFormDialogState
       setState(() => _saveError = 'Qty wajib diisi dan harus > 0.');
       return;
     }
-    final satuan = _satuanCtrl.text.trim().isEmpty ? 'PCS' : _satuanCtrl.text.trim();
 
-    Navigator.of(context).pop(
-      PenerimaanBahanPendukungItemInput(
-        idSupplier: _selectedSupplierId!,
-        namaBarang: namaBarang,
-        qty: qty,
-        satuan: satuan,
-        keterangan: _keteranganCtrl.text,
-      ),
-    );
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
+
+    try {
+      await _repo.addItems(
+        noPenerimaan: widget.noPenerimaan,
+        items: [
+          PenerimaanBahanPendukungItemInput(
+            idSupplier: _selectedSupplierId!,
+            idCabinetMaterial: _selectedMaterial!.IdCabinetMaterial ?? 0,
+            qty: qty,
+            keterangan: _keteranganCtrl.text,
+          ),
+        ],
+      );
+
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => const SuccessStatusDialog(
+          title: 'Berhasil Menyimpan',
+          message: 'Barang berhasil ditambahkan.',
+        ),
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _saveError = e.toString();
+      });
+    }
   }
 
   @override
@@ -78,7 +149,7 @@ class _PenerimaanBahanPendukungItemFormDialogState
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 580),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -141,56 +212,22 @@ class _PenerimaanBahanPendukungItemFormDialogState
           }),
         ),
         const SizedBox(height: 12),
+        _buildMaterialDropdown(),
+        const SizedBox(height: 12),
         TextFormField(
-          controller: _namaBarangCtrl,
+          controller: _qtyCtrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
           onChanged: (_) => setState(() => _saveError = null),
           decoration: InputDecoration(
-            labelText: 'Nama Barang',
-            prefixIcon: const Icon(Icons.category_outlined, size: 20),
+            labelText: 'Qty (PCS)',
+            prefixIcon: const Icon(Icons.numbers_outlined, size: 20),
             isDense: true,
             filled: true,
             fillColor: Colors.grey.shade50,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 2,
-              child: TextFormField(
-                controller: _qtyCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
-                onChanged: (_) => setState(() => _saveError = null),
-                decoration: InputDecoration(
-                  labelText: 'Qty',
-                  prefixIcon: const Icon(Icons.numbers_outlined, size: 20),
-                  isDense: true,
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextFormField(
-                controller: _satuanCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Satuan',
-                  isDense: true,
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                ),
-              ),
-            ),
-          ],
         ),
         const SizedBox(height: 12),
         TextFormField(
@@ -207,6 +244,120 @@ class _PenerimaanBahanPendukungItemFormDialogState
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMaterialDropdown() {
+    if (_isLoadingMaterials) {
+      return InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Nama Barang',
+          prefixIcon: const Icon(Icons.category_outlined, size: 20),
+          isDense: true,
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        ),
+        child: const SizedBox(
+          height: 20,
+          child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+        ),
+      );
+    }
+
+    if (_loadMaterialsError != null) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, size: 16, color: Colors.red.shade600),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Gagal memuat data barang',
+                style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+              ),
+            ),
+            IconButton(
+              onPressed: _loadMaterials,
+              icon: Icon(Icons.refresh, size: 16, color: Colors.red.shade600),
+              tooltip: 'Coba lagi',
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<int>(
+      value: _selectedMaterial?.IdCabinetMaterial,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Nama Barang',
+        hintText: 'Pilih barang',
+        prefixIcon: const Icon(Icons.category_outlined, size: 20),
+        isDense: true,
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      ),
+      items: _materials.map((m) {
+        final stock = m.SaldoAkhir ?? 0;
+        final uom = m.NamaUOM ?? 'unit';
+        final name = m.Nama ?? 'Material ${m.IdCabinetMaterial ?? 0}';
+        return DropdownMenuItem<int>(
+          value: m.IdCabinetMaterial,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: stock > 0 ? Colors.green.shade50 : Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: stock > 0 ? Colors.green.shade200 : Colors.red.shade200,
+                  ),
+                ),
+                child: Text(
+                  '$stock $uom',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: stock > 0 ? Colors.green.shade700 : Colors.red.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value == null) {
+          _onMaterialSelected(null);
+          return;
+        }
+        final picked = _materials.firstWhere(
+          (x) => x.IdCabinetMaterial == value,
+          orElse: () => _materials.first,
+        );
+        _onMaterialSelected(picked);
+      },
     );
   }
 
@@ -238,7 +389,7 @@ class _PenerimaanBahanPendukungItemFormDialogState
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           OutlinedButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
             style: OutlinedButton.styleFrom(
               side: BorderSide(color: Colors.grey.shade300),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -248,9 +399,18 @@ class _PenerimaanBahanPendukungItemFormDialogState
           ),
           const SizedBox(width: 10),
           ElevatedButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.check, size: 15),
-            label: const Text('Simpan', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            onPressed: _isSaving ? null : _save,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.check, size: 15),
+            label: Text(
+              _isSaving ? 'Menyimpan...' : 'Simpan',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: widget.accentColor,
               foregroundColor: Colors.white,

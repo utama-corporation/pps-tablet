@@ -5,10 +5,9 @@
 // (GET/POST/DELETE /api/penerimaan-bahan-pendukung). Satu baris riwayat =
 // satu transaksi penerimaan (NoPenerimaan). Beda dengan Penerimaan Bahan
 // Baku: TIDAK ada struktur pallet/sak — tiap barang (item) LANGSUNG jadi
-// satu "label" (NamaBarang + Qty + Satuan), dan tidak ada split kategori
-// (Pakai/Proses) — satu kategori saja.
-import 'dart:convert';
-
+// satu baris dbo.BahanPendukung (IdCabinetMaterial + Qty), dan tidak ada
+// split kategori (Pakai/Proses) — satu kategori saja. Tidak ada konsep
+// operator di modul ini.
 import 'package:intl/intl.dart';
 
 class PenerimaanBahanPendukung {
@@ -16,13 +15,9 @@ class PenerimaanBahanPendukung {
   final DateTime? tglPenerimaan;
   final int idTim;
   final String namaTim;
-  final List<int> idOperators;
-  final String? namaOperators;
-  final int shift;
-  final String? hourStart; // "HH:mm"
-  final String? hourEnd; // "HH:mm"
+  final bool isComplete;
   final String? createBy;
-  final DateTime? dateTimeCreate;
+  final DateTime? tglComplete;
 
   final int jumlahItem;
   final double totalQty;
@@ -32,13 +27,9 @@ class PenerimaanBahanPendukung {
     required this.tglPenerimaan,
     required this.idTim,
     required this.namaTim,
-    this.idOperators = const [],
-    this.namaOperators,
-    required this.shift,
-    this.hourStart,
-    this.hourEnd,
+    this.isComplete = false,
     this.createBy,
-    this.dateTimeCreate,
+    this.tglComplete,
     this.jumlahItem = 0,
     this.totalQty = 0,
   });
@@ -65,26 +56,14 @@ class PenerimaanBahanPendukung {
     return DateTime.tryParse(s);
   }
 
-  static String? _asTimeHHmm(dynamic v) {
-    if (v == null) return null;
-    final s = v.toString().trim();
-    if (s.isEmpty) return null;
-    final m = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(s);
-    if (m != null) return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)!}';
-    return null;
-  }
-
-  static List<int> _asIntList(dynamic v) {
-    if (v == null) return const [];
-    final raw = v is String ? v : v.toString();
-    if (raw.trim().isEmpty || raw.trim() == '[]') return const [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        return decoded.map((e) => _asInt(e)).toList();
-      }
-    } catch (_) {}
-    return const [];
+  static bool _asBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1';
+    }
+    return false;
   }
 
   factory PenerimaanBahanPendukung.fromJson(Map<String, dynamic> j) {
@@ -93,13 +72,9 @@ class PenerimaanBahanPendukung {
       tglPenerimaan: _asDateTime(j['TglPenerimaan']),
       idTim: _asInt(j['IdTim']),
       namaTim: _asString(j['NamaTim']),
-      idOperators: _asIntList(j['IdOperators']),
-      namaOperators: j['NamaOperators']?.toString(),
-      shift: _asInt(j['Shift']),
-      hourStart: _asTimeHHmm(j['HourStart']),
-      hourEnd: _asTimeHHmm(j['HourEnd']),
+      isComplete: _asBool(j['IsComplete']),
       createBy: j['CreateBy']?.toString(),
-      dateTimeCreate: _asDateTime(j['DateTimeCreate']),
+      tglComplete: _asDateTime(j['TglComplete']),
       jumlahItem: _asInt(j['JumlahItem']),
       totalQty: _asDouble(j['TotalQty']),
     );
@@ -110,35 +85,38 @@ class PenerimaanBahanPendukung {
     return DateFormat('dd MMM yyyy', 'id_ID').format(tglPenerimaan!.toLocal());
   }
 
-  String get hourRangeText {
-    if ((hourStart == null || hourStart!.isEmpty) && (hourEnd == null || hourEnd!.isEmpty)) {
-      return '';
-    }
-    return '${hourStart ?? '--:--'} - ${hourEnd ?? '--:--'}';
+  String get tglCompleteTextShort {
+    if (tglComplete == null) return '';
+    return DateFormat('dd MMM yyyy HH:mm', 'id_ID').format(tglComplete!.toLocal());
   }
 }
 
-/// Satu baris barang ("label") dari sebuah transaksi penerimaan bahan
-/// pendukung — hasil join `PenerimaanBahanPendukung_d` + `MstSupplier`.
+/// Satu baris barang (BahanPendukung) dari sebuah transaksi penerimaan
+/// bahan pendukung — hasil join `PenerimaanBahanPendukung_d` +
+/// `BahanPendukung` + `MstSupplier` + `MstCabinetMaterial`.
+/// `noBahanPendukung` adalah pengenal unik barisnya (PK di tabel
+/// BahanPendukung). Nama barang diambil dari cabinet material (FK).
 class PenerimaanBahanPendukungItem {
   final String noPenerimaan;
-  final int noUrut;
+  final String noBahanPendukung;
   final int idSupplier;
   final String namaSupplier;
+  final int idCabinetMaterial;
   final String namaBarang;
   final double qty;
-  final String satuan;
   final String? keterangan;
+  final int hasBeenPrinted;
 
   const PenerimaanBahanPendukungItem({
     required this.noPenerimaan,
-    required this.noUrut,
+    required this.noBahanPendukung,
     required this.idSupplier,
     required this.namaSupplier,
+    required this.idCabinetMaterial,
     required this.namaBarang,
     required this.qty,
-    required this.satuan,
     this.keterangan,
+    this.hasBeenPrinted = 0,
   });
 
   factory PenerimaanBahanPendukungItem.fromJson(Map<String, dynamic> j) {
@@ -156,13 +134,14 @@ class PenerimaanBahanPendukungItem {
 
     return PenerimaanBahanPendukungItem(
       noPenerimaan: j['NoPenerimaan']?.toString() ?? '',
-      noUrut: toInt(j['NoUrut']),
+      noBahanPendukung: j['NoBahanPendukung']?.toString() ?? '',
       idSupplier: toInt(j['IdSupplier']),
       namaSupplier: j['NamaSupplier']?.toString() ?? '',
-      namaBarang: j['NamaBarang']?.toString() ?? '',
+      idCabinetMaterial: toInt(j['IdCabinetMaterial']),
+      namaBarang: j['NamaCabinetMaterial']?.toString() ?? '',
       qty: toDouble(j['Qty']),
-      satuan: j['Satuan']?.toString() ?? 'PCS',
       keterangan: j['Keterangan']?.toString(),
+      hasBeenPrinted: toInt(j['HasBeenPrinted']),
     );
   }
 }

@@ -9,38 +9,35 @@
 //   POST   /api/penerimaan-bahan-pendukung/:noPenerimaan/items — fase 2: add items
 //   DELETE /api/penerimaan-bahan-pendukung/:noPenerimaan
 //
-// Alur create 2 fase, sama seperti Penerimaan Bahan Baku: dialog header
-// (Tanggal/Shift/Jam/Regu/Operator) langsung hit createHeader() begitu
-// SIMPAN ditekan → dapat NoPenerimaan → baru di screen input, addItems()
-// dipanggil (bisa berkali-kali) untuk NoPenerimaan yang sama. Beda dengan
-// bahan baku: item di sini sederhana (Nama Barang + Qty + Satuan), tanpa
-// pallet/sak, dan tidak ada kategori.
+// Cabinet materials (master nama barang) diambil dari shared endpoint
+// GET /api/mst-furniture-material/cabinet-materials?idWarehouse=5
+import 'package:flutter/foundation.dart';
+
 import '../../../../core/network/api_client.dart';
+import '../../../production/shared/models/cabinet_material_item.dart';
 import '../model/penerimaan_bahan_pendukung_model.dart';
 import '../model/tim_penerimaan_model.dart';
 
 /// Satu barang yang dikirim sebagai bagian dari payload addItems.
 class PenerimaanBahanPendukungItemInput {
   final int idSupplier;
-  final String namaBarang;
+  final int idCabinetMaterial;
   final double qty;
-  final String satuan;
   final String? keterangan;
 
   const PenerimaanBahanPendukungItemInput({
     required this.idSupplier,
-    required this.namaBarang,
+    required this.idCabinetMaterial,
     required this.qty,
-    this.satuan = 'PCS',
     this.keterangan,
   });
 
   Map<String, dynamic> toJson() => {
     'idSupplier': idSupplier,
-    'namaBarang': namaBarang,
+    'idCabinetMaterial': idCabinetMaterial,
     'qty': qty,
-    'satuan': satuan,
-    if (keterangan != null && keterangan!.trim().isNotEmpty) 'keterangan': keterangan!.trim(),
+    if (keterangan != null && keterangan!.trim().isNotEmpty)
+      'keterangan': keterangan!.trim(),
   };
 }
 
@@ -51,21 +48,11 @@ class PenerimaanBahanPendukungHeaderResult {
   final String noPenerimaan;
   final DateTime tanggal;
   final int idTim;
-  final int shift;
-  final String hourStart;
-  final String hourEnd;
-  final List<int> idOperators;
-  final String namaOperators;
 
   const PenerimaanBahanPendukungHeaderResult({
     required this.noPenerimaan,
     required this.tanggal,
     required this.idTim,
-    required this.shift,
-    required this.hourStart,
-    required this.hourEnd,
-    required this.idOperators,
-    required this.namaOperators,
   });
 }
 
@@ -74,12 +61,44 @@ class PenerimaanBahanPendukungRepository {
 
   PenerimaanBahanPendukungRepository({required this.api});
 
+  final Map<int, List<CabinetMaterialItem>> _cabinetMasterCache = {};
+
+  static List<CabinetMaterialItem> _parseCabinetMaterials(
+    Map<String, dynamic> body,
+  ) {
+    final data = body['data'];
+    if (data == null) return <CabinetMaterialItem>[];
+    if (data is! List) return <CabinetMaterialItem>[];
+    return data
+        .whereType<Map>()
+        .map((e) => CabinetMaterialItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<List<CabinetMaterialItem>> fetchMasterCabinetMaterials({
+    required int idWarehouse,
+    bool force = false,
+  }) async {
+    if (!force && _cabinetMasterCache.containsKey(idWarehouse)) {
+      return _cabinetMasterCache[idWarehouse]!;
+    }
+    final body = await api.getJson(
+      '/api/mst-furniture-material/cabinet-materials',
+      query: {'idWarehouse': idWarehouse.toString()},
+    );
+    final items = await compute(_parseCabinetMaterials, body);
+    _cabinetMasterCache[idWarehouse] = items;
+    return items;
+  }
+
   // ==========================================
   //  STATUS TIM
   //  GET /api/penerimaan-bahan-pendukung/tim-status
   // ==========================================
   Future<List<TimPenerimaanInfo>> fetchTimStatus() async {
-    final body = await api.getJson('/api/penerimaan-bahan-pendukung/tim-status');
+    final body = await api.getJson(
+      '/api/penerimaan-bahan-pendukung/tim-status',
+    );
     final List dataList = (body['data'] ?? []) as List;
     return dataList
         .map((e) => TimPenerimaanInfo.fromJson(e as Map<String, dynamic>))
@@ -105,7 +124,9 @@ class PenerimaanBahanPendukungRepository {
 
     final List dataList = (body['data'] ?? []) as List;
     final items = dataList
-        .map((e) => PenerimaanBahanPendukung.fromJson(e as Map<String, dynamic>))
+        .map(
+          (e) => PenerimaanBahanPendukung.fromJson(e as Map<String, dynamic>),
+        )
         .toList();
 
     final meta = (body['meta'] ?? {}) as Map<String, dynamic>;
@@ -121,8 +142,12 @@ class PenerimaanBahanPendukungRepository {
     };
   }
 
-  Future<PenerimaanBahanPendukungDetail> fetchDetail(String noPenerimaan) async {
-    final body = await api.getJson('/api/penerimaan-bahan-pendukung/$noPenerimaan');
+  Future<PenerimaanBahanPendukungDetail> fetchDetail(
+    String noPenerimaan,
+  ) async {
+    final body = await api.getJson(
+      '/api/penerimaan-bahan-pendukung/$noPenerimaan',
+    );
     final data = body['data'] as Map<String, dynamic>?;
     if (data == null) throw Exception('Data penerimaan tidak ditemukan');
     return PenerimaanBahanPendukungDetail.fromJson(data);
@@ -135,22 +160,10 @@ class PenerimaanBahanPendukungRepository {
   Future<PenerimaanBahanPendukungHeaderResult> createHeader({
     required DateTime tglPenerimaan,
     required int idTim,
-    required int shift,
-    required String hourStart,
-    required String hourEnd,
-    required List<int> idOperators,
-    required String namaOperators,
   }) async {
     final body = await api.postJson(
       '/api/penerimaan-bahan-pendukung',
-      body: {
-        'tglPenerimaan': _dateOnly(tglPenerimaan),
-        'idTim': idTim,
-        'shift': shift,
-        'hourStart': _normalizeTime(hourStart),
-        'hourEnd': _normalizeTime(hourEnd),
-        'idOperators': idOperators,
-      },
+      body: {'tglPenerimaan': _dateOnly(tglPenerimaan), 'idTim': idTim},
     );
 
     final data = body['data'] as Map<String, dynamic>?;
@@ -162,11 +175,6 @@ class PenerimaanBahanPendukungRepository {
       noPenerimaan: noPenerimaan,
       tanggal: tglPenerimaan,
       idTim: idTim,
-      shift: shift,
-      hourStart: hourStart,
-      hourEnd: hourEnd,
-      idOperators: idOperators,
-      namaOperators: namaOperators,
     );
   }
 
@@ -189,12 +197,37 @@ class PenerimaanBahanPendukungRepository {
     await api.deleteJson('/api/penerimaan-bahan-pendukung/$noPenerimaan');
   }
 
+  Future<void> markComplete(String noPenerimaan) async {
+    await api.patchJson(
+      '/api/penerimaan-bahan-pendukung/$noPenerimaan/complete',
+    );
+  }
+
+  // ==========================================
+  //  PRINT LABEL — increment HasBeenPrinted setelah label berhasil dicetak
+  //  PATCH /api/labels/bahan-pendukung/:noBahanPendukung/print
+  //  Returns HasBeenPrinted terbaru dari server, atau null kalau gagal parse.
+  // ==========================================
+  Future<int?> markItemPrinted(String noBahanPendukung) async {
+    final body = await api.patchJson(
+      '/api/labels/bahan-pendukung/$noBahanPendukung/print',
+    );
+    final data = body['data'];
+    if (data is Map<String, dynamic>) {
+      final raw = data['HasBeenPrinted'];
+      if (raw is num) return raw.toInt();
+      if (raw != null) return int.tryParse('$raw');
+    }
+    return null;
+  }
+
+  // ==========================================
+  //  DELETE 1 BARANG — DELETE /api/labels/bahan-pendukung/:noBahanPendukung
+  // ==========================================
+  Future<void> deleteItem(String noBahanPendukung) async {
+    await api.deleteJson('/api/labels/bahan-pendukung/$noBahanPendukung');
+  }
+
   static String _dateOnly(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  static String _normalizeTime(String v) {
-    final t = v.trim();
-    if (t.isEmpty) return t;
-    return t.length == 5 ? '$t:00' : t;
-  }
 }

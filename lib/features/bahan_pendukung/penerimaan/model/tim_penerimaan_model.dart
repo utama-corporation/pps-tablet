@@ -1,25 +1,24 @@
 // lib/features/bahan_pendukung/penerimaan/model/tim_penerimaan_model.dart
 //
 // Mirror response dari GET /api/penerimaan-bahan-pendukung/tim-status —
-// analog `TimPenerimaanInfo` di modul Penerimaan Bahan Baku, TAPI tim-nya
-// diambil dari tabel GLOBAL dbo.MstTimPenerimaan (bukan MstTimPenerimaanBB
-// yang khusus bahan baku). Satu baris = satu tim, digabung dengan info
-// NoPenerimaan yang dibuat HARI INI (jika ada). Tim tanpa transaksi hari
-// ini dianggap "belum aktif".
+// Satu baris = satu tim, digabung dengan info NoPenerimaan yang dibuat
+// HARI INI (jika ada). Tim dianggap "aktif" jika ada penerimaan hari ini
+// dengan IsComplete = false. Jika penerimaan sudah IsComplete = true,
+// tim dianggap "selesai" (tidak aktif).
 class TimPenerimaanInfo {
   final int idTim;
   final String namaTim;
   final bool aktif;
 
-  // transaksi penerimaan hari ini (null = tim belum aktif hari ini)
+  // transaksi penerimaan hari ini (null = tim belum ada transaksi hari ini)
   final String? noPenerimaan;
   final DateTime? tglPenerimaan;
-  final int? shift;
-  final String? hourStart; // "HH:mm"
-  final String? hourEnd; // "HH:mm"
-  final String? namaOperators;
+  final bool isComplete;
+  final String? createBy;
+  final int jumlahItem;
 
-  bool get isActive => noPenerimaan != null && noPenerimaan!.isNotEmpty;
+  /// Tim "aktif" = punya penerimaan hari ini yang belum selesai
+  bool get isActive => noPenerimaan != null && noPenerimaan!.isNotEmpty && !isComplete;
 
   const TimPenerimaanInfo({
     required this.idTim,
@@ -27,10 +26,9 @@ class TimPenerimaanInfo {
     required this.aktif,
     this.noPenerimaan,
     this.tglPenerimaan,
-    this.shift,
-    this.hourStart,
-    this.hourEnd,
-    this.namaOperators,
+    this.isComplete = false,
+    this.createBy,
+    this.jumlahItem = 0,
   });
 
   static String? _s(dynamic v) {
@@ -61,17 +59,6 @@ class TimPenerimaanInfo {
     return null;
   }
 
-  static String? _time(dynamic v) {
-    if (v == null) return null;
-    if (v is String) {
-      final s = v.trim();
-      if (s.isEmpty) return null;
-      final m = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(s);
-      if (m != null) return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)!}';
-    }
-    return null;
-  }
-
   factory TimPenerimaanInfo.fromJson(Map<String, dynamic> j) {
     return TimPenerimaanInfo(
       idTim: _i(j['IdTim']),
@@ -79,10 +66,9 @@ class TimPenerimaanInfo {
       aktif: _b(j['Aktif']),
       noPenerimaan: _s(j['NoPenerimaan']),
       tglPenerimaan: _dt(j['TglPenerimaan']),
-      shift: j['Shift'] != null ? _i(j['Shift']) : null,
-      hourStart: _time(j['HourStart']),
-      hourEnd: _time(j['HourEnd']),
-      namaOperators: _s(j['NamaOperators']),
+      isComplete: _b(j['IsComplete']),
+      createBy: _s(j['CreateBy']),
+      jumlahItem: _i(j['JumlahItem']),
     );
   }
 }

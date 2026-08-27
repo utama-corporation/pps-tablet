@@ -18,11 +18,18 @@ class ProductionOutputDetailDialog extends StatefulWidget {
     required this.feature,
     this.markAsPrinted,
     this.onDelete,
+    this.titleIsNamaJenis = false,
   });
 
   final String labelCode;
   final String namaJenis;
   final int printCount;
+
+  /// Saat true, header menampilkan [namaJenis] sebagai judul (bold) dan
+  /// [labelCode] sebagai subjudul — dibalik dari default. [labelCode] tetap
+  /// dipakai apa adanya untuk lock key / judul preview PDF, hanya tampilan
+  /// header yang berubah.
+  final bool titleIsNamaJenis;
 
   /// Each entry: (icon, label text) e.g. (Icons.scale_outlined, '2.5 kg')
   final List<({IconData icon, String text})> metrics;
@@ -81,7 +88,9 @@ class _ProductionOutputDetailDialogState
             var needsRelease = false;
 
             try {
-              final count = markAsPrinted != null ? await markAsPrinted() : null;
+              final count = markAsPrinted != null
+                  ? await markAsPrinted()
+                  : null;
               if (count != null) {
                 lockVm.setPrintCount(labelCode, count);
               }
@@ -164,15 +173,20 @@ class _ProductionOutputDetailDialogState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.labelCode,
+                          widget.titleIsNamaJenis
+                              ? widget.namaJenis
+                              : widget.labelCode,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF1F2937),
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          widget.namaJenis,
+                          widget.titleIsNamaJenis
+                              ? widget.labelCode
+                              : widget.namaJenis,
                           style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFF6B7280),
@@ -250,7 +264,12 @@ class _ProductionOutputDetailDialogState
 
             // ── Print button ────────────────────────────────────────
             Padding(
-              padding: EdgeInsets.fromLTRB(16, 14, 16, widget.onDelete != null ? 8 : 16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                14,
+                16,
+                widget.onDelete != null ? 8 : 16,
+              ),
               child: FilledButton.icon(
                 onPressed: _isPrinting ? null : _handlePrint,
                 style: FilledButton.styleFrom(
