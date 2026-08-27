@@ -1,6 +1,6 @@
-// lib/features/good_transfer/model/good_transfer_header_model.dart
+// lib/features/goods_transfer/model/goods_transfer_header_model.dart
 
-class GoodTransferHeader {
+class GoodsTransferHeader {
   final String noTransfer;
   final DateTime? tanggalKirim;
   final int idWarehouseAsal;
@@ -15,7 +15,7 @@ class GoodTransferHeader {
   final String? alasanTolak;
   final int itemCount;
 
-  GoodTransferHeader({
+  GoodsTransferHeader({
     required this.noTransfer,
     required this.tanggalKirim,
     required this.idWarehouseAsal,
@@ -43,12 +43,12 @@ class GoodTransferHeader {
       ? namaWarehouseTujuan!
       : 'WH #$idWarehouseTujuan';
 
-  factory GoodTransferHeader.fromJson(Map<String, dynamic> json) {
+  factory GoodsTransferHeader.fromJson(Map<String, dynamic> json) {
     int toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
     DateTime? toDate(dynamic v) =>
         v == null ? null : DateTime.tryParse(v.toString());
 
-    return GoodTransferHeader(
+    return GoodsTransferHeader(
       noTransfer: (json['NoTransfer'] ?? '').toString(),
       tanggalKirim: toDate(json['TanggalKirim']),
       idWarehouseAsal: toInt(json['IdWarehouseAsal']),

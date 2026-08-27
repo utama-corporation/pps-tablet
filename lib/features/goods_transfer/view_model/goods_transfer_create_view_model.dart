@@ -2,19 +2,19 @@ import 'package:flutter/foundation.dart';
 
 import 'package:pps_tablet/core/network/api_client.dart';
 
-import '../model/good_transfer_scanned_label.dart';
-import '../repository/good_transfer_repository.dart';
+import '../model/goods_transfer_scanned_label.dart';
+import '../repository/goods_transfer_repository.dart';
 
-class GoodTransferCreateViewModel extends ChangeNotifier {
-  final GoodTransferRepository repository;
+class GoodsTransferCreateViewModel extends ChangeNotifier {
+  final GoodsTransferRepository repository;
 
-  GoodTransferCreateViewModel({required this.repository});
+  GoodsTransferCreateViewModel({required this.repository});
 
   int? idWarehouseAsal;
   int? idWarehouseTujuan;
   String? catatan;
 
-  final List<GoodTransferScannedLabel> scannedLabels = [];
+  final List<GoodsTransferScannedLabel> scannedLabels = [];
 
   bool isSubmitting = false;
   String? lookupError;

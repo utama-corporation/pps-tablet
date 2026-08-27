@@ -3,7 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pps_tablet/core/network/api_client.dart';
-import 'package:pps_tablet/features/good_transfer/model/good_transfer_item_model.dart';
+import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_item_model.dart';
 
 import '../repository/in_transit_repository.dart';
 import '../view_model/in_transit_list_view_model.dart';
@@ -12,7 +12,7 @@ const _kPrimary = Color(0xFF1E6FD9);
 const _kSurface = Color(0xFFF8F9FB);
 const _kBorder = Color(0xFFE2E6EA);
 
-/// Dialog scan untuk menerima label 1 Good Transfer tertentu.
+/// Dialog scan untuk menerima label 1 Goods Transfer tertentu.
 ///
 /// Panel kiri menampilkan checklist semua label milik [noTransfer] dan
 /// tercentang otomatis begitu berhasil discan. Label yang bukan bagian dari
@@ -105,7 +105,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
 
     final vm = context.read<InTransitListViewModel>();
     final items = vm.selectedDetail?.items ?? [];
-    GoodTransferItem? match;
+    GoodsTransferItem? match;
     for (final it in items) {
       if (it.labelCode == code) {
         match = it;
@@ -282,7 +282,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
 
   // ── Left panel: checklist label transfer ini ─────────────────────────────
 
-  Widget _buildChecklistPanel(List<GoodTransferItem> items) {
+  Widget _buildChecklistPanel(List<GoodsTransferItem> items) {
     return Container(
       width: 220,
       decoration: const BoxDecoration(

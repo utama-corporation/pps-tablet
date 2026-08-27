@@ -47,7 +47,8 @@ import 'package:pps_tablet/features/label/reject/view_model/reject_view_model.da
 import 'package:pps_tablet/features/mesin/repository/mesin_repository.dart';
 import 'package:pps_tablet/features/mesin/view_model/mesin_view_model.dart';
 import 'package:pps_tablet/features/mapping/view/mapping_screen.dart';
-import 'package:pps_tablet/features/good_transfer/view/good_transfer_list_screen.dart';
+import 'package:pps_tablet/features/goods_transfer/view/goods_transfer_list_screen.dart';
+import 'package:pps_tablet/features/warehouse_group/view/warehouse_group_screen.dart';
 import 'package:pps_tablet/features/in_transit/view/in_transit_list_screen.dart';
 import 'package:pps_tablet/features/mixer_type/repository/mixer_type_repository.dart';
 import 'package:pps_tablet/features/mixer_type/view_model/mixer_type_view_model.dart';
@@ -595,7 +596,8 @@ class MyApp extends StatelessWidget {
           '/shell/return': (context) => ReturnProductionScreen(),
           '/production/return': (context) => ReturnProductionScreen(),
           '/shell/mapping': (context) => const MappingScreen(),
-          '/shell/good-transfer': (context) => const GoodTransferListScreen(),
+          '/shell/goods-transfer': (context) => const GoodsTransferListScreen(),
+          '/shell/warehouse-group': (context) => const WarehouseGroupScreen(),
           '/shell/in-transit': (context) => const InTransitListScreen(),
         },
       ),

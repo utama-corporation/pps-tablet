@@ -3,8 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pps_tablet/core/network/api_client.dart';
-import 'package:pps_tablet/features/good_transfer/model/good_transfer_header_model.dart';
-import 'package:pps_tablet/features/good_transfer/model/good_transfer_item_model.dart';
+import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_header_model.dart';
+import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_item_model.dart';
 import 'package:pps_tablet/features/mapping/model/mapping_blok_model.dart';
 import 'package:pps_tablet/features/mapping/model/mapping_lokasi_model.dart';
 import 'package:pps_tablet/features/mapping/repository/mapping_repository.dart';
@@ -257,7 +257,7 @@ class _TransferListPanel extends StatelessWidget {
 }
 
 class _TransferTile extends StatelessWidget {
-  final GoodTransferHeader item;
+  final GoodsTransferHeader item;
   final bool selected;
   final VoidCallback onTap;
 
@@ -471,7 +471,7 @@ class _TransferDetailPanel extends StatelessWidget {
 }
 
 class _DetailLabelTile extends StatelessWidget {
-  final GoodTransferItem item;
+  final GoodsTransferItem item;
   const _DetailLabelTile({required this.item});
 
   bool get _received => item.statusItem == 'RECEIVED';

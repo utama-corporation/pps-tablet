@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:pps_tablet/features/good_transfer/model/good_transfer_header_model.dart';
-import 'package:pps_tablet/features/good_transfer/model/good_transfer_item_model.dart';
+import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_header_model.dart';
+import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_item_model.dart';
 
 import '../repository/in_transit_repository.dart';
 
@@ -10,12 +10,12 @@ class InTransitListViewModel extends ChangeNotifier {
 
   InTransitListViewModel({required this.repository});
 
-  List<GoodTransferHeader> items = [];
+  List<GoodsTransferHeader> items = [];
   bool isLoading = false;
   String error = '';
 
   String? selectedNoTransfer;
-  GoodTransferDetail? selectedDetail;
+  GoodsTransferDetail? selectedDetail;
   bool isLoadingDetail = false;
   String detailError = '';
 

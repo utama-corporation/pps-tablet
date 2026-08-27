@@ -1,20 +1,20 @@
 import 'package:flutter/foundation.dart';
 
-import '../model/good_transfer_header_model.dart';
-import '../model/good_transfer_item_model.dart';
-import '../repository/good_transfer_repository.dart';
+import '../model/goods_transfer_header_model.dart';
+import '../model/goods_transfer_item_model.dart';
+import '../repository/goods_transfer_repository.dart';
 
-class GoodTransferListViewModel extends ChangeNotifier {
-  final GoodTransferRepository repository;
+class GoodsTransferListViewModel extends ChangeNotifier {
+  final GoodsTransferRepository repository;
 
-  GoodTransferListViewModel({required this.repository});
+  GoodsTransferListViewModel({required this.repository});
 
-  List<GoodTransferHeader> items = [];
+  List<GoodsTransferHeader> items = [];
   bool isLoading = false;
   String error = '';
 
   String? selectedNoTransfer;
-  GoodTransferDetail? selectedDetail;
+  GoodsTransferDetail? selectedDetail;
   bool isLoadingDetail = false;
   String detailError = '';
 

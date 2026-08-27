@@ -24,7 +24,8 @@ import 'package:pps_tablet/features/label/selection/view/label_selection_screen.
 import 'package:pps_tablet/features/label/washing/view/washing_screen.dart';
 import 'package:pps_tablet/features/mapping/view/mapping_screen.dart';
 import 'package:pps_tablet/features/penjualan/view/penjualan_list_screen.dart';
-import 'package:pps_tablet/features/good_transfer/view/good_transfer_list_screen.dart';
+import 'package:pps_tablet/features/goods_transfer/view/goods_transfer_list_screen.dart';
+import 'package:pps_tablet/features/warehouse_group/view/warehouse_group_screen.dart';
 import 'package:pps_tablet/features/in_transit/view/in_transit_list_screen.dart';
 import 'package:pps_tablet/features/production/broker/view/broker_production_mesin_screen.dart';
 import 'package:pps_tablet/features/production/crusher/view/crusher_production_mesin_screen.dart';
@@ -548,8 +549,10 @@ class _AppShellState extends State<AppShell> {
         return const AuditScreen();
       case '/shell/mapping':
         return const MappingScreen();
-      case '/shell/good-transfer':
-        return const GoodTransferListScreen();
+      case '/shell/goods-transfer':
+        return const GoodsTransferListScreen();
+      case '/shell/warehouse-group':
+        return const WarehouseGroupScreen();
       case '/shell/in-transit':
         return const InTransitListScreen();
       default:

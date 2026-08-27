@@ -4,11 +4,11 @@ import 'package:provider/provider.dart';
 
 import 'package:pps_tablet/core/network/api_client.dart';
 
-import '../model/good_transfer_header_model.dart';
-import '../model/good_transfer_item_model.dart';
-import '../repository/good_transfer_repository.dart';
-import '../view_model/good_transfer_list_view_model.dart';
-import 'good_transfer_create_screen.dart';
+import '../model/goods_transfer_header_model.dart';
+import '../model/goods_transfer_item_model.dart';
+import '../repository/goods_transfer_repository.dart';
+import '../view_model/goods_transfer_list_view_model.dart';
+import 'goods_transfer_create_screen.dart';
 
 const _kPrimary = Color(0xFF0D47A1);
 const _kSurface = Color(0xFFF8F9FB);
@@ -30,36 +30,36 @@ BoxDecoration _cardDecoration() => BoxDecoration(
   ],
 );
 
-class GoodTransferListScreen extends StatelessWidget {
-  const GoodTransferListScreen({super.key});
+class GoodsTransferListScreen extends StatelessWidget {
+  const GoodsTransferListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => GoodTransferListViewModel(
-        repository: GoodTransferRepository(api: ApiClient()),
+      create: (_) => GoodsTransferListViewModel(
+        repository: GoodsTransferRepository(api: ApiClient()),
       )..load(),
-      child: const _GoodTransferListView(),
+      child: const _GoodsTransferListView(),
     );
   }
 }
 
-class _GoodTransferListView extends StatelessWidget {
-  const _GoodTransferListView();
+class _GoodsTransferListView extends StatelessWidget {
+  const _GoodsTransferListView();
 
   Future<void> _openCreate(BuildContext context) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => const GoodTransferCreateDialog(),
+      builder: (_) => const GoodsTransferCreateDialog(),
     );
     if (context.mounted) {
-      context.read<GoodTransferListViewModel>().reload();
+      context.read<GoodsTransferListViewModel>().reload();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final vm = context.watch<GoodTransferListViewModel>();
+    final vm = context.watch<GoodsTransferListViewModel>();
 
     return Scaffold(
       backgroundColor: _kSurface,
@@ -68,7 +68,7 @@ class _GoodTransferListView extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── LEFT SECTION: daftar Good Transfer + FAB ──────────────────
+            // ── LEFT SECTION: daftar Goods Transfer + FAB ──────────────────
             SizedBox(
               width: 340,
               child: Stack(
@@ -78,7 +78,7 @@ class _GoodTransferListView extends StatelessWidget {
                     right: 12,
                     bottom: 12,
                     child: FloatingActionButton.extended(
-                      heroTag: 'good_transfer_create_fab',
+                      heroTag: 'goods_transfer_create_fab',
                       onPressed: () => _openCreate(context),
                       backgroundColor: _kPrimary,
                       icon: const Icon(Icons.add),
@@ -101,7 +101,7 @@ class _GoodTransferListView extends StatelessWidget {
 // ── Left panel: list header ─────────────────────────────────────────────────
 
 class _TransferListPanel extends StatelessWidget {
-  final GoodTransferListViewModel vm;
+  final GoodsTransferListViewModel vm;
   const _TransferListPanel({required this.vm});
 
   @override
@@ -129,7 +129,7 @@ class _TransferListPanel extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 const Text(
-                  'Good Transfer',
+                  'Goods Transfer',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -188,7 +188,7 @@ class _TransferListPanel extends StatelessWidget {
             Icon(Icons.inbox_outlined, size: 40, color: Colors.grey.shade300),
             const SizedBox(height: 8),
             Text(
-              'Belum ada Good Transfer',
+              'Belum ada Goods Transfer',
               style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
             ),
           ],
@@ -207,7 +207,7 @@ class _TransferListPanel extends StatelessWidget {
         return _TransferTile(
           item: item,
           selected: selected,
-          onTap: () => context.read<GoodTransferListViewModel>().selectTransfer(
+          onTap: () => context.read<GoodsTransferListViewModel>().selectTransfer(
             item.noTransfer,
           ),
         );
@@ -217,7 +217,7 @@ class _TransferListPanel extends StatelessWidget {
 }
 
 class _TransferTile extends StatelessWidget {
-  final GoodTransferHeader item;
+  final GoodsTransferHeader item;
   final bool selected;
   final VoidCallback onTap;
 
@@ -324,7 +324,7 @@ class _TransferTile extends StatelessWidget {
 // ── Right panel: detail label dari transfer terpilih ────────────────────────
 
 class _TransferDetailPanel extends StatelessWidget {
-  final GoodTransferListViewModel vm;
+  final GoodsTransferListViewModel vm;
   const _TransferDetailPanel({required this.vm});
 
   @override
@@ -349,7 +349,7 @@ class _TransferDetailPanel extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Pilih Good Transfer di sebelah kiri untuk lihat detail label',
+              'Pilih Goods Transfer di sebelah kiri untuk lihat detail label',
               style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
             ),
           ],
@@ -457,13 +457,13 @@ class _TransferDetailPanel extends StatelessWidget {
       ),
     );
     if (confirm == true && context.mounted) {
-      await context.read<GoodTransferListViewModel>().cancelSelected();
+      await context.read<GoodsTransferListViewModel>().cancelSelected();
     }
   }
 }
 
 class _DetailLabelTile extends StatelessWidget {
-  final GoodTransferItem item;
+  final GoodsTransferItem item;
   const _DetailLabelTile({required this.item});
 
   String get _qtyBeratText {

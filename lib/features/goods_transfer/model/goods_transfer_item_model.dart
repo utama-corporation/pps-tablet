@@ -1,6 +1,6 @@
-// lib/features/good_transfer/model/good_transfer_item_model.dart
+// lib/features/goods_transfer/model/goods_transfer_item_model.dart
 
-class GoodTransferItem {
+class GoodsTransferItem {
   final int idTransferItem;
   final String noTransfer;
   final String labelCode;
@@ -16,7 +16,7 @@ class GoodTransferItem {
   final num? qty;
   final num? berat;
 
-  GoodTransferItem({
+  GoodsTransferItem({
     required this.idTransferItem,
     required this.noTransfer,
     required this.labelCode,
@@ -36,14 +36,14 @@ class GoodTransferItem {
   /// true kalau kategori ini diukur dalam pcs (bukan kg/berat).
   bool get isPcsUom => (uom ?? '').toLowerCase() == 'pcs';
 
-  factory GoodTransferItem.fromJson(Map<String, dynamic> json) {
+  factory GoodsTransferItem.fromJson(Map<String, dynamic> json) {
     int toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
     int? toIntOrNull(dynamic v) =>
         v == null ? null : (v is num ? v.toInt() : int.tryParse('$v'));
     num? toNumOrNull(dynamic v) =>
         v == null ? null : (v is num ? v : num.tryParse('$v'));
 
-    return GoodTransferItem(
+    return GoodsTransferItem(
       idTransferItem: toInt(json['IdTransferItem']),
       noTransfer: (json['NoTransfer'] ?? '').toString(),
       labelCode: (json['LabelCode'] ?? '').toString(),
@@ -62,13 +62,13 @@ class GoodTransferItem {
   }
 }
 
-class GoodTransferDetail {
-  final GoodTransferHeaderRaw header;
-  final List<GoodTransferItem> items;
+class GoodsTransferDetail {
+  final GoodsTransferHeaderRaw header;
+  final List<GoodsTransferItem> items;
 
-  GoodTransferDetail({required this.header, required this.items});
+  GoodsTransferDetail({required this.header, required this.items});
 }
 
 /// Header mentah (Map) supaya detail screen tidak perlu 2x parse berbeda
-/// dengan [GoodTransferHeader] yang dipakai di list.
-typedef GoodTransferHeaderRaw = Map<String, dynamic>;
+/// dengan [GoodsTransferHeader] yang dipakai di list.
+typedef GoodsTransferHeaderRaw = Map<String, dynamic>;

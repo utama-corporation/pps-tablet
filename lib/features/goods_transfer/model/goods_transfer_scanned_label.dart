@@ -1,8 +1,8 @@
-// lib/features/good_transfer/model/good_transfer_scanned_label.dart
+// lib/features/goods_transfer/model/goods_transfer_scanned_label.dart
 
-/// Hasil validasi 1 label yang di-scan/input di layar Create Good Transfer
-/// (dari GET /api/good-transfer/inspect-label).
-class GoodTransferScannedLabel {
+/// Hasil validasi 1 label yang di-scan/input di layar Create Goods Transfer
+/// (dari GET /api/goods-transfer/inspect-label).
+class GoodsTransferScannedLabel {
   final String labelCode;
   final String prefix;
   final String? blok;
@@ -14,7 +14,7 @@ class GoodTransferScannedLabel {
   final num? qty;
   final num? berat;
 
-  GoodTransferScannedLabel({
+  GoodsTransferScannedLabel({
     required this.labelCode,
     required this.prefix,
     this.blok,
@@ -31,13 +31,13 @@ class GoodTransferScannedLabel {
   /// untuk menentukan tampilkan qty atau berat di tile.
   bool get isPcsUom => (uom ?? '').toLowerCase() == 'pcs';
 
-  factory GoodTransferScannedLabel.fromJson(Map<String, dynamic> json) {
+  factory GoodsTransferScannedLabel.fromJson(Map<String, dynamic> json) {
     int? toIntOrNull(dynamic v) =>
         v == null ? null : (v is num ? v.toInt() : int.tryParse('$v'));
     num? toNumOrNull(dynamic v) =>
         v == null ? null : (v is num ? v : num.tryParse('$v'));
 
-    return GoodTransferScannedLabel(
+    return GoodsTransferScannedLabel(
       labelCode: (json['labelCode'] ?? '').toString(),
       prefix: (json['prefix'] ?? '').toString(),
       blok: json['blok']?.toString(),

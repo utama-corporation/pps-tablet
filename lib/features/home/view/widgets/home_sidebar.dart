@@ -202,9 +202,9 @@ class _HomeSidebarState extends State<HomeSidebar> {
           route: '/shell/trade-in',
         ),
         _SubItem(
-          title: 'Good Transfer',
+          title: 'Goods Transfer',
           icon: Icons.local_shipping_outlined,
-          route: '/shell/good-transfer',
+          route: '/shell/goods-transfer',
         ),
         _SubItem(
           title: 'In Transit',
@@ -245,6 +245,12 @@ class _HomeSidebarState extends State<HomeSidebar> {
       subtitle: 'Stock opname versi lama',
       icon: Icons.fact_check_outlined,
       route: '/stockopname',
+    ),
+    _MenuItem(
+      title: 'Warehouse',
+      subtitle: 'Kelompokkan warehouse satu site',
+      icon: Icons.workspaces_outline,
+      route: '/shell/warehouse-group',
     ),
   ];
 

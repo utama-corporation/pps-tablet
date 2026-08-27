@@ -9,9 +9,9 @@ import 'package:pps_tablet/common/widgets/success_status_dialog.dart';
 import 'package:pps_tablet/features/warehouse/widgets/warehouse_dropdown.dart';
 import 'package:pps_tablet/features/warehouse/model/warehouse_model.dart';
 
-import '../model/good_transfer_scanned_label.dart';
-import '../repository/good_transfer_repository.dart';
-import '../view_model/good_transfer_create_view_model.dart';
+import '../model/goods_transfer_scanned_label.dart';
+import '../repository/goods_transfer_repository.dart';
+import '../view_model/goods_transfer_create_view_model.dart';
 
 const _kPrimary = Color(0xFF0D47A1);
 const _kSurface = Color(0xFFF8F9FB);
@@ -33,31 +33,31 @@ BoxDecoration _cardDecoration() => BoxDecoration(
   ],
 );
 
-/// Dialog "Buat Good Transfer". Panggil dengan:
-/// `showDialog(context: context, builder: (_) => const GoodTransferCreateDialog())`
-class GoodTransferCreateDialog extends StatelessWidget {
-  const GoodTransferCreateDialog({super.key});
+/// Dialog "Buat Goods Transfer". Panggil dengan:
+/// `showDialog(context: context, builder: (_) => const GoodsTransferCreateDialog())`
+class GoodsTransferCreateDialog extends StatelessWidget {
+  const GoodsTransferCreateDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => GoodTransferCreateViewModel(
-        repository: GoodTransferRepository(api: ApiClient()),
+      create: (_) => GoodsTransferCreateViewModel(
+        repository: GoodsTransferRepository(api: ApiClient()),
       ),
-      child: const _GoodTransferCreateView(),
+      child: const _GoodsTransferCreateView(),
     );
   }
 }
 
-class _GoodTransferCreateView extends StatefulWidget {
-  const _GoodTransferCreateView();
+class _GoodsTransferCreateView extends StatefulWidget {
+  const _GoodsTransferCreateView();
 
   @override
-  State<_GoodTransferCreateView> createState() =>
-      _GoodTransferCreateViewState();
+  State<_GoodsTransferCreateView> createState() =>
+      _GoodsTransferCreateViewState();
 }
 
-class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
+class _GoodsTransferCreateViewState extends State<_GoodsTransferCreateView> {
   final _catatanCtrl = TextEditingController();
 
   @override
@@ -68,7 +68,7 @@ class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
 
   Future<void> _openScanDialog(
     BuildContext context,
-    GoodTransferCreateViewModel vm,
+    GoodsTransferCreateViewModel vm,
   ) async {
     if (vm.idWarehouseAsal == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,7 +87,7 @@ class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
 
   Future<void> _submit(
     BuildContext context,
-    GoodTransferCreateViewModel vm,
+    GoodsTransferCreateViewModel vm,
   ) async {
     final ok = await vm.submit();
     if (!context.mounted) return;
@@ -97,7 +97,7 @@ class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
         context: context,
         builder: (_) => SuccessStatusDialog(
           title: 'Berhasil Dibuat',
-          message: 'Good Transfer ${vm.createdNoTransfer} berhasil dibuat',
+          message: 'Goods Transfer ${vm.createdNoTransfer} berhasil dibuat',
         ),
       );
       if (context.mounted) Navigator.of(context).pop();
@@ -114,13 +114,18 @@ class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GoodTransferCreateViewModel>(
+    return Consumer<GoodsTransferCreateViewModel>(
       builder: (context, vm, _) {
         return Dialog(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 32,
+            vertical: 40,
+          ),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 1000, maxHeight: 700),
             decoration: const BoxDecoration(color: _kSurface),
@@ -187,7 +192,7 @@ class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
           ),
           const SizedBox(width: 10),
           const Text(
-            'Buat Good Transfer',
+            'Buat Goods Transfer',
             style: TextStyle(
               color: Colors.white,
               fontSize: 15,
@@ -215,7 +220,7 @@ class _GoodTransferCreateViewState extends State<_GoodTransferCreateView> {
 // ── Left panel: header form ────────────────────────────────────────────────
 
 class _HeaderCard extends StatefulWidget {
-  final GoodTransferCreateViewModel vm;
+  final GoodsTransferCreateViewModel vm;
   final TextEditingController catatanCtrl;
   final VoidCallback onSubmit;
 
@@ -288,16 +293,13 @@ class _HeaderCardState extends State<_HeaderCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'No. Good Transfer',
+              'No. Goods Transfer',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
             ),
             const SizedBox(height: 4),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: _kSurface,
                 borderRadius: BorderRadius.circular(8),
@@ -321,7 +323,7 @@ class _HeaderCardState extends State<_HeaderCard> {
               label: 'Warehouse Tujuan',
               hint: 'Pilih warehouse penerima',
               onChanged: (w) => context
-                  .read<GoodTransferCreateViewModel>()
+                  .read<GoodsTransferCreateViewModel>()
                   .setWarehouseTujuan(w?.idWarehouse),
             ),
             const SizedBox(height: 12),
@@ -334,7 +336,7 @@ class _HeaderCardState extends State<_HeaderCard> {
               ),
               maxLines: 2,
               onChanged: (v) =>
-                  context.read<GoodTransferCreateViewModel>().setCatatan(v),
+                  context.read<GoodsTransferCreateViewModel>().setCatatan(v),
             ),
             const SizedBox(height: 16),
             Container(
@@ -354,7 +356,10 @@ class _HeaderCardState extends State<_HeaderCard> {
             ),
             if (vm.error.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(vm.error, style: const TextStyle(color: Colors.red, fontSize: 12)),
+              Text(
+                vm.error,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
             ],
             const SizedBox(height: 16),
             SizedBox(
@@ -387,7 +392,7 @@ class _HeaderCardState extends State<_HeaderCard> {
 // ── Right panel: daftar label hasil scan ────────────────────────────────────
 
 class _LabelsCard extends StatelessWidget {
-  final List<GoodTransferScannedLabel> labels;
+  final List<GoodsTransferScannedLabel> labels;
   final void Function(String) onRemove;
   final VoidCallback onScan;
 
@@ -518,10 +523,8 @@ class _LabelsCard extends StatelessWidget {
                       endIndent: 16,
                       color: _kBorder,
                     ),
-                    itemBuilder: (_, i) => _LabelTile(
-                      label: labels[i],
-                      onRemove: onRemove,
-                    ),
+                    itemBuilder: (_, i) =>
+                        _LabelTile(label: labels[i], onRemove: onRemove),
                   ),
           ),
         ],
@@ -531,7 +534,7 @@ class _LabelsCard extends StatelessWidget {
 }
 
 class _LabelTile extends StatelessWidget {
-  final GoodTransferScannedLabel label;
+  final GoodsTransferScannedLabel label;
   final void Function(String) onRemove;
 
   const _LabelTile({required this.label, required this.onRemove});
