@@ -10,6 +10,7 @@ class MesinSectionHeader extends StatelessWidget {
     required this.inactiveCount,
     required this.isLoading,
     this.pendingCount = 0,
+    this.alwaysShowPending = false,
   });
 
   final String title;
@@ -17,6 +18,12 @@ class MesinSectionHeader extends StatelessWidget {
   final int pendingCount;
   final int inactiveCount;
   final bool isLoading;
+
+  /// Saat true, badge Pending tetap tampil walau [pendingCount] = 0 (mis.
+  /// modul yang punya konsep pending sebagai kategori tetap, bukan cuma
+  /// muncul saat ada datanya). Default false supaya modul lain yang tidak
+  /// pernah kirim [pendingCount] tidak ikut menampilkan badge "0 Pending".
+  final bool alwaysShowPending;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +52,7 @@ class MesinSectionHeader extends StatelessWidget {
               color: const Color(0xFF16A34A),
               bg: const Color(0xFFDCFCE7),
             ),
-            if (pendingCount > 0) ...[
+            if (pendingCount > 0 || alwaysShowPending) ...[
               const SizedBox(width: 6),
               ProductionStatBadge(
                 count: pendingCount,

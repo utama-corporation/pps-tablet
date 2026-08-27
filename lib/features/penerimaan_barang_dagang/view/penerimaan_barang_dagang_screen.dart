@@ -1,53 +1,53 @@
-// lib/features/bahan_pendukung/penerimaan/view/penerimaan_bahan_pendukung_screen.dart
+// lib/features/penerimaan_barang_dagang/view/penerimaan_barang_dagang_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../common/widgets/confirm_dialog.dart';
-import '../../../../common/widgets/error_status_dialog.dart';
-import '../../../../common/widgets/success_status_dialog.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../production/inject/model/inject_production_model.dart';
-import '../../../production/shared/widgets/mesin_section_header.dart';
-import '../../../production/shared/widgets/production_mesin_card.dart';
-import '../../../production/shared/widgets/production_overlay_drawer.dart';
-import '../../../production/shared/widgets/production_produksi_list.dart';
-import '../../../production/shared/widgets/production_riwayat_header.dart';
-import '../model/penerimaan_bahan_pendukung_model.dart';
-import '../model/tim_penerimaan_model.dart';
-import '../repository/penerimaan_bahan_pendukung_repository.dart';
-import '../widgets/penerimaan_bahan_pendukung_header_form_dialog.dart';
-import 'penerimaan_bahan_pendukung_label_list_screen.dart';
+import '../../../common/widgets/confirm_dialog.dart';
+import '../../../common/widgets/error_status_dialog.dart';
+import '../../../common/widgets/success_status_dialog.dart';
+import '../../../core/network/api_client.dart';
+import '../../production/inject/model/inject_production_model.dart';
+import '../../production/shared/widgets/mesin_section_header.dart';
+import '../../production/shared/widgets/production_mesin_card.dart';
+import '../../production/shared/widgets/production_overlay_drawer.dart';
+import '../../production/shared/widgets/production_produksi_list.dart';
+import '../../production/shared/widgets/production_riwayat_header.dart';
+import '../model/penerimaan_barang_dagang_model.dart';
+import '../model/tim_penerimaan_barang_dagang_model.dart';
+import '../repository/penerimaan_barang_dagang_repository.dart';
+import '../widgets/penerimaan_barang_dagang_header_form_dialog.dart';
+import 'penerimaan_barang_dagang_label_list_screen.dart';
 
-/// Layar utama modul Penerimaan Bahan Pendukung — 1:1 mengikuti pola
-/// Penerimaan Bahan Baku: grid status tim (dari tabel GLOBAL
-/// `dbo.MstTimPenerimaan`, bukan tabel khusus per modul) + panel Riwayat
-/// yang bisa di-slide dari kanan. Tim dianggap "aktif" kalau sudah punya
-/// `NoPenerimaan` untuk HARI INI. Tap tim nonaktif → dialog header ringkas
-/// (Tanggal, Shift, Jam) membuat NoPenerimaan (fase 1) → LANGSUNG masuk ke
-/// `PenerimaanBahanPendukungLabelListScreen` yang sama dengan tim
+/// Layar utama modul Penerimaan Barang Dagang — 1:1 mengikuti pola
+/// Penerimaan Bahan Pendukung: grid status tim (dari tabel GLOBAL
+/// `dbo.MstTimPenerimaan`, TipeModul='BARANG_DAGANG') + panel Riwayat yang
+/// bisa di-slide dari kanan. Tim dianggap "aktif" kalau sudah punya
+/// `NoPenerimaan` yang belum selesai bertanggal hari ini ("pending"/kuning
+/// kalau tanggalnya sudah lewat). Tap tim nonaktif → dialog header ringkas
+/// (Tanggal) membuat NoPenerimaan (fase 1) → LANGSUNG masuk ke
+/// `PenerimaanBarangDagangLabelListScreen` yang sama dengan tim
 /// AKTIF/baris riwayat. Menambah barang (fase 2) dilakukan di layar itu
-/// lewat FAB yang membuka `PenerimaanBahanPendukungAddLabelDialog` — tidak
-/// ada lagi screen input penuh terpisah. Tidak ada split kategori
-/// (Pakai/Proses) — satu kategori saja, jadi tidak ada tab Stok Item
-/// terpisah seperti bahan baku.
-class PenerimaanBahanPendukungScreen extends StatefulWidget {
-  const PenerimaanBahanPendukungScreen({super.key});
+/// lewat FAB yang membuka `PenerimaanBarangDagangItemFormDialog` — tidak
+/// ada screen input penuh terpisah. Tidak ada split kategori — satu
+/// kategori saja.
+class PenerimaanBarangDagangScreen extends StatefulWidget {
+  const PenerimaanBarangDagangScreen({super.key});
 
   @override
-  State<PenerimaanBahanPendukungScreen> createState() =>
-      _PenerimaanBahanPendukungScreenState();
+  State<PenerimaanBarangDagangScreen> createState() =>
+      _PenerimaanBarangDagangScreenState();
 }
 
-class _PenerimaanBahanPendukungScreenState
-    extends State<PenerimaanBahanPendukungScreen> {
-  late final PenerimaanBahanPendukungRepository _repo;
+class _PenerimaanBarangDagangScreenState
+    extends State<PenerimaanBarangDagangScreen> {
+  late final PenerimaanBarangDagangRepository _repo;
 
   Future<List<TimPenerimaanInfo>> _timFuture = Future.value(
     <TimPenerimaanInfo>[],
   );
 
-  final List<PenerimaanBahanPendukung> _items = [];
+  final List<PenerimaanBarangDagang> _items = [];
   bool _isLoading = false;
   bool _isFetchingMore = false;
   bool _hasMore = true;
@@ -60,7 +60,7 @@ class _PenerimaanBahanPendukungScreenState
   @override
   void initState() {
     super.initState();
-    _repo = PenerimaanBahanPendukungRepository(api: context.read<ApiClient>());
+    _repo = PenerimaanBarangDagangRepository(api: context.read<ApiClient>());
     _loadTim();
     _loadPage();
     _scrollCtl.addListener(_onScroll);
@@ -99,7 +99,7 @@ class _PenerimaanBahanPendukungScreenState
     try {
       final res = await _repo.fetchAll(page: 1, pageSize: _pageSize);
       if (!mounted) return;
-      var newItems = res['items'] as List<PenerimaanBahanPendukung>;
+      var newItems = res['items'] as List<PenerimaanBarangDagang>;
       newItems = newItems.where((e) => !e.isComplete).toList();
       if (_filterIdTim != null) {
         newItems = newItems.where((e) => e.idTim == _filterIdTim).toList();
@@ -122,7 +122,7 @@ class _PenerimaanBahanPendukungScreenState
       final nextPage = _page + 1;
       final res = await _repo.fetchAll(page: nextPage, pageSize: _pageSize);
       if (!mounted) return;
-      var newItems = res['items'] as List<PenerimaanBahanPendukung>;
+      var newItems = res['items'] as List<PenerimaanBarangDagang>;
       newItems = newItems.where((e) => !e.isComplete).toList();
       if (_filterIdTim != null) {
         newItems = newItems.where((e) => e.idTim == _filterIdTim).toList();
@@ -182,7 +182,7 @@ class _PenerimaanBahanPendukungScreenState
     );
   }
 
-  static ProduksiRowData _toRowData(PenerimaanBahanPendukung row) {
+  static ProduksiRowData _toRowData(PenerimaanBarangDagang row) {
     return ProduksiRowData(
       tglProduksi: row.tglPenerimaan,
       hourStart: null,
@@ -206,12 +206,11 @@ class _PenerimaanBahanPendukungScreenState
         );
         return;
       }
-      final headerResult =
-          await showDialog<PenerimaanBahanPendukungHeaderResult>(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => PenerimaanBahanPendukungCreateDialog(tim: tim),
-          );
+      final headerResult = await showDialog<PenerimaanBarangDagangHeaderResult>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PenerimaanBarangDagangCreateDialog(tim: tim),
+      );
       if (!mounted) return;
       if (headerResult == null) return;
 
@@ -231,18 +230,18 @@ class _PenerimaanBahanPendukungScreenState
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
-            PenerimaanBahanPendukungLabelListScreen(noPenerimaan: noPenerimaan),
+            PenerimaanBarangDagangLabelListScreen(noPenerimaan: noPenerimaan),
       ),
     );
     if (!mounted) return;
     _refreshAll();
   }
 
-  Future<void> _onRowTap(PenerimaanBahanPendukung row) async {
+  Future<void> _onRowTap(PenerimaanBarangDagang row) async {
     await _openLabelList(row.noPenerimaan);
   }
 
-  Future<void> _onRowDelete(PenerimaanBahanPendukung row) async {
+  Future<void> _onRowDelete(PenerimaanBarangDagang row) async {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -302,7 +301,7 @@ class _PenerimaanBahanPendukungScreenState
                       final inactiveCount =
                           allTim.length - activeCount - pendingCount;
                       return MesinSectionHeader(
-                        title: 'Penerimaan Bahan Pendukung',
+                        title: 'Penerimaan Barang Dagang',
                         activeCount: activeCount,
                         pendingCount: pendingCount,
                         alwaysShowPending: true,
@@ -419,7 +418,7 @@ class _PenerimaanBahanPendukungScreenState
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadPage,
-            child: ProductionProduksiList<PenerimaanBahanPendukung>(
+            child: ProductionProduksiList<PenerimaanBarangDagang>(
               items: _items,
               dataOf: _toRowData,
               isLoading: _isLoading,

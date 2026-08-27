@@ -52,7 +52,7 @@ import 'package:pps_tablet/features/sortir_reject_v2/view/sr_v2_list_screen.dart
 import 'package:pps_tablet/features/stock/view/stock_selection_screen.dart';
 import 'package:pps_tablet/features/stock_opname/view/stock_opname_list_screen.dart';
 import 'package:pps_tablet/features/stock_opname_v2/view/so_v2_kategori_list_screen.dart';
-import 'package:pps_tablet/features/warehouse/penerimaan_barang_dagang/view/penerimaan_barang_dagang_screen.dart';
+import 'package:pps_tablet/features/penerimaan_barang_dagang/view/penerimaan_barang_dagang_screen.dart';
 import 'package:provider/provider.dart';
 
 class BreadcrumbSegment {
