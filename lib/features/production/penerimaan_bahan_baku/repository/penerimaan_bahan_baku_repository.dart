@@ -10,10 +10,10 @@
 //   POST   /api/penerimaan-bahan-baku/:noPenerimaan/pallets — fase 2: add pallets
 //   DELETE /api/penerimaan-bahan-baku/:noPenerimaan
 //
-// Alur create 2 fase, meniru washing production: dialog header (Tanggal/
-// Shift/Jam) langsung hit createHeader() begitu SIMPAN ditekan → dapat
-// NoPenerimaan → baru di screen input, addPallets() dipanggil per section
-// (Bahan Baku Pakai/Proses) untuk NoPenerimaan yang sama.
+// Alur create 2 fase: dialog header (Tanggal) langsung hit
+// createHeader() begitu SIMPAN ditekan → dapat NoPenerimaan → baru di
+// screen input, addPallets() dipanggil per section (Bahan Baku
+// Pakai/Proses) untuk NoPenerimaan yang sama.
 import '../../../../core/network/api_client.dart';
 import '../model/penerimaan_bahan_baku_model.dart';
 import '../model/tim_penerimaan_bahan_baku_model.dart';
@@ -57,21 +57,11 @@ class PenerimaanBahanBakuHeaderResult {
   final String noPenerimaan;
   final DateTime tanggal;
   final int idTim;
-  final int shift;
-  final String hourStart;
-  final String hourEnd;
-  final List<int> idOperators;
-  final String namaOperators;
 
   const PenerimaanBahanBakuHeaderResult({
     required this.noPenerimaan,
     required this.tanggal,
     required this.idTim,
-    required this.shift,
-    required this.hourStart,
-    required this.hourEnd,
-    required this.idOperators,
-    required this.namaOperators,
   });
 }
 
@@ -143,21 +133,12 @@ class PenerimaanBahanBakuRepository {
   Future<PenerimaanBahanBakuHeaderResult> createHeader({
     required DateTime tglPenerimaan,
     required int idTim,
-    required int shift,
-    required String hourStart,
-    required String hourEnd,
-    required List<int> idOperators,
-    required String namaOperators,
   }) async {
     final body = await api.postJson(
       '/api/penerimaan-bahan-baku',
       body: {
         'tglPenerimaan': _dateOnly(tglPenerimaan),
         'idTim': idTim,
-        'shift': shift,
-        'hourStart': _normalizeTime(hourStart),
-        'hourEnd': _normalizeTime(hourEnd),
-        'idOperators': idOperators,
       },
     );
 
@@ -170,11 +151,6 @@ class PenerimaanBahanBakuRepository {
       noPenerimaan: noPenerimaan,
       tanggal: tglPenerimaan,
       idTim: idTim,
-      shift: shift,
-      hourStart: hourStart,
-      hourEnd: hourEnd,
-      idOperators: idOperators,
-      namaOperators: namaOperators,
     );
   }
 
@@ -212,12 +188,10 @@ class PenerimaanBahanBakuRepository {
     await api.deleteJson('/api/penerimaan-bahan-baku/$noPenerimaan');
   }
 
+  Future<void> markComplete(String noPenerimaan) async {
+    await api.patchJson('/api/penerimaan-bahan-baku/$noPenerimaan/complete');
+  }
+
   static String _dateOnly(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  static String _normalizeTime(String v) {
-    final t = v.trim();
-    if (t.isEmpty) return t;
-    return t.length == 5 ? '$t:00' : t;
-  }
 }

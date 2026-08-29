@@ -2,12 +2,9 @@
 //
 // Mirror response dari backend `src/modules/production/penerimaan-bahan-baku/*`
 // (GET/POST/DELETE /api/penerimaan-bahan-baku). Satu baris riwayat = satu
-// transaksi penerimaan (NoPenerimaan) — sekarang membawa Shift/HourStart/
-// HourEnd, format yang sama dengan produksi (mis. WashingProduction) — yang
-// menghasilkan satu NoBahanBaku (label bahan baku) dengan satu atau lebih
-// pallet.
-import 'dart:convert';
-
+// transaksi penerimaan (NoPenerimaan) — header disederhanakan (tanpa Shift/
+// Jam, mengikuti format Bahan Pendukung/Barang Dagang), yang menghasilkan
+// satu NoBahanBaku (label bahan baku) dengan satu atau lebih pallet.
 import 'package:intl/intl.dart';
 
 class PenerimaanBahanBaku {
@@ -15,16 +12,13 @@ class PenerimaanBahanBaku {
   final DateTime? tglPenerimaan;
   final int idTim;
   final String namaTim;
-  final List<int> idOperators;
-  final String? namaOperators;
   final int idSupplier;
   final String namaSupplier;
   final String? noPlat;
-  final int shift;
-  final String? hourStart; // "HH:mm"
-  final String? hourEnd; // "HH:mm"
   final String? createBy;
   final DateTime? dateTimeCreate;
+  final bool isComplete;
+  final DateTime? tglComplete;
 
   final String? noBahanBaku;
   final int jumlahPallet;
@@ -35,16 +29,13 @@ class PenerimaanBahanBaku {
     required this.tglPenerimaan,
     required this.idTim,
     required this.namaTim,
-    this.idOperators = const [],
-    this.namaOperators,
     required this.idSupplier,
     required this.namaSupplier,
     this.noPlat,
-    required this.shift,
-    this.hourStart,
-    this.hourEnd,
     this.createBy,
     this.dateTimeCreate,
+    this.isComplete = false,
+    this.tglComplete,
     this.noBahanBaku,
     this.jumlahPallet = 0,
     this.totalBerat = 0,
@@ -72,26 +63,14 @@ class PenerimaanBahanBaku {
     return DateTime.tryParse(s);
   }
 
-  static String? _asTimeHHmm(dynamic v) {
-    if (v == null) return null;
-    final s = v.toString().trim();
-    if (s.isEmpty) return null;
-    final m = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(s);
-    if (m != null) return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)!}';
-    return null;
-  }
-
-  static List<int> _asIntList(dynamic v) {
-    if (v == null) return const [];
-    final raw = v is String ? v : v.toString();
-    if (raw.trim().isEmpty || raw.trim() == '[]') return const [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        return decoded.map((e) => _asInt(e)).toList();
-      }
-    } catch (_) {}
-    return const [];
+  static bool _asBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1';
+    }
+    return false;
   }
 
   factory PenerimaanBahanBaku.fromJson(Map<String, dynamic> j) {
@@ -100,16 +79,13 @@ class PenerimaanBahanBaku {
       tglPenerimaan: _asDateTime(j['TglPenerimaan']),
       idTim: _asInt(j['IdTim']),
       namaTim: _asString(j['NamaTim']),
-      idOperators: _asIntList(j['IdOperators']),
-      namaOperators: j['NamaOperators']?.toString(),
       idSupplier: _asInt(j['IdSupplier']),
       namaSupplier: _asString(j['NamaSupplier']),
       noPlat: j['NoPlat']?.toString(),
-      shift: _asInt(j['Shift']),
-      hourStart: _asTimeHHmm(j['HourStart']),
-      hourEnd: _asTimeHHmm(j['HourEnd']),
       createBy: j['CreateBy']?.toString(),
       dateTimeCreate: _asDateTime(j['DateTimeCreate']),
+      isComplete: _asBool(j['IsComplete']),
+      tglComplete: _asDateTime(j['TglComplete']),
       noBahanBaku: j['NoBahanBaku']?.toString(),
       jumlahPallet: _asInt(j['JumlahPallet']),
       totalBerat: _asDouble(j['TotalBerat']),
@@ -121,12 +97,14 @@ class PenerimaanBahanBaku {
     return DateFormat('dd MMM yyyy', 'id_ID').format(tglPenerimaan!.toLocal());
   }
 
-  String get hourRangeText {
-    if ((hourStart == null || hourStart!.isEmpty) && (hourEnd == null || hourEnd!.isEmpty)) {
-      return '';
-    }
-    return '${hourStart ?? '--:--'} - ${hourEnd ?? '--:--'}';
+  String get tglCompleteTextShort {
+    if (tglComplete == null) return '';
+    return DateFormat(
+      'dd MMM yyyy HH:mm',
+      'id_ID',
+    ).format(tglComplete!.toLocal());
   }
+
 }
 
 /// Satu baris output (label) dari sebuah transaksi penerimaan — hasil join

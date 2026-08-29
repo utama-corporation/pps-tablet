@@ -1,10 +1,12 @@
 // lib/features/production/penerimaan_bahan_baku/view/penerimaan_bahan_baku_screen.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../common/widgets/success_status_dialog.dart';
 import '../../../../core/network/api_client.dart';
+import '../../inject/model/inject_production_model.dart';
 import '../../shared/models/bahan_baku_proses_label.dart';
 import '../../shared/models/stok_bahan_baku_item.dart';
 import '../../shared/repository/stok_bahan_baku_pakai_repository.dart';
@@ -21,27 +23,21 @@ import '../model/tim_penerimaan_bahan_baku_model.dart';
 import '../repository/penerimaan_bahan_baku_repository.dart';
 import '../widgets/penerimaan_bahan_baku_delete_dialog.dart';
 import '../widgets/penerimaan_bahan_baku_header_form_dialog.dart';
-import 'penerimaan_bahan_baku_input_screen.dart';
 import 'penerimaan_bahan_baku_label_list_screen.dart';
 
 /// Layar utama modul Penerimaan Bahan Baku — 1:1 mengikuti pola
 /// `WashingProductionMesinScreen`: grid status tim (analog mesin) + panel
 /// riwayat/stok yang bisa di-slide dari kanan. Tim dianggap "aktif" kalau
-/// sudah punya `NoPenerimaan` untuk HARI INI (lihat
+/// sudah punya `NoPenerimaan` yang belum selesai (lihat
 /// `TimPenerimaanInfo.isActive`, sumbernya endpoint
-/// `GET /api/penerimaan-bahan-baku/tim-status`, analog
-/// `GET /api/mst-mesin/washing`). Tap tim nonaktif → dialog header ringkas
-/// (Tanggal, Shift, Jam, Regu/Operator — atribut yang melekat pada tim) →
-/// screen input penuh (create label) untuk pallet/sak + Supplier/No Plat per
-/// section — HANYA dipakai sekali saat header baru pertama dibuat. Tap tim
-/// AKTIF / baris riwayat → `PenerimaanBahanBakuLabelListScreen`, list label
-/// (NoBahanBaku + NoPallet) yang sudah dibuat untuk NoPenerimaan itu — tidak
-/// lagi masuk ke screen generate label.
-///
-/// Menu "PBB Pakai" & "PBB Proses" sudah digabung menjadi satu screen ini;
-/// kategori (Bahan Baku Pakai / Bahan Baku Proses) kini dipilih di level
-/// section pada form create (lihat `PenerimaanBahanBakuCreateDialog`) dan di
-/// level chip pada tab Stok Item, bukan lagi di level screen/menu.
+/// `GET /api/penerimaan-bahan-baku/tim-status` — pending/kuning kalau
+/// tanggalnya sudah lewat, sama seperti Bahan Pendukung/Barang Dagang).
+/// Tap tim nonaktif → dialog header ringkas (Tanggal saja — atribut
+/// yang melekat pada tim; Shift/Jam/Operator sudah dihapus) → langsung buka
+/// `PenerimaanBahanBakuLabelListScreen`. Tap tim AKTIF / baris riwayat juga
+/// membuka layar yang sama. Modul ini TIDAK punya layar create label
+/// (pallet/sak Bahan Baku Pakai/Proses dibuat lewat proses lain) — layar
+/// ini murni menampilkan tim + riwayat/list label yang sudah ada.
 class PenerimaanBahanBakuScreen extends StatefulWidget {
   const PenerimaanBahanBakuScreen({super.key});
 
@@ -159,31 +155,64 @@ class _PenerimaanBahanBakuScreenState extends State<PenerimaanBahanBakuScreen> {
 
   // ── Card / row data converters ───────────────────────────────────────
 
+  /// Aktif (hijau) = punya NoPenerimaan belum selesai bertanggal HARI INI.
+  /// Pending (kuning) = punya NoPenerimaan belum selesai tapi tanggalnya
+  /// sudah lewat. Tidak Aktif (merah) = tidak ada NoPenerimaan berjalan.
+  static MachineStatus _statusOf(TimPenerimaanInfo tim) {
+    final tgl = tim.tglPenerimaan;
+    if (tgl == null) return MachineStatus.inactive;
+    final today = DateTime.now();
+    final startDay = DateTime(tgl.year, tgl.month, tgl.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final daysSince = todayDay.difference(startDay).inDays;
+    return daysSince <= 0 ? MachineStatus.active : MachineStatus.pending;
+  }
+
   static MesinCardData _toCardData(TimPenerimaanInfo tim) {
     String? shiftTimeText;
-    if (tim.isActive) {
-      final parts = <String>[];
-      if (tim.shift != null) parts.add('Shift ${tim.shift}');
-      parts.add('${tim.hourStart ?? '--:--'} – ${tim.hourEnd ?? '--:--'}');
-      shiftTimeText = parts.join('  |  ');
+    final tgl = tim.tglPenerimaan;
+    final status = _statusOf(tim);
+    if (tgl != null) {
+      final today = DateTime.now();
+      final startDay = DateTime(tgl.year, tgl.month, tgl.day);
+      final todayDay = DateTime(today.year, today.month, today.day);
+      final daysSince = todayDay.difference(startDay).inDays;
+      final tglText = DateFormat('dd MMM yyyy', 'id_ID').format(tgl);
+      final daysText = daysSince <= 0 ? 'Hari ini' : 'sudah $daysSince hari';
+      shiftTimeText = '$tglText • $daysText';
     }
     return MesinCardData(
       namaMesin: tim.namaTim,
       isActive: tim.isActive,
+      machineStatus: status,
       shiftTimeText: shiftTimeText,
-      namaOperators: tim.namaOperators,
     );
+  }
+
+  /// Warna garis status di riwayat: biru (current) = masih berlangsung
+  /// (belum selesai, tanggalnya hari ini), kuning (pending) = belum selesai
+  /// tapi tanggalnya sudah lewat, hijau (complete) = sudah selesai.
+  static String _rowStatusOf(PenerimaanBahanBaku row) {
+    if (row.isComplete) return 'complete';
+    final tgl = row.tglPenerimaan;
+    if (tgl == null) return 'current';
+    final today = DateTime.now();
+    final startDay = DateTime(tgl.year, tgl.month, tgl.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final daysSince = todayDay.difference(startDay).inDays;
+    return daysSince <= 0 ? 'current' : 'pending';
   }
 
   static ProduksiRowData _toRowData(PenerimaanBahanBaku row) {
     return ProduksiRowData(
       tglProduksi: row.tglPenerimaan,
-      hourStart: row.hourStart,
-      hourEnd: row.hourEnd,
-      shift: row.shift,
+      hourStart: null,
+      hourEnd: null,
+      shift: 0,
       isLocked: false,
       namaMesin: row.namaTim,
       noProduksi: row.noPenerimaan,
+      produksiStatus: _rowStatusOf(row),
     );
   }
 
@@ -207,26 +236,17 @@ class _PenerimaanBahanBakuScreenState extends State<PenerimaanBahanBakuScreen> {
       if (!mounted) return;
       if (headerResult == null) return;
 
-      // Header sudah dibuat di database begitu dialog di atas sukses
-      // (fase 1) — refresh grid tim supaya kartu ini langsung berubah
-      // status "aktif" walau user belum sempat menambah pallet apapun.
+      // Header sudah dibuat di database begitu dialog di atas sukses —
+      // refresh grid tim supaya kartu ini langsung berubah status "aktif",
+      // lalu langsung buka list (tidak ada layar create label tersendiri
+      // untuk modul ini).
       _refreshAll();
-
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) =>
-              PenerimaanBahanBakuInputScreen(tim: tim, header: headerResult),
-        ),
-      );
-      if (!mounted) return;
-      _refreshAll();
+      await _openLabelList(headerResult.noPenerimaan);
       return;
     }
 
     // Tim aktif (sudah punya header hari ini) → buka list label yang
-    // sudah dibuat untuk NoPenerimaan itu (bukan screen generate label
-    // lagi). Layar input (create label) hanya dipakai sekali di atas,
-    // begitu header baru pertama kali dibuat.
+    // sudah dibuat untuk NoPenerimaan itu.
     await _openLabelList(tim.noPenerimaan!);
   }
 
@@ -304,12 +324,18 @@ class _PenerimaanBahanBakuScreenState extends State<PenerimaanBahanBakuScreen> {
                     builder: (context, snapshot) {
                       final allTim = snapshot.data ?? [];
                       final activeCount = allTim
-                          .where((m) => m.isActive)
+                          .where((m) => _statusOf(m) == MachineStatus.active)
                           .length;
-                      final inactiveCount = allTim.length - activeCount;
+                      final pendingCount = allTim
+                          .where((m) => _statusOf(m) == MachineStatus.pending)
+                          .length;
+                      final inactiveCount =
+                          allTim.length - activeCount - pendingCount;
                       return MesinSectionHeader(
                         title: 'Penerimaan Bahan Baku',
                         activeCount: activeCount,
+                        pendingCount: pendingCount,
+                        alwaysShowPending: true,
                         inactiveCount: inactiveCount,
                         isLoading:
                             snapshot.connectionState == ConnectionState.waiting,

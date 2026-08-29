@@ -2,22 +2,23 @@
 //
 // Mirror response dari GET /api/penerimaan-bahan-baku/tim-status — analog
 // `WashingMesinInfo` (GET /api/mst-mesin/washing): satu baris = satu tim
-// (dbo.MstTimPenerimaanBB), digabung dengan info NoPenerimaan yang dibuat
-// HARI INI (jika ada). Tim tanpa transaksi hari ini dianggap "belum aktif".
+// (dbo.MstTimPenerimaanBB), digabung dengan info NoPenerimaan yang MASIH
+// BERJALAN (IsComplete = 0) jika ada. Tidak ada lagi Shift/Jam — header
+// disederhanakan sama seperti Bahan Pendukung/Barang Dagang.
 class TimPenerimaanInfo {
   final int idTim;
   final String namaTim;
   final bool aktif;
 
-  // transaksi penerimaan hari ini (null = tim belum aktif hari ini)
+  // transaksi penerimaan yang masih berjalan (null = tim belum ada
+  // transaksi berjalan)
   final String? noPenerimaan;
   final DateTime? tglPenerimaan;
-  final int? shift;
-  final String? hourStart; // "HH:mm"
-  final String? hourEnd; // "HH:mm"
-  final String? namaOperators;
+  final bool isComplete;
 
-  bool get isActive => noPenerimaan != null && noPenerimaan!.isNotEmpty;
+  /// Tim "aktif" = punya penerimaan berjalan yang belum selesai
+  bool get isActive =>
+      noPenerimaan != null && noPenerimaan!.isNotEmpty && !isComplete;
 
   const TimPenerimaanInfo({
     required this.idTim,
@@ -25,10 +26,7 @@ class TimPenerimaanInfo {
     required this.aktif,
     this.noPenerimaan,
     this.tglPenerimaan,
-    this.shift,
-    this.hourStart,
-    this.hourEnd,
-    this.namaOperators,
+    this.isComplete = false,
   });
 
   static String? _s(dynamic v) {
@@ -59,17 +57,6 @@ class TimPenerimaanInfo {
     return null;
   }
 
-  static String? _time(dynamic v) {
-    if (v == null) return null;
-    if (v is String) {
-      final s = v.trim();
-      if (s.isEmpty) return null;
-      final m = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(s);
-      if (m != null) return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)!}';
-    }
-    return null;
-  }
-
   factory TimPenerimaanInfo.fromJson(Map<String, dynamic> j) {
     return TimPenerimaanInfo(
       idTim: _i(j['IdTim']),
@@ -77,10 +64,7 @@ class TimPenerimaanInfo {
       aktif: _b(j['Aktif']),
       noPenerimaan: _s(j['NoPenerimaan']),
       tglPenerimaan: _dt(j['TglPenerimaan']),
-      shift: j['Shift'] != null ? _i(j['Shift']) : null,
-      hourStart: _time(j['HourStart']),
-      hourEnd: _time(j['HourEnd']),
-      namaOperators: _s(j['NamaOperators']),
+      isComplete: _b(j['IsComplete']),
     );
   }
 }

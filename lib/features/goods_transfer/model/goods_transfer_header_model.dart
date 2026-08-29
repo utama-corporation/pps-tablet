@@ -15,6 +15,16 @@ class GoodsTransferHeader {
   final String? alasanTolak;
   final int itemCount;
 
+  /// Status pemenuhan turunan yang dihitung backend dari baris permintaan
+  /// (_d) vs realisasi scan: OPEN | PARTIAL | SHIPPED | RECEIVED.
+  final String fulfillStatus;
+  final int totalLines;
+  final int completedLines;
+
+  /// Jumlah baris scan (label) yang tercatat & jumlah yang belum diterima.
+  final int scanCount;
+  final int inTransitCount;
+
   GoodsTransferHeader({
     required this.noTransfer,
     required this.tanggalKirim,
@@ -29,7 +39,23 @@ class GoodsTransferHeader {
     required this.catatan,
     required this.alasanTolak,
     required this.itemCount,
+    this.fulfillStatus = 'OPEN',
+    this.totalLines = 0,
+    this.completedLines = 0,
+    this.scanCount = 0,
+    this.inTransitCount = 0,
   });
+
+  /// Jumlah label yang sudah diterima di tujuan (scan total − yang masih transit).
+  int get receivedCount => (scanCount - inTransitCount).clamp(0, scanCount);
+
+  /// true kalau transfer sudah ditandai "Kirim" (atau sudah diterima).
+  bool get isShipped =>
+      fulfillStatus == 'SHIPPED' || fulfillStatus == 'RECEIVED';
+
+  /// true kalau semua baris permintaan sudah terisi penuh (siap dikirim / dst).
+  bool get isFilled =>
+      totalLines > 0 && completedLines >= totalLines;
 
   /// Label warehouse asal siap tampil — nama kalau ada, fallback ke "WH #id".
   String get warehouseAsalLabel =>
@@ -62,6 +88,11 @@ class GoodsTransferHeader {
       catatan: json['Catatan']?.toString(),
       alasanTolak: json['AlasanTolak']?.toString(),
       itemCount: toInt(json['ItemCount']),
+      fulfillStatus: (json['FulfillStatus'] ?? 'OPEN').toString(),
+      totalLines: toInt(json['TotalLines']),
+      completedLines: toInt(json['CompletedLines']),
+      scanCount: toInt(json['ScanCount']),
+      inTransitCount: toInt(json['InTransitCount']),
     );
   }
 }

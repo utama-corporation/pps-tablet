@@ -54,8 +54,6 @@ class _PenerimaanBahanBakuDeleteDialogState
                 const SizedBox(height: 6),
                 _InfoRow(label: 'Tim', value: widget.header.namaTim),
                 const SizedBox(height: 6),
-                _InfoRow(label: 'Shift', value: 'Shift ${widget.header.shift}  •  ${widget.header.hourRangeText}'),
-                const SizedBox(height: 6),
                 _InfoRow(label: 'Tanggal', value: widget.header.tglPenerimaanTextShort),
               ],
             ),

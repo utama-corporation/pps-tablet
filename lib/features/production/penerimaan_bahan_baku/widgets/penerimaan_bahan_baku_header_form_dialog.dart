@@ -5,26 +5,19 @@ import 'package:provider/provider.dart';
 
 import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/utils/time_formatter.dart';
-import '../../../operator/model/operator_model.dart';
-import '../../../shared/shift/widgets/shift_dropdown.dart';
-import '../../../shift/repository/shift_repository.dart';
-import '../../shared/widgets/operator_picker.dart';
-import '../../shared/widgets/time_form_field.dart';
 import '../model/tim_penerimaan_bahan_baku_model.dart';
 import '../repository/penerimaan_bahan_baku_repository.dart';
 
 /// Dialog header — format sama seperti `WashingProductionFormDialog` (judul +
-/// form ringkas + baris aksi BATAL/SIMPAN). Menampung field yang melekat
-/// pada tim penerimaan: Tanggal, Shift, Jam Mulai, Jam Selesai, serta (multi)
-/// Operator. Tim sudah diketahui dari kartu yang di-tap sehingga tidak perlu
-/// dipilih lagi di sini; Regu tidak dipakai (redundan dengan Tim). Supplier &
-/// No Plat BUKAN atribut tim, jadi diinput per section (Bahan Baku Pakai /
-/// Bahan Baku Proses) di `PenerimaanBahanBakuInputScreen`.
+/// form ringkas + baris aksi BATAL/SIMPAN). Hanya menampung Tanggal — Shift/
+/// Jam/Operator sudah dihapus dari header, mengikuti format Bahan Pendukung/
+/// Barang Dagang. Tim sudah diketahui dari kartu yang di-tap sehingga tidak
+/// perlu dipilih lagi di sini. Supplier & No Plat BUKAN atribut tim, jadi
+/// diinput per section (Bahan Baku Pakai / Bahan Baku Proses) di
+/// `PenerimaanBahanBakuInputScreen`.
 ///
 /// Tombol SIMPAN langsung hit `PenerimaanBahanBakuRepository.createHeader`
-/// (fase 1 — analog `WashingProductionViewModel.createProduksi` di dialog
-/// washing) sehingga NoPenerimaan sudah dibuat di database begitu dialog ini
+/// (fase 1) sehingga NoPenerimaan sudah dibuat di database begitu dialog ini
 /// ditutup dengan sukses; pallet/sak baru ditambahkan belakangan di screen
 /// input penuh (fase 2), mengikuti pola washing production: dialog kecil
 /// untuk header → screen input untuk data detail.
@@ -43,12 +36,7 @@ class _PenerimaanBahanBakuCreateDialogState
   late final PenerimaanBahanBakuRepository _repo;
 
   late final TextEditingController _tanggalCtrl;
-  late final TextEditingController _hourStartCtrl;
-  late final TextEditingController _hourEndCtrl;
   DateTime _tanggal = DateTime.now();
-  int? _selectedShift;
-  final List<MstOperator> _selectedOperators = [];
-  bool _loadingOperator = false;
   bool _isSaving = false;
 
   @override
@@ -58,26 +46,11 @@ class _PenerimaanBahanBakuCreateDialogState
     _tanggalCtrl = TextEditingController(
       text: DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(_tanggal),
     );
-    _hourStartCtrl = TextEditingController();
-    _hourEndCtrl = TextEditingController();
-    _prefillCurrentShift();
-  }
-
-  Future<void> _prefillCurrentShift() async {
-    final shift = await ShiftRepository.fetchCurrentShift();
-    if (!mounted || shift == null) return;
-    setState(() {
-      _selectedShift = shift.shift;
-      _hourStartCtrl.text = shift.hourStart;
-      _hourEndCtrl.text = shift.hourEnd;
-    });
   }
 
   @override
   void dispose() {
     _tanggalCtrl.dispose();
-    _hourStartCtrl.dispose();
-    _hourEndCtrl.dispose();
     super.dispose();
   }
 
@@ -99,49 +72,12 @@ class _PenerimaanBahanBakuCreateDialogState
     });
   }
 
-  Future<void> _openOperatorPicker() async {
-    if (!mounted) return;
-    setState(() => _loadingOperator = true);
-    final result = await showOperatorPicker(
-      context,
-      initialSelected: _selectedOperators,
-    );
-    if (mounted) setState(() => _loadingOperator = false);
-    if (result != null && mounted) {
-      setState(() {
-        _selectedOperators
-          ..clear()
-          ..addAll(result);
-      });
-    }
-  }
-
   Future<void> _submit() async {
-    if (_selectedShift == null) {
-      _snack('Shift wajib dipilih');
-      return;
-    }
-    final hourStart = _hourStartCtrl.text.trim();
-    final hourEnd = _hourEndCtrl.text.trim();
-    if (parseHHmm(hourStart) == null || parseHHmm(hourEnd) == null) {
-      _snack('Jam mulai & selesai wajib diisi (HH:mm)');
-      return;
-    }
-    if (_selectedOperators.isEmpty) {
-      _snack('Minimal 1 operator wajib dipilih');
-      return;
-    }
-
     setState(() => _isSaving = true);
     try {
       final result = await _repo.createHeader(
         tglPenerimaan: _tanggal,
         idTim: widget.tim.idTim,
-        shift: _selectedShift!,
-        hourStart: hourStart,
-        hourEnd: hourEnd,
-        idOperators: _selectedOperators.map((o) => o.idOperator).toList(),
-        namaOperators: _selectedOperators.map((o) => o.namaOperator).join(', '),
       );
       if (mounted) Navigator.of(context).pop(result);
     } catch (e) {
@@ -153,10 +89,6 @@ class _PenerimaanBahanBakuCreateDialogState
             ErrorStatusDialog(title: 'Gagal Menyimpan', message: e.toString()),
       );
     }
-  }
-
-  void _snack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -172,8 +104,8 @@ class _PenerimaanBahanBakuCreateDialogState
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: isLandscape ? 620 : 560,
-          maxHeight: (mq.size.height - 24).clamp(260, isLandscape ? 480 : 560),
+          maxWidth: isLandscape ? 520 : 440,
+          maxHeight: (mq.size.height - 24).clamp(220, 340),
         ),
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -246,63 +178,6 @@ class _PenerimaanBahanBakuCreateDialogState
               vertical: 12,
             ),
           ),
-        ),
-
-        const SizedBox(height: 16),
-
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 170,
-              child: ShiftDropdown(
-                preselectId: _selectedShift,
-                onChangedId: (id) => setState(() => _selectedShift = id),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TimeFormField(
-                controller: _hourStartCtrl,
-                label: 'Jam Mulai',
-                hintText: 'HH:mm',
-                onPick: () async {
-                  final picked = await pickTime24h(
-                    context,
-                    initial: parseHHmm(_hourStartCtrl.text),
-                  );
-                  if (picked != null) {
-                    setState(() => _hourStartCtrl.text = formatHHmm(picked));
-                  }
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TimeFormField(
-                controller: _hourEndCtrl,
-                label: 'Jam Selesai',
-                hintText: 'HH:mm',
-                onPick: () async {
-                  final picked = await pickTime24h(
-                    context,
-                    initial: parseHHmm(_hourEndCtrl.text),
-                  );
-                  if (picked != null) {
-                    setState(() => _hourEndCtrl.text = formatHHmm(picked));
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 16),
-
-        OperatorPickerField(
-          selectedOperators: _selectedOperators,
-          isLoading: _loadingOperator,
-          onTap: _openOperatorPicker,
         ),
       ],
     );

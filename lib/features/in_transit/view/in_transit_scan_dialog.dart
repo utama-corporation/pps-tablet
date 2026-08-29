@@ -3,7 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pps_tablet/core/network/api_client.dart';
-import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_item_model.dart';
+import 'package:pps_tablet/features/goods_transfer/model/goods_transfer_label_scan_model.dart';
 
 import '../repository/in_transit_repository.dart';
 import '../view_model/in_transit_list_view_model.dart';
@@ -104,11 +104,11 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
     if (code.isEmpty) return null;
 
     final vm = context.read<InTransitListViewModel>();
-    final items = vm.selectedDetail?.items ?? [];
-    GoodsTransferItem? match;
-    for (final it in items) {
-      if (it.labelCode == code) {
-        match = it;
+    final scans = vm.selectedDetail?.scans ?? [];
+    GoodsTransferLabelScan? match;
+    for (final s in scans) {
+      if (s.labelCode == code) {
+        match = s;
         break;
       }
     }
@@ -116,7 +116,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
     if (match == null) {
       return 'Label $code bukan bagian dari transfer ${widget.noTransfer}';
     }
-    if (match.statusItem == 'RECEIVED') {
+    if (match.isReceived) {
       return 'Label $code sudah diterima sebelumnya';
     }
 
@@ -183,10 +183,8 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<InTransitListViewModel>();
-    final items = vm.selectedDetail?.items ?? [];
-    final receivedCount = items
-        .where((it) => it.statusItem == 'RECEIVED')
-        .length;
+    final scans = vm.selectedDetail?.scans ?? [];
+    final receivedCount = scans.where((s) => s.isReceived).length;
 
     _keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return MediaQuery(
@@ -201,7 +199,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHeader(receivedCount, items.length),
+              _buildHeader(receivedCount, scans.length),
               // Pakai Expanded (bukan IntrinsicHeight) supaya panel kiri boleh
               // berisi ListView — IntrinsicHeight tidak bisa menghitung tinggi
               // untuk widget scrollable seperti ListView dan akan melempar
@@ -210,7 +208,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildChecklistPanel(items),
+                    _buildChecklistPanel(scans),
                     Expanded(child: _buildMainPanel()),
                   ],
                 ),
@@ -282,7 +280,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
 
   // ── Left panel: checklist label transfer ini ─────────────────────────────
 
-  Widget _buildChecklistPanel(List<GoodsTransferItem> items) {
+  Widget _buildChecklistPanel(List<GoodsTransferLabelScan> items) {
     return Container(
       width: 220,
       decoration: const BoxDecoration(
@@ -327,7 +325,7 @@ class _InTransitScanDialogState extends State<InTransitScanDialog>
                     separatorBuilder: (_, __) => const SizedBox(height: 6),
                     itemBuilder: (_, i) {
                       final it = items[i];
-                      final received = it.statusItem == 'RECEIVED';
+                      final received = it.isReceived;
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

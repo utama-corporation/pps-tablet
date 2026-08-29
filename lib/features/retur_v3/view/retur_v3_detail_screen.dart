@@ -198,7 +198,7 @@ class _ReturV3DetailScreenState extends State<ReturV3DetailScreen> {
     // Ditunggu (bukan .ignore()) sebelum refreshOutputs() di bawah — kalau
     // fire-and-forget, refreshOutputs() bisa balapan lebih dulu dan narik
     // data lama dari server (HasBeenPrinted/printCount belum ke-update),
-    // makanya section 2 (Penggantian Item) kelihatan masih terkunci sampai
+    // makanya section 2 (Item yang Dipickup) kelihatan masih terkunci sampai
     // layar di-refresh manual.
     final pendingMarks = <Future<void>>[];
     final callbacks = entries.map((entry) {
@@ -550,23 +550,12 @@ class _ReturV3DetailScreenState extends State<ReturV3DetailScreen> {
     final header = vm.header;
     if (header == null) return const SizedBox.shrink();
 
+    // Header info (no.retur/tanggal/pembeli/status) tidak diulang di sini —
+    // sudah jelas dari kartu yang dipilih di panel kiri. Detail langsung
+    // mulai dari section langkahnya (samakan dengan detail Goods Transfer).
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Cukup judul simpel penanda "ini section detail" — info lengkap
-        // (no.retur/tanggal/pembeli/status) sudah jelas dari kartu yang
-        // dipilih di panel kiri, tidak perlu diulang jadi card besar lagi.
-        const Padding(
-          padding: EdgeInsets.only(bottom: 12),
-          child: Text(
-            'Detail Retur',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: _kText,
-            ),
-          ),
-        ),
         if (header.isPending) _PendingSection(vm: vm, screen: this),
         // TIDAK_DIGANTI: cuma 1 langkah (generate label), tidak perlu badge
         // nomor. DIGANTI: 2 langkah berurutan — generate label per item
@@ -598,7 +587,7 @@ class _ReturV3DetailScreenState extends State<ReturV3DetailScreen> {
           ] else ...[
             const _LockedStepPlaceholder(
               stepNumber: 2,
-              title: 'Penggantian Item',
+              title: 'Item yang Dipickup',
               message:
                   'Selesaikan generate & cetak label di langkah 1 dulu untuk lanjut ke langkah ini.',
             ),
@@ -1302,7 +1291,7 @@ class _DigantiSection extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 const Text(
-                  'Penggantian Item',
+                  'Item yang Dipickup',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
@@ -1534,9 +1523,6 @@ class _TurnoverTargetTile extends StatelessWidget {
     final targetPcs = target.targetPcs;
     final fulfilled = target.isFulfilled;
     final canRemove = !isComplete && target.scans.isEmpty && canRemoveTarget;
-    final progress = targetPcs > 0
-        ? (scanned / targetPcs).clamp(0.0, 1.0)
-        : 0.0;
 
     return Container(
       padding: const EdgeInsets.all(8),
@@ -1549,9 +1535,36 @@ class _TurnoverTargetTile extends StatelessWidget {
         children: [
           Row(
             children: [
+              // Badge nomor urut — jadi centang hijau saat target terpenuhi.
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: fulfilled
+                      ? _kSuccess
+                      : _kPrimary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: fulfilled
+                    ? const Icon(
+                        Icons.check_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      )
+                    : Text(
+                        '$number',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: _kPrimary,
+                        ),
+                      ),
+              ),
               Expanded(
                 child: Text(
-                  '$number. ${target.namaJenis ?? 'Jenis #${target.idJenis}'}',
+                  target.namaJenis ?? 'Jenis #${target.idJenis}',
                   style: const TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -1567,10 +1580,6 @@ class _TurnoverTargetTile extends StatelessWidget {
                   color: fulfilled ? _kSuccess : _kMuted,
                 ),
               ),
-              if (fulfilled) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.check_circle_rounded, size: 15, color: _kSuccess),
-              ],
               if (canRemove) ...[
                 const SizedBox(width: 4),
                 InkWell(
@@ -1583,16 +1592,6 @@ class _TurnoverTargetTile extends StatelessWidget {
                 ),
               ],
             ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 5,
-              backgroundColor: const Color(0xFFE5E7EB),
-              color: fulfilled ? _kSuccess : _kPrimary,
-            ),
           ),
           if (target.scans.isNotEmpty) ...[
             const SizedBox(height: 8),

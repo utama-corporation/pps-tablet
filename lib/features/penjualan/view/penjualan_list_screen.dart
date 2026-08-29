@@ -632,10 +632,10 @@ class _PenjualanCard extends StatelessWidget {
     required this.onTap,
   });
 
-  String get _percentLabel {
-    if (header.totalLines <= 0) return '-';
-    final pct = (header.completedLines / header.totalLines * 100).clamp(0, 100);
-    return '${pct.round()}%';
+  /// Judul kartu = Remark (nomor penjualan dari ERP). Fallback ke NoBJJual PPS.
+  String get _title {
+    final r = (header.remark ?? '').trim();
+    return r.isNotEmpty ? r : header.noBJJual;
   }
 
   @override
@@ -660,17 +660,32 @@ class _PenjualanCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    header.noBJJual,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: selected
-                          ? const Color(0xFF0C66E4)
-                          : const Color(0xFF1A1D23),
-                      letterSpacing: -0.2,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _title,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: selected
+                              ? const Color(0xFF0C66E4)
+                              : const Color(0xFF1A1D23),
+                          letterSpacing: -0.2,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (_title != header.noBJJual)
+                        Text(
+                          header.noBJJual,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -739,49 +754,40 @@ class _PenjualanCard extends StatelessWidget {
             const SizedBox(height: 3),
             Row(
               children: [
-                Icon(
-                  Icons.calendar_today_outlined,
-                  size: 12,
-                  color: Colors.grey.shade500,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  formatDateToShortId(header.tanggal),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        formatDateToShortId(header.tanggal),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-            if ((header.remark ?? '').isNotEmpty) ...[
-              const SizedBox(height: 3),
-              Text(
-                header.remark!,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.grey.shade500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const Divider(height: 16, color: _kBorder),
-            Row(
-              children: [
-                const Icon(
+                const SizedBox(width: 8),
+                Icon(
                   Icons.checklist_rounded,
                   size: 13,
-                  color: Color(0xFF6B7280),
+                  color: Colors.grey.shade500,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 3),
                 Text(
-                  'Turnover ${header.completedLines}/${header.totalLines} ($_percentLabel)',
-                  style: const TextStyle(
-                    fontSize: 12,
+                  'Turnover ${header.completedLines}/${header.totalLines}',
+                  style: TextStyle(
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF374151),
+                    color: header.isComplete
+                        ? Colors.green.shade700
+                        : const Color(0xFF6B7280),
                   ),
                 ),
               ],

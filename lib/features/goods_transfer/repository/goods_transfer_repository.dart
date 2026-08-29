@@ -3,38 +3,20 @@ import 'package:pps_tablet/core/network/api_client.dart';
 
 import '../model/goods_transfer_header_model.dart';
 import '../model/goods_transfer_item_model.dart';
-import '../model/goods_transfer_scanned_label.dart';
 
+/// Model baru: header + baris permintaan digenerate ERP Ascend. PPS hanya
+/// menampilkan dan mencatat realisasi scan label.
 class GoodsTransferRepository {
   final ApiClient api;
 
   GoodsTransferRepository({required this.api});
 
-  /// Validasi 1 label sebelum ditambahkan ke daftar transfer: mengecek label
-  /// dikenali, belum terpakai, tidak sedang IN_TRANSIT, dan bloknya saat ini
-  /// memang milik [idWarehouseAsal]. Melempar [ApiException] kalau gagal.
-  Future<GoodsTransferScannedLabel> inspectLabel({
-    required String labelCode,
-    required int idWarehouseAsal,
-  }) async {
-    final body = await api.getJson(
-      '/api/goods-transfer/inspect-label',
-      query: {
-        'labelCode': labelCode,
-        'idWarehouseAsal': idWarehouseAsal.toString(),
-      },
-    );
-    final data = body['data'] as Map<String, dynamic>?;
-    if (data == null) throw Exception('Data label tidak ditemukan');
-    return GoodsTransferScannedLabel.fromJson(data);
-  }
+  static const _base = '/api/goods-transfer';
 
-  /// List semua transaksi Goods Transfer (tanpa filter warehouse) — dipakai di
-  /// menu utama Goods Transfer, karena warehouse asal ditentukan saat create,
-  /// bukan sebagai filter di layar ini.
+  /// List semua transaksi Goods Transfer (tanpa filter warehouse).
   Future<List<GoodsTransferHeader>> fetchAll({String? status}) async {
     final body = await api.getJson(
-      '/api/goods-transfer',
+      _base,
       query: {if (status != null) 'status': status},
     );
     final data = body['data'];
@@ -44,45 +26,41 @@ class GoodsTransferRepository {
         .toList();
   }
 
+  /// Detail: header + baris permintaan (`lines`) + realisasi scan (`scans`).
   Future<GoodsTransferDetail> fetchDetail(String noTransfer) async {
-    final body = await api.getJson('/api/goods-transfer/$noTransfer');
+    final body = await api.getJson('$_base/$noTransfer');
     final data = body['data'] as Map<String, dynamic>?;
     if (data == null) throw Exception('Data transfer tidak ditemukan');
+    return GoodsTransferDetail.fromJson(data);
+  }
 
-    final rawItems = data['items'];
-    final items = (rawItems is List ? rawItems : <dynamic>[])
-        .map((e) => GoodsTransferItem.fromJson(e as Map<String, dynamic>))
-        .toList();
-
-    return GoodsTransferDetail(
-      header: data['header'] as Map<String, dynamic>? ?? {},
-      items: items,
+  /// Scan 1 label untuk memenuhi permintaan. Backend memvalidasi
+  /// kategori/jenis/kuota/warehouse asal secara transaksional. Kalau pcs
+  /// label melebihi sisa kebutuhan, backend TIDAK langsung menolak —
+  /// mengembalikan `needsConfirmation: true` di level root. Panggil ulang
+  /// dengan [confirmPartial]=true untuk mencatat sisa kebutuhan saja.
+  /// Mengembalikan body mentah supaya caller bisa cek `needsConfirmation`.
+  Future<Map<String, dynamic>> scan(
+    String noTransfer,
+    String labelCode, {
+    bool confirmPartial = false,
+  }) {
+    return api.postJson(
+      '$_base/$noTransfer/scan',
+      body: {'noLabel': labelCode, 'confirmPartial': confirmPartial},
     );
   }
 
-  Future<String> createTransfer({
-    required int idWarehouseAsal,
-    required int idWarehouseTujuan,
-    required List<String> labelCodes,
-    DateTime? tanggalKirim,
-    String? catatan,
-  }) async {
-    final body = await api.postJson(
-      '/api/goods-transfer',
-      body: {
-        'idWarehouseAsal': idWarehouseAsal,
-        'idWarehouseTujuan': idWarehouseTujuan,
-        'labelCodes': labelCodes,
-        if (tanggalKirim != null)
-          'tanggalKirim': tanggalKirim.toIso8601String(),
-        if (catatan != null && catatan.trim().isNotEmpty) 'catatan': catatan,
-      },
-    );
-    final data = body['data'] as Map<String, dynamic>?;
-    return (data?['noTransfer'] ?? '').toString();
+  /// Batalkan 1 baris scan yang belum diterima.
+  Future<void> undoScan(int idScan) async {
+    await api.deleteJson('$_base/scan/$idScan');
   }
 
-  Future<void> cancelTransfer(String noTransfer) async {
-    await api.postJson('/api/goods-transfer/$noTransfer/cancel');
+  /// Tandai transfer "Kirim" — hanya boleh kalau semua permintaan sudah
+  /// terpenuhi. Backend meng-UPDATE Status jadi SHIPPED dan mengunci scan.
+  /// Body `{}` wajib: ApiClient.postJson selalu json.encode body, dan `null`
+  /// ditolak express.json().
+  Future<void> markKirim(String noTransfer) async {
+    await api.postJson('$_base/$noTransfer/kirim', body: const <String, dynamic>{});
   }
 }

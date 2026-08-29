@@ -19,13 +19,18 @@ class InTransitListViewModel extends ChangeNotifier {
   bool isLoadingDetail = false;
   String detailError = '';
 
-  Future<void> load({String? status}) async {
+  /// Menu In Transit khusus menampilkan transfer yang sudah ditandai "Kirim"
+  /// (Status = SHIPPED). Transfer yang sudah diterima penuh otomatis pindah
+  /// ke Status RECEIVED dan hilang dari daftar ini.
+  static const _statusFilter = 'SHIPPED';
+
+  Future<void> load() async {
     isLoading = true;
     error = '';
     notifyListeners();
 
     try {
-      items = await repository.fetchAll(status: status);
+      items = await repository.fetchAll(status: _statusFilter);
     } catch (e) {
       error = e.toString();
       items = [];
@@ -37,7 +42,18 @@ class InTransitListViewModel extends ChangeNotifier {
 
   Future<void> reload() async {
     await load();
-    if (selectedNoTransfer != null) await selectTransfer(selectedNoTransfer!);
+    final sel = selectedNoTransfer;
+    if (sel == null) return;
+    // Kalau transfer terpilih sudah tidak SHIPPED lagi (mis. baru saja
+    // diterima penuh), lepas seleksinya — kartunya sudah hilang dari daftar.
+    if (items.any((h) => h.noTransfer == sel)) {
+      await selectTransfer(sel);
+    } else {
+      selectedNoTransfer = null;
+      selectedDetail = null;
+      detailError = '';
+      notifyListeners();
+    }
   }
 
   Future<void> selectTransfer(String noTransfer) async {

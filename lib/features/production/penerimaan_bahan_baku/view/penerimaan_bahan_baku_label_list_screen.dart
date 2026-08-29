@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../common/widgets/confirm_dialog.dart';
+import '../../../../common/widgets/error_status_dialog.dart';
+import '../../../../common/widgets/success_status_dialog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../shared/widgets/production_inline_stat.dart';
 import '../model/penerimaan_bahan_baku_model.dart';
@@ -51,6 +54,128 @@ class _PenerimaanBahanBakuLabelListScreenState
     super.initState();
     _repo = PenerimaanBahanBakuRepository(api: context.read<ApiClient>());
     _future = _repo.fetchDetail(widget.noPenerimaan);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _repo.fetchDetail(widget.noPenerimaan);
+    });
+  }
+
+  Future<void> _markComplete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ConfirmDialog(
+        title: 'Tandai Selesai?',
+        message:
+            'Yakin ingin menandai penerimaan ${widget.noPenerimaan} sebagai selesai? Setelah selesai, tim tidak bisa menambah pallet lagi.',
+        confirmLabel: 'Selesai',
+        confirmIcon: Icons.check_circle_outline,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _repo.markComplete(widget.noPenerimaan);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => const SuccessStatusDialog(
+          title: 'Berhasil',
+          message: 'Penerimaan berhasil ditandai selesai.',
+        ),
+      );
+      if (mounted) {
+        _reload();
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) =>
+            ErrorStatusDialog(title: 'Gagal', message: e.toString()),
+      );
+    }
+  }
+
+  Widget _buildHeader(PenerimaanBahanBaku header) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${header.namaTim} • ${header.tglPenerimaanTextShort}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  header.noPenerimaan,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (header.isComplete)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDCFCE7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle, size: 14, color: Color(0xFF16A34A)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Selesai',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF16A34A),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: _markComplete,
+              icon: const Icon(Icons.check_circle_outline, size: 16),
+              label: const Text(
+                'Selesai',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   String _fmtKg(double v) {
@@ -106,35 +231,42 @@ class _PenerimaanBahanBakuLabelListScreenState
             }
           }
 
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _buildSection(
-                    title: 'Bahan Baku Pakai',
-                    color: const Color(0xFF00695C),
-                    rows: pakaiRows,
+          return Column(
+            children: [
+              _buildHeader(snapshot.data!.header),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _buildSection(
+                          title: 'Bahan Baku Pakai',
+                          color: const Color(0xFF00695C),
+                          rows: pakaiRows,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: Colors.grey.shade300,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildSection(
+                          title: 'Bahan Baku Proses',
+                          color: const Color(0xFF0D47A1),
+                          rows: prosesRows,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: Colors.grey.shade300,
-                  ),
-                ),
-                Expanded(
-                  child: _buildSection(
-                    title: 'Bahan Baku Proses',
-                    color: const Color(0xFF0D47A1),
-                    rows: prosesRows,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),

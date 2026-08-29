@@ -100,7 +100,6 @@ class _PenerimaanBarangDagangScreenState
       final res = await _repo.fetchAll(page: 1, pageSize: _pageSize);
       if (!mounted) return;
       var newItems = res['items'] as List<PenerimaanBarangDagang>;
-      newItems = newItems.where((e) => !e.isComplete).toList();
       if (_filterIdTim != null) {
         newItems = newItems.where((e) => e.idTim == _filterIdTim).toList();
       }
@@ -123,7 +122,6 @@ class _PenerimaanBarangDagangScreenState
       final res = await _repo.fetchAll(page: nextPage, pageSize: _pageSize);
       if (!mounted) return;
       var newItems = res['items'] as List<PenerimaanBarangDagang>;
-      newItems = newItems.where((e) => !e.isComplete).toList();
       if (_filterIdTim != null) {
         newItems = newItems.where((e) => e.idTim == _filterIdTim).toList();
       }
@@ -182,6 +180,20 @@ class _PenerimaanBarangDagangScreenState
     );
   }
 
+  /// Warna garis status di riwayat: biru (current) = masih berlangsung
+  /// (belum selesai, tanggalnya hari ini), kuning (pending) = belum selesai
+  /// tapi tanggalnya sudah lewat, hijau (complete) = sudah selesai.
+  static String _rowStatusOf(PenerimaanBarangDagang row) {
+    if (row.isComplete) return 'complete';
+    final tgl = row.tglPenerimaan;
+    if (tgl == null) return 'current';
+    final today = DateTime.now();
+    final startDay = DateTime(tgl.year, tgl.month, tgl.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final daysSince = todayDay.difference(startDay).inDays;
+    return daysSince <= 0 ? 'current' : 'pending';
+  }
+
   static ProduksiRowData _toRowData(PenerimaanBarangDagang row) {
     return ProduksiRowData(
       tglProduksi: row.tglPenerimaan,
@@ -191,6 +203,7 @@ class _PenerimaanBarangDagangScreenState
       isLocked: false,
       namaMesin: row.namaTim,
       noProduksi: row.noPenerimaan,
+      produksiStatus: _rowStatusOf(row),
     );
   }
 

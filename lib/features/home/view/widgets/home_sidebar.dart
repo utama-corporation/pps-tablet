@@ -172,34 +172,9 @@ class _HomeSidebarState extends State<HomeSidebar> {
       icon: Icons.warehouse_outlined,
       children: [
         _SubItem(
-          title: 'Penerimaan Barang Dagang',
-          icon: Icons.move_to_inbox_outlined,
-          route: '/shell/penerimaan-barang-dagang',
-        ),
-        _SubItem(
-          title: 'Retur',
-          icon: Icons.assignment_return_outlined,
-          route: '/shell/retur-v2',
-        ),
-        _SubItem(
-          title: 'Retur v3',
-          icon: Icons.assignment_return_rounded,
-          route: '/shell/retur-v3',
-        ),
-        _SubItem(
-          title: 'BJ Jual',
-          icon: Icons.sell_outlined,
-          route: '/shell/bj-jual',
-        ),
-        _SubItem(
           title: 'Penjualan',
           icon: Icons.point_of_sale_outlined,
           route: '/shell/penjualan',
-        ),
-        _SubItem(
-          title: 'Trade-In',
-          icon: Icons.swap_horiz_outlined,
-          route: '/shell/trade-in',
         ),
         _SubItem(
           title: 'Goods Transfer',
@@ -210,6 +185,21 @@ class _HomeSidebarState extends State<HomeSidebar> {
           title: 'In Transit',
           icon: Icons.move_to_inbox_outlined,
           route: '/shell/in-transit',
+        ),
+        _SubItem(
+          title: 'Retur v3',
+          icon: Icons.assignment_return_rounded,
+          route: '/shell/retur-v3',
+        ),
+        _SubItem(
+          title: 'Trade-In',
+          icon: Icons.swap_horiz_outlined,
+          route: '/shell/trade-in',
+        ),
+        _SubItem(
+          title: 'Penerimaan Barang Dagang',
+          icon: Icons.move_to_inbox_outlined,
+          route: '/shell/penerimaan-barang-dagang',
         ),
       ],
     ),

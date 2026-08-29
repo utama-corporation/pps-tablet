@@ -8,8 +8,8 @@ class InTransitRepository {
 
   InTransitRepository({required this.api});
 
-  /// List semua transaksi Goods Transfer (tanpa filter warehouse) — sama
-  /// dengan yang dipakai menu Goods Transfer, supaya format & datanya konsisten.
+  /// List semua transaksi Goods Transfer — sama dengan menu Goods Transfer,
+  /// supaya format & datanya konsisten.
   Future<List<GoodsTransferHeader>> fetchAll({String? status}) async {
     final body = await api.getJson(
       '/api/goods-transfer',
@@ -22,25 +22,18 @@ class InTransitRepository {
         .toList();
   }
 
+  /// Detail: header + baris permintaan (`lines`) + realisasi scan (`scans`).
   Future<GoodsTransferDetail> fetchDetail(String noTransfer) async {
     final body = await api.getJson('/api/goods-transfer/$noTransfer');
     final data = body['data'] as Map<String, dynamic>?;
     if (data == null) throw Exception('Data transfer tidak ditemukan');
-
-    final rawItems = data['items'];
-    final items = (rawItems is List ? rawItems : <dynamic>[])
-        .map((e) => GoodsTransferItem.fromJson(e as Map<String, dynamic>))
-        .toList();
-
-    return GoodsTransferDetail(
-      header: data['header'] as Map<String, dynamic>? ?? {},
-      items: items,
-    );
+    return GoodsTransferDetail.fromJson(data);
   }
 
   /// Terima 1 label lewat scan: label akan di-update ke [blokTujuan]/
-  /// [idLokasiTujuan] dan ditandai RECEIVED. Backend otomatis menentukan
-  /// transfer mana yang memiliki label ini (lewat status IN_TRANSIT).
+  /// [idLokasiTujuan], baris scan ditandai RECEIVED, dan label fisik dipindah
+  /// ke warehouse tujuan. Backend menentukan transfer mana yang memiliki
+  /// label ini lewat baris scan berstatus IN_TRANSIT.
   Future<Map<String, dynamic>> acceptScan({
     required String labelCode,
     required String blokTujuan,

@@ -634,6 +634,12 @@ class _ReturCard extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Judul kartu = Keterangan (nomor retur dari ERP). Fallback ke NoRetur PPS.
+  String get _title {
+    final k = (header.keterangan ?? '').trim();
+    return k.isNotEmpty ? k : header.noRetur;
+  }
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -657,7 +663,7 @@ class _ReturCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    header.noRetur,
+                    _title,
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
@@ -673,6 +679,13 @@ class _ReturCard extends StatelessWidget {
                 _StatusChip(status: header.statusRetur),
               ],
             ),
+            if (_title != header.noRetur) ...[
+              const SizedBox(height: 2),
+              Text(
+                header.noRetur,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
+            ],
             const SizedBox(height: 6),
             Row(
               children: [
@@ -698,78 +711,46 @@ class _ReturCard extends StatelessWidget {
             const SizedBox(height: 3),
             Row(
               children: [
-                Icon(
-                  Icons.calendar_today_outlined,
-                  size: 12,
-                  color: Colors.grey.shade500,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  formatDateToShortId(header.tanggal),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        formatDateToShortId(header.tanggal),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-            if (header.keterangan != null && header.keterangan!.isNotEmpty) ...[
-              const SizedBox(height: 3),
-              Text(
-                header.keterangan!,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.grey.shade500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            if (header.isDiganti) ...[
-              const Divider(height: 16, color: _kBorder),
-              Row(
-                children: [
-                  const Icon(
+                if (header.isDiganti) ...[
+                  const SizedBox(width: 8),
+                  Icon(
                     Icons.sync_alt_rounded,
                     size: 13,
-                    color: Color(0xFF6B7280),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Turnover ${_percentLabel(header)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: header.isTurnoverFulfilled
-                          ? Colors.green.shade700
-                          : const Color(0xFF374151),
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    header.isComplete
-                        ? Icons.local_shipping_rounded
-                        : Icons.local_shipping_outlined,
-                    size: 15,
-                    color: header.isComplete
-                        ? Colors.green.shade600
-                        : Colors.grey.shade400,
+                    color: Colors.grey.shade500,
                   ),
                   const SizedBox(width: 3),
                   Text(
-                    header.isComplete ? 'Terkirim' : 'Belum kirim',
+                    'Turnover ${_percentLabel(header)}',
                     style: TextStyle(
                       fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: header.isComplete
+                      fontWeight: FontWeight.w700,
+                      color: header.isTurnoverFulfilled
                           ? Colors.green.shade700
-                          : Colors.grey.shade500,
+                          : const Color(0xFF6B7280),
                     ),
                   ),
                 ],
-              ),
-            ],
+              ],
+            ),
           ],
         ),
       ),
