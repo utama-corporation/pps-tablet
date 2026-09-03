@@ -7,7 +7,7 @@ import '../../../../core/utils/date_formatter.dart';
 import '../../../label/furniture_wip/repository/furniture_wip_repository.dart';
 import '../../../label/furniture_wip/view_model/furniture_wip_view_model.dart';
 
-const _kAccent = Color(0xFF3730A3);
+const _kAccent = Color(0xFF00796B); // teal — output
 const _kBorder = Color(0xFFE2E6EA);
 
 class KeyFittingProductionOutputFormDialog extends StatelessWidget {

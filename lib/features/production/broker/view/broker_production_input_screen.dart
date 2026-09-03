@@ -55,10 +55,20 @@ class BrokerProductionInputScreen extends StatefulWidget {
       _BrokerProductionInputScreenState();
 }
 
-class _BrokerProductionInputScreenState
-    extends State<BrokerProductionInputScreen> {
+class _BrokerProductionInputScreenState extends State<BrokerProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<BrokerProductionInputScreen>,
+        ProductionInputMultiSelectMixin<BrokerProductionInputScreen> {
   final _prodRepo = BrokerProductionRepository();
   final _inputRepo = BrokerProductionInputRepository();
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
 
   BrokerProduction? _header;
   late String _cachedBreadcrumbLabel;
@@ -927,6 +937,108 @@ class _BrokerProductionInputScreenState
     );
   }
 
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    final raw = item is BrokerOutput
+        ? item.noBroker
+        : item is BonggolanOutput
+        ? item.noBonggolan
+        : null;
+    final code = (raw ?? '').trim();
+    return code.isEmpty ? null : code;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is BrokerOutput) {
+      final code = (item.noBroker ?? '').trim();
+      if (code.isEmpty) return null;
+      return ProductionOutputPrintTarget(
+        code: code,
+        pdfUrl: ApiConstants.brokerLabelPdf(code),
+        feature: 'broker',
+        markAsPrinted: () => BrokerRepository(api: ApiClient()).markAsPrinted(
+          code,
+        ),
+      );
+    }
+    if (item is BonggolanOutput) {
+      final code = (item.noBonggolan ?? '').trim();
+      if (code.isEmpty) return null;
+      return ProductionOutputPrintTarget(
+        code: code,
+        pdfUrl: ApiConstants.bonggolanLabelPdf(code),
+        feature: 'bonggolan',
+        markAsPrinted: () => BonggolanRepository().markAsPrinted(code),
+      );
+    }
+    return null;
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs() async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is BrokerOutput) {
+        await BrokerRepository(
+          api: ApiClient(),
+        ).deleteBroker((item.noBroker ?? '').trim());
+      } else if (item is BonggolanOutput) {
+        await BonggolanRepository().deleteBonggolan(
+          (item.noBonggolan ?? '').trim(),
+        );
+      }
+    });
+    if (!mounted) return;
+    context.read<BrokerProductionInputViewModel>().loadOutputs(widget.noProduksi);
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(List<Object> currentOutputs) {
+    final total = currentOutputs
+        .where((o) => _outputCode(o) != null)
+        .length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kBrokerOutput,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+    );
+  }
+
   Widget _buildOutputSection({
     required List<BrokerOutput> brokerOutputs,
     required List<BonggolanOutput> bonggolanOutputs,
@@ -960,34 +1072,7 @@ class _BrokerProductionInputScreenState
             totalBerat: totalBeratBonggolan,
           );
     Future<void> onAddOutput() async {
-      if (grandInputBerat == 0) {
-        if (!context.mounted) return;
-        showDialog<void>(
-          context: context,
-          builder: (_) => ErrorStatusDialog(
-            title: 'Belum Ada Input',
-            message:
-                'Masukkan label input terlebih dahulu sebelum membuat output.',
-          ),
-        );
-        return;
-      }
-
-      final totalOutputBerat = totalBeratBroker + totalBeratBonggolan;
-
-      if (totalOutputBerat >= grandInputBerat) {
-        if (!context.mounted) return;
-        showDialog<void>(
-          context: context,
-          builder: (_) => ErrorStatusDialog(
-            title: 'Berat Output Melebihi Input',
-            message:
-                'Total berat output (${num2(totalOutputBerat)} kg) sudah mencapai atau melebihi total berat input (${num2(grandInputBerat)} kg).\n\nTidak dapat menambah output baru.',
-          ),
-        );
-        return;
-      }
-
+      // Input & output bebas diisi tanpa urutan/batasan berat.
       if (isBrokerOutputTab) {
         if (_header?.outputJenisId != null) {
           await showDialog<void>(
@@ -1022,23 +1107,9 @@ class _BrokerProductionInputScreenState
       }
 
       if (!mounted) return;
-      final vm = context.read<BrokerProductionInputViewModel>();
-      await vm.loadOutputs(widget.noProduksi);
-
-      if (!mounted) return;
-      final newBrokerBerat = vm
-          .outputsOf(widget.noProduksi)
-          .fold<double>(0.0, (s, o) => s + o.totalBerat);
-      final newBonggolanBerat = vm
-          .bonggolanOutputsOf(widget.noProduksi)
-          .fold<double>(0.0, (s, o) => s + (o.berat ?? 0.0));
-      final newTotal = newBrokerBerat + newBonggolanBerat;
-      if (grandInputBerat > 0 && newTotal > grandInputBerat) {
-        _showSnack(
-          '?? Total berat output (${num2(newTotal)} kg) melebihi total berat input (${num2(grandInputBerat)} kg)',
-          backgroundColor: Colors.orange,
-        );
-      }
+      context.read<BrokerProductionInputViewModel>().loadOutputs(
+        widget.noProduksi,
+      );
     }
 
     final selectedTabChild = _selectedOutputTab == 'broker'
@@ -1058,7 +1129,18 @@ class _BrokerProductionInputScreenState
                         mainAxisExtent: 78,
                       ),
                       children: brokerOutputs
-                          .map((output) => _BrokerOutputTile(output: output))
+                          .map(
+                            (output) => wrapOutputTile(
+                              code: (output.noBroker ?? '').trim(),
+                              item: output,
+                              accentColor: _kBrokerOutput,
+                              builder: (overrideTap) => _BrokerOutputTile(
+                                output: output,
+                                onTap: overrideTap,
+                                canPrint: !_isLockedOrComplete,
+                              ),
+                            ),
+                          )
                           .toList(),
                     ),
                   ),
@@ -1079,7 +1161,18 @@ class _BrokerProductionInputScreenState
                         mainAxisExtent: 72,
                       ),
                       children: bonggolanOutputs
-                          .map((output) => _BonggolanOutputTile(output: output))
+                          .map(
+                            (output) => wrapOutputTile(
+                              code: (output.noBonggolan ?? '').trim(),
+                              item: output,
+                              accentColor: _kBrokerOutput,
+                              builder: (overrideTap) => _BonggolanOutputTile(
+                                output: output,
+                                onTap: overrideTap,
+                                canPrint: !_isLockedOrComplete,
+                              ),
+                            ),
+                          )
                           .toList(),
                     ),
                   ),
@@ -1162,6 +1255,13 @@ class _BrokerProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(
+                                    isBrokerOutputTab
+                                        ? brokerOutputs
+                                        : bonggolanOutputs,
+                                  )
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -1185,12 +1285,16 @@ class _BrokerProductionInputScreenState
                                     FloatingActionButton(
                                       heroTag: 'fab_add_broker_output',
                                       mini: true,
-                                      backgroundColor: _header == null
+                                      backgroundColor:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? Colors.grey.shade300
                                           : _kBrokerOutput,
                                       foregroundColor: Colors.white,
                                       tooltip: 'Tambah $activeOutputLabel',
-                                      onPressed: _header == null
+                                      onPressed:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? null
                                           : onAddOutput,
                                       child: const Icon(Icons.add),
@@ -1227,6 +1331,70 @@ class _BrokerProductionInputScreenState
       if (hasIsPartial is bool && hasIsPartial) return true;
     } catch (_) {}
     return false;
+  }
+
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(BrokerProductionInputViewModel vm) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(widget.noProduksi, selectedInputItems);
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    BrokerProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kBrokerPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
+  Map<String, List<Object>> _activeInputGroups({
+    required Map<String, List<BrokerItem>> brokerGroups,
+    required Map<String, List<BbItem>> bbGroups,
+    required Map<String, List<WashingItem>> washingGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
+    required Map<String, List<GilinganItem>> gilinganGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<RejectItem>> rejectGroups,
+  }) {
+    switch (_selectedInputTab) {
+      case 'bb':
+        return {for (final e in bbGroups.entries) e.key: e.value};
+      case 'washing':
+        return {for (final e in washingGroups.entries) e.key: e.value};
+      case 'crusher':
+        return {for (final e in crusherGroups.entries) e.key: e.value};
+      case 'gilingan':
+        return {for (final e in gilinganGroups.entries) e.key: e.value};
+      case 'mixer':
+        return {for (final e in mixerGroups.entries) e.key: e.value};
+      case 'reject':
+        return {for (final e in rejectGroups.entries) e.key: e.value};
+      default:
+        return {for (final e in brokerGroups.entries) e.key: e.value};
+    }
   }
 
   Widget _buildSelectedInputTabChild({
@@ -1312,9 +1480,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1415,9 +1589,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1503,9 +1683,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     detailsBuilder: () => [],
                     chipItemsBuilder: () {
                       final currentInputs = vm.inputsOf(widget.noProduksi);
@@ -1575,9 +1761,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     detailsBuilder: () {
                       final currentInputs = vm.inputsOf(widget.noProduksi);
                       final items = [
@@ -1660,9 +1852,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1765,9 +1963,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1861,9 +2065,15 @@ class _BrokerProductionInputScreenState
                     ],
                     color: Colors.blue,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                    onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                        ? () => _showTempCardOptions(entry.key)
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
                         : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : vm.hasTemporaryDataForLabel(entry.key)
+                        ? () => _showTempCardOptions(entry.key)
+                        : () => startSelectingInput(entry.key, entry.value),
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
                         ? (entry.value
@@ -2035,7 +2245,7 @@ class _BrokerProductionInputScreenState
         final outputs = vm.outputsOf(widget.noProduksi);
         final bonggolanOutputs = vm.bonggolanOutputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
 
         final canDeleteByPerm = perm.can('label_broker:delete');
         final canDelete = canDeleteByPerm && !locked;
@@ -2110,7 +2320,7 @@ class _BrokerProductionInputScreenState
                 final mixerGroups = groupBy(mixerAll, mixerTitleKey);
                 final rejectGroups = groupBy(rejectAll, rejectTitleKey);
 
-                final locked = _header?.isLocked == true;
+                final locked = _isLockedOrComplete;
                 final closed = _header?.lastClosedDate; // boleh null
 
                 return Column(
@@ -2301,6 +2511,21 @@ class _BrokerProductionInputScreenState
                                                     mixerGroups: mixerGroups,
                                                     rejectGroups: rejectGroups,
                                                   );
+                                              if (isSelectingInput) {
+                                                return _inputSelectionBar(
+                                                  vm,
+                                                  _activeInputGroups(
+                                                    brokerGroups: brokerGroups,
+                                                    bbGroups: bbGroups,
+                                                    washingGroups: washingGroups,
+                                                    crusherGroups: crusherGroups,
+                                                    gilinganGroups:
+                                                        gilinganGroups,
+                                                    mixerGroups: mixerGroups,
+                                                    rejectGroups: rejectGroups,
+                                                  ),
+                                                );
+                                              }
                                               return Row(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.center,
@@ -2471,8 +2696,14 @@ class _BrokerProductionInputScreenState
 
 class _BrokerOutputTile extends StatelessWidget {
   final BrokerOutput output;
+  final VoidCallback? onTap;
+  final bool canPrint;
 
-  const _BrokerOutputTile({required this.output});
+  const _BrokerOutputTile({
+    required this.output,
+    this.onTap,
+    this.canPrint = true,
+  });
 
   Future<void> _handlePrint(BuildContext context) async {
     final noBroker = (output.noBroker ?? '').trim();
@@ -2557,13 +2788,17 @@ class _BrokerOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () {
+        onTap:
+            onTap ??
+            () {
           showDialog<void>(
             context: context,
             builder: (_) => _BrokerOutputDetailDialog(
               output: output,
-              onPrint: () => _handlePrint(context),
-              onPrintQc: () async {
+              onPrint: canPrint ? () => _handlePrint(context) : null,
+              onPrintQc: !canPrint
+                  ? null
+                  : () async {
                 final noBroker = (output.noBroker ?? '').trim();
                 if (noBroker.isEmpty) return;
                 final rootCtx = Navigator.of(
@@ -2667,8 +2902,14 @@ class _BrokerOutputTile extends StatelessWidget {
 
 class _BonggolanOutputTile extends StatelessWidget {
   final BonggolanOutput output;
+  final VoidCallback? onTap;
+  final bool canPrint;
 
-  const _BonggolanOutputTile({required this.output});
+  const _BonggolanOutputTile({
+    required this.output,
+    this.onTap,
+    this.canPrint = true,
+  });
 
   Future<void> _handlePrint(BuildContext context) async {
     final noBonggolan = (output.noBonggolan ?? '').trim();
@@ -2753,15 +2994,17 @@ class _BonggolanOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () {
-          showDialog<void>(
-            context: context,
-            builder: (_) => _BonggolanOutputDetailDialog(
-              output: output,
-              onPrint: () => _handlePrint(context),
-            ),
-          );
-        },
+        onTap:
+            onTap ??
+            () {
+              showDialog<void>(
+                context: context,
+                builder: (_) => _BonggolanOutputDetailDialog(
+                  output: output,
+                  onPrint: canPrint ? () => _handlePrint(context) : null,
+                ),
+              );
+            },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Column(
@@ -2994,7 +3237,7 @@ class _BrokerOutputDetailDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: const BoxDecoration(
-                color: Color(0xFF1565C0),
+                color: _kBrokerOutput,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Row(
@@ -3069,10 +3312,10 @@ class _BrokerOutputDetailDialog extends StatelessWidget {
                           final s = output.detailSak[i];
                           return Container(
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF0F7FF),
+                              color: _kBrokerOutput.withValues(alpha: 0.06),
                               borderRadius: BorderRadius.circular(7),
                               border: Border.all(
-                                color: const Color(0xFFBFDBFE),
+                                color: _kBrokerOutput.withValues(alpha: 0.25),
                               ),
                             ),
                             child: Column(
@@ -3083,7 +3326,7 @@ class _BrokerOutputDetailDialog extends StatelessWidget {
                                   style: const TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFF1D4ED8),
+                                    color: _kBrokerOutput,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -3135,8 +3378,10 @@ class _BrokerOutputDetailDialog extends StatelessWidget {
                       icon: const Icon(Icons.print_outlined, size: 15),
                       label: const Text('Print Label'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF1565C0),
-                        side: const BorderSide(color: Color(0xFF90CAF9)),
+                        foregroundColor: _kBrokerOutput,
+                        side: BorderSide(
+                          color: _kBrokerOutput.withValues(alpha: 0.4),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -3183,7 +3428,7 @@ class _BonggolanOutputDetailDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: const BoxDecoration(
-                color: Color(0xFF1565C0),
+                color: _kBrokerOutput,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Row(

@@ -16,6 +16,9 @@ import '../model/packing_production_inputs_model.dart';
 import '../model/packing_production_model.dart';
 import '../repository/packing_production_repository.dart';
 import '../widgets/packing_production_output_form_dialog.dart';
+import '../../../label/packing/repository/packing_repository.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../packing_type/model/packing_type_model.dart';
@@ -38,8 +41,18 @@ class PackingProductionInputScreen extends StatefulWidget {
 }
 
 class _PackingProductionInputScreenState
-    extends State<PackingProductionInputScreen> {
+    extends State<PackingProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<PackingProductionInputScreen>,
+        ProductionInputMultiSelectMixin<PackingProductionInputScreen> {
   final _prodRepo = PackingProductionRepository();
+
+  /// Produksi sudah selesai / terkunci -> tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete => _header?.isLocked == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
   PackingProduction? _header;
   late String _cachedBreadcrumbLabel;
   String _selectedInputTab = 'fwip';
@@ -456,6 +469,43 @@ class _PackingProductionInputScreenState
 
   // ── Input panel ────────────────────────────────────────────────────────────
 
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(PackingProductionInputViewModel vm) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(widget.noProduksi, selectedInputItems);
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    PackingProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
   Widget _buildInputPanel({
     required PackingProductionInputViewModel vm,
     required bool locked,
@@ -569,6 +619,9 @@ class _PackingProductionInputScreenState
                             ),
                           ),
                           const SizedBox(height: 10),
+                          if (isSelectingInput && _selectedInputTab == 'fwip')
+                            _inputSelectionBar(vm, fwipGroups)
+                          else
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -708,6 +761,13 @@ class _PackingProductionInputScreenState
                     ],
                     color: _kPrimary,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -818,6 +878,88 @@ class _PackingProductionInputScreenState
     }
   }
 
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    if (item is! PackingOutput) return null;
+    final c = item.labelCode.trim();
+    return c.isEmpty ? null : c;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is! PackingOutput) return null;
+    final code = item.labelCode.trim();
+    if (code.isEmpty) return null;
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: ApiConstants.packingLabelPdf(code),
+      feature: 'packing',
+      markAsPrinted: () =>
+          PackingRepository(api: ApiClient()).markAsPrinted(code),
+    );
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs(VoidCallback onRefresh) async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is PackingOutput) {
+        await PackingRepository(
+          api: ApiClient(),
+        ).deletePacking(item.labelCode.trim());
+      }
+    });
+    if (!mounted) return;
+    onRefresh();
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(
+    List<PackingOutput> currentOutputs,
+    VoidCallback onRefresh,
+  ) {
+    final total = currentOutputs.where((o) => _outputCode(o) != null).length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kOutput,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : () => _deleteSelectedOutputs(onRefresh),
+    );
+  }
+
   Widget _buildOutputPanel({
     required List<PackingOutput> outputs,
     required bool isLoading,
@@ -921,8 +1063,15 @@ class _PackingProductionInputScreenState
                                                     ),
                                                 children: outputs
                                                     .map(
-                                                      (o) => _PackingOutputTile(
-                                                        output: o,
+                                                      (o) => wrapOutputTile(
+                                                        code: o.labelCode.trim(),
+                                                        item: o,
+                                                        accentColor: _kOutput,
+                                                        builder: (overrideTap) =>
+                                                            _PackingOutputTile(
+                                                              output: o,
+                                                              onTap: overrideTap,
+                                                            ),
                                                       ),
                                                     )
                                                     .toList(),
@@ -945,6 +1094,9 @@ class _PackingProductionInputScreenState
                                     ),
                                   ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(outputs, onRefresh)
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -1003,7 +1155,7 @@ class _PackingProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
         final canDelete = perm.can('label_packing:delete') && !locked;
 
         return PopScope(
@@ -1130,8 +1282,9 @@ Map<K, List<T>> _groupBy<K, T>(Iterable<T> items, K Function(T) keyFn) {
 
 class _PackingOutputTile extends StatelessWidget {
   final PackingOutput output;
+  final VoidCallback? onTap;
 
-  const _PackingOutputTile({required this.output});
+  const _PackingOutputTile({required this.output, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1143,10 +1296,12 @@ class _PackingOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => _PackingOutputDetailDialog(output: output),
-        ),
+        onTap:
+            onTap ??
+            () => showDialog<void>(
+              context: context,
+              builder: (_) => _PackingOutputDetailDialog(output: output),
+            ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Column(

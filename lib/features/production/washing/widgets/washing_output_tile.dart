@@ -18,8 +18,16 @@ const _kWashingBorder = Color(0xFFE2E6EA);
 
 class WashingOutputTile extends StatelessWidget {
   final WashingOutput output;
+  final VoidCallback? onTap;
 
-  const WashingOutputTile({super.key, required this.output});
+  final bool canPrint;
+
+  const WashingOutputTile({
+    super.key,
+    required this.output,
+    this.onTap,
+    this.canPrint = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +39,9 @@ class WashingOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => showDialog<void>(
+        onTap:
+            onTap ??
+            () => showDialog<void>(
           context: context,
           builder: (_) => ProductionOutputDetailDialog(
             labelCode: output.noWashing,
@@ -40,6 +50,7 @@ class WashingOutputTile extends StatelessWidget {
             accentColor: _kWashingOutput,
             pdfUrl: ApiConstants.washingLabelPdf(output.noWashing),
             feature: 'washing',
+            canPrint: canPrint,
             markAsPrinted: () => WashingRepository().markAsPrinted(output.noWashing),
             metrics: [
               ProductionMetric(

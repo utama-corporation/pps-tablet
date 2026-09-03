@@ -26,6 +26,8 @@ import '../../../gilingan_type/model/gilingan_type_model.dart';
 import '../../../gilingan_type/repository/gilingan_type_repository.dart';
 import '../../../gilingan_type/view_model/gilingan_type_view_model.dart';
 import '../../../gilingan_type/widgets/gilingan_type_dropdown.dart';
+import '../../../label/gilingan/repository/gilingan_repository.dart';
+import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
@@ -44,10 +46,21 @@ class GilinganProductionInputScreen extends StatefulWidget {
 }
 
 class _GilinganProductionInputScreenState
-    extends State<GilinganProductionInputScreen> {
+    extends State<GilinganProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<GilinganProductionInputScreen>,
+        ProductionInputMultiSelectMixin<GilinganProductionInputScreen> {
   final _repo = GilinganProductionInputRepository();
   final _prodRepo = GilinganProductionRepository();
   bool _isReplacing = false;
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
 
   String _selectedMode = 'full';
   String _selectedInputTab = 'broker';
@@ -476,6 +489,61 @@ class _GilinganProductionInputScreenState
 
   // ── Input panel ────────────────────────────────────────────────────────────
 
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(GilinganProductionInputViewModel vm) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(widget.noProduksi, selectedInputItems);
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    GilinganProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kGilinganPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
+  Map<String, List<Object>> _activeInputGroups({
+    required Map<String, List<BrokerItem>> brokerGroups,
+    required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
+    required Map<String, List<RejectItem>> rejectGroups,
+  }) {
+    switch (_selectedInputTab) {
+      case 'bonggolan':
+        return {for (final e in bonggolGroups.entries) e.key: e.value};
+      case 'crusher':
+        return {for (final e in crusherGroups.entries) e.key: e.value};
+      case 'reject':
+        return {for (final e in rejectGroups.entries) e.key: e.value};
+      default:
+        return {for (final e in brokerGroups.entries) e.key: e.value};
+    }
+  }
+
   Widget _buildInputPanel({
     required GilinganProductionInputViewModel vm,
     required bool locked,
@@ -618,6 +686,17 @@ class _GilinganProductionInputScreenState
                             ),
                           ),
                           const SizedBox(height: 10),
+                          if (isSelectingInput)
+                            _inputSelectionBar(
+                              vm,
+                              _activeInputGroups(
+                                brokerGroups: brokerGroups,
+                                bonggolGroups: bonggolGroups,
+                                crusherGroups: crusherGroups,
+                                rejectGroups: rejectGroups,
+                              ),
+                            )
+                          else
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -771,6 +850,13 @@ class _GilinganProductionInputScreenState
                 ],
                 color: _kGilinganPrimary,
                 isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                isSelected: isInputGroupSelected(entry.key),
+                onTap: isSelectingInput
+                    ? () => toggleInputGroup(entry.key, entry.value)
+                    : null,
+                onLongPress: isSelectingInput
+                    ? null
+                    : () => startSelectingInput(entry.key, entry.value),
                 expandable: !hasPartial,
                 isPartialGroup: hasPartial,
                 detailsBuilder: () => [],
@@ -845,6 +931,13 @@ class _GilinganProductionInputScreenState
                 ],
                 color: _kGilinganPrimary,
                 isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                isSelected: isInputGroupSelected(entry.key),
+                onTap: isSelectingInput
+                    ? () => toggleInputGroup(entry.key, entry.value)
+                    : null,
+                onLongPress: isSelectingInput
+                    ? null
+                    : () => startSelectingInput(entry.key, entry.value),
                 expandable: true,
                 detailsBuilder: () => [],
                 chipItemsBuilder: () {
@@ -916,6 +1009,13 @@ class _GilinganProductionInputScreenState
                 ],
                 color: _kGilinganPrimary,
                 isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                isSelected: isInputGroupSelected(entry.key),
+                onTap: isSelectingInput
+                    ? () => toggleInputGroup(entry.key, entry.value)
+                    : null,
+                onLongPress: isSelectingInput
+                    ? null
+                    : () => startSelectingInput(entry.key, entry.value),
                 expandable: true,
                 detailsBuilder: () => [],
                 chipItemsBuilder: () {
@@ -996,6 +1096,13 @@ class _GilinganProductionInputScreenState
                 ],
                 color: _kGilinganPrimary,
                 isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                isSelected: isInputGroupSelected(entry.key),
+                onTap: isSelectingInput
+                    ? () => toggleInputGroup(entry.key, entry.value)
+                    : null,
+                onLongPress: isSelectingInput
+                    ? null
+                    : () => startSelectingInput(entry.key, entry.value),
                 expandable: !hasPartial,
                 isPartialGroup: hasPartial,
                 detailsBuilder: () => [],
@@ -1234,6 +1341,85 @@ class _GilinganProductionInputScreenState
 
   static const _kGilinganOutputColor = Color(0xFF00796B);
 
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    if (item is! GilinganOutput) return null;
+    final c = item.noGilingan.trim();
+    return c.isEmpty ? null : c;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is! GilinganOutput) return null;
+    final code = item.noGilingan.trim();
+    if (code.isEmpty) return null;
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: ApiConstants.gilinganLabelPdf(code),
+      feature: 'gilingan',
+      markAsPrinted: () => GilinganRepository().markAsPrinted(code),
+    );
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs() async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is GilinganOutput) {
+        await GilinganRepository().deleteGilingan(item.noGilingan.trim());
+      }
+    });
+    if (!mounted) return;
+    context.read<GilinganProductionInputViewModel>().loadOutputs(
+      widget.noProduksi,
+      force: true,
+    );
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(List<GilinganOutput> currentOutputs) {
+    final total = currentOutputs.where((o) => _outputCode(o) != null).length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kGilinganOutputColor,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+    );
+  }
+
   Widget _buildOutputSection({
     required List<GilinganOutput> outputs,
     required bool isLoading,
@@ -1334,10 +1520,22 @@ class _GilinganProductionInputScreenState
                                                       ),
                                                   children: outputs
                                                       .map(
-                                                        (o) =>
-                                                            GilinganOutputTile(
-                                                              output: o,
-                                                            ),
+                                                        (o) => wrapOutputTile(
+                                                          code: o.noGilingan
+                                                              .trim(),
+                                                          item: o,
+                                                          accentColor:
+                                                              _kGilinganOutputColor,
+                                                          builder:
+                                                              (overrideTap) =>
+                                                                  GilinganOutputTile(
+                                                                    output: o,
+                                                                    onTap:
+                                                                        overrideTap,
+                                                                    canPrint:
+                                                                        !_isLockedOrComplete,
+                                                                  ),
+                                                        ),
                                                       )
                                                       .toList(),
                                                 ),
@@ -1345,6 +1543,9 @@ class _GilinganProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(outputs)
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -1368,11 +1569,15 @@ class _GilinganProductionInputScreenState
                                     FloatingActionButton(
                                       heroTag: 'fab_add_gilingan_output',
                                       mini: true,
-                                      backgroundColor: _header == null
+                                      backgroundColor:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? Colors.grey.shade300
                                           : _kGilinganOutputColor,
                                       foregroundColor: Colors.white,
-                                      onPressed: _header == null
+                                      onPressed:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? null
                                           : () => _openAddOutputDialog(
                                               outputJenisId,
@@ -1451,7 +1656,7 @@ class _GilinganProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
 
         final canDelete = perm.can('label_washing:delete') && !locked;
 

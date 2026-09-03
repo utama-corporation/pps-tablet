@@ -10,8 +10,15 @@ const _kGilinganBorder = Color(0xFFE2E6EA);
 
 class GilinganOutputTile extends StatelessWidget {
   final GilinganOutput output;
+  final VoidCallback? onTap;
+  final bool canPrint;
 
-  const GilinganOutputTile({super.key, required this.output});
+  const GilinganOutputTile({
+    super.key,
+    required this.output,
+    this.onTap,
+    this.canPrint = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +30,9 @@ class GilinganOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => showDialog<void>(
+        onTap:
+            onTap ??
+            () => showDialog<void>(
           context: context,
           builder: (_) => ProductionOutputDetailDialog(
             labelCode: output.noGilingan,
@@ -32,6 +41,7 @@ class GilinganOutputTile extends StatelessWidget {
             accentColor: _kGilinganOutput,
             pdfUrl: ApiConstants.gilinganLabelPdf(output.noGilingan),
             feature: 'gilingan',
+            canPrint: canPrint,
             markAsPrinted: () => GilinganRepository().markAsPrinted(output.noGilingan),
             metrics: [
               ProductionMetric(

@@ -10,8 +10,9 @@ const _kStampBorder = Color(0xFFE2E6EA);
 
 class HotStampOutputTile extends StatelessWidget {
   final HotStampOutput output;
+  final VoidCallback? onTap;
 
-  const HotStampOutputTile({super.key, required this.output});
+  const HotStampOutputTile({super.key, required this.output, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +24,12 @@ class HotStampOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => HotStampOutputDetailDialog(output: output),
-        ),
+        onTap:
+            onTap ??
+            () => showDialog<void>(
+              context: context,
+              builder: (_) => HotStampOutputDetailDialog(output: output),
+            ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Column(

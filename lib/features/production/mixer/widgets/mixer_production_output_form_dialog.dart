@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../repository/mixer_production_input_repository.dart';
 
-const _kOutput = Color(0xFF1565C0);
+const _kOutput = Color(0xFF00796B); // teal — output
 const _kBorder = Color(0xFFE2E6EA);
 
 class MixerProductionOutputFormDialog extends StatefulWidget {
@@ -374,9 +374,9 @@ class _SakCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFE3F2FD),
+        color: _kOutput.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF90CAF9)),
+        border: Border.all(color: _kOutput.withValues(alpha: 0.25)),
       ),
       child: Stack(
         children: [

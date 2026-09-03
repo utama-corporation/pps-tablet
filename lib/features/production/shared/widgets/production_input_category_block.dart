@@ -83,6 +83,7 @@ class ProductionCategorySummaryTile extends StatelessWidget {
   final String sakLabel;
   final bool showBerat;
   final bool showLabel;
+  final bool showSak;
 
   const ProductionCategorySummaryTile({
     super.key,
@@ -91,6 +92,7 @@ class ProductionCategorySummaryTile extends StatelessWidget {
     this.sakLabel = 'Sak',
     this.showBerat = true,
     this.showLabel = true,
+    this.showSak = true,
   });
 
   @override
@@ -104,21 +106,22 @@ class ProductionCategorySummaryTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          if (showLabel) ...[
+          if (showLabel)
             ProductionInlineStat(
               label: 'Label',
               value: '${summary.totalData}',
               color: accentColor,
             ),
-            const SizedBox(width: 10),
+          if (showSak) ...[
+            if (showLabel) const SizedBox(width: 10),
+            ProductionInlineStat(
+              label: sakLabel,
+              value: '${summary.totalSak}',
+              color: accentColor,
+            ),
           ],
-          ProductionInlineStat(
-            label: sakLabel,
-            value: '${summary.totalSak}',
-            color: accentColor,
-          ),
           if (showBerat) ...[
-            const SizedBox(width: 10),
+            if (showLabel || showSak) const SizedBox(width: 10),
             ProductionInlineStat(
               label: 'Berat',
               value: '${num2(summary.totalBerat)} kg',

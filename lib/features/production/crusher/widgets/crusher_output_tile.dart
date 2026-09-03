@@ -13,8 +13,15 @@ const _kCrusherBorder = Color(0xFFE2E6EA);
 
 class CrusherOutputTile extends StatelessWidget {
   final CrusherOutput output;
+  final VoidCallback? onTap;
+  final bool canPrint;
 
-  const CrusherOutputTile({super.key, required this.output});
+  const CrusherOutputTile({
+    super.key,
+    required this.output,
+    this.onTap,
+    this.canPrint = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +33,9 @@ class CrusherOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => showDialog<void>(
+        onTap:
+            onTap ??
+            () => showDialog<void>(
           context: context,
           builder: (_) => ProductionOutputDetailDialog(
             labelCode: output.noCrusher,
@@ -35,6 +44,7 @@ class CrusherOutputTile extends StatelessWidget {
             accentColor: _kCrusherOutput,
             pdfUrl: ApiConstants.crusherLabelPdf(output.noCrusher),
             feature: 'crusher',
+            canPrint: canPrint,
             markAsPrinted: () => CrusherRepository().markAsPrinted(output.noCrusher),
             metrics: [
               ProductionMetric(

@@ -28,6 +28,9 @@ import '../widgets/hot_stamp_production_output_form_dialog.dart';
 import '../widgets/hot_stamp_reject_output_form_dialog.dart';
 import 'package:shimmer/shimmer.dart';
 import '../repository/hot_stamp_production_repository.dart';
+import '../../../label/furniture_wip/repository/furniture_wip_repository.dart';
+import '../../../label/reject/repository/reject_repository.dart';
+import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
@@ -50,8 +53,18 @@ class HotStampingProductionInputScreen extends StatefulWidget {
 }
 
 class _HotStampingProductionInputScreenState
-    extends State<HotStampingProductionInputScreen> {
+    extends State<HotStampingProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<HotStampingProductionInputScreen>,
+        ProductionInputMultiSelectMixin<HotStampingProductionInputScreen> {
   final _prodRepo = HotStampProductionRepository();
+
+  /// Produksi sudah selesai / terkunci -> tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete => _header?.isLocked == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
   HotStampProduction? _header;
   late String _cachedBreadcrumbLabel;
 
@@ -461,6 +474,45 @@ class _HotStampingProductionInputScreenState
 
   // ── Input panel ────────────────────────────────────────────────────────────
 
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(
+    HotStampingProductionInputViewModel vm,
+  ) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(widget.noProduksi, selectedInputItems);
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    HotStampingProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kStampingPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
   Widget _buildInputPanel({
     required HotStampingProductionInputViewModel vm,
     required bool locked,
@@ -578,6 +630,9 @@ class _HotStampingProductionInputScreenState
                           ),
                           const SizedBox(height: 10),
                           // Footer row: summary + FAB
+                          if (isSelectingInput && _selectedInputTab == 'fwip')
+                            _inputSelectionBar(vm, fwipGroups)
+                          else
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -717,6 +772,13 @@ class _HotStampingProductionInputScreenState
                     ],
                     color: _kStampingPrimary,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -872,6 +934,98 @@ class _HotStampingProductionInputScreenState
 
   // ── Right: output panel ────────────────────────────────────────────────────
 
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    if (item is! HotStampOutput) return null;
+    final c = item.labelCode.trim();
+    return c.isEmpty ? null : c;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is! HotStampOutput) return null;
+    final code = item.labelCode.trim();
+    if (code.isEmpty) return null;
+    if (item.isReject) {
+      return ProductionOutputPrintTarget(
+        code: code,
+        pdfUrl: ApiConstants.rejectLabelPdf(code),
+        feature: 'reject',
+        markAsPrinted: () =>
+            RejectRepository(api: ApiClient()).markAsPrinted(code),
+      );
+    }
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: ApiConstants.furnitureWipLabelPdf(code),
+      feature: 'furniture_wip',
+      markAsPrinted: () => FurnitureWipRepository().markAsPrinted(code),
+    );
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs(VoidCallback onRefresh) async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is! HotStampOutput) return;
+      final code = item.labelCode.trim();
+      if (item.isReject) {
+        await RejectRepository(api: ApiClient()).deleteReject(code);
+      } else {
+        await FurnitureWipRepository().deleteFurnitureWip(code);
+      }
+    });
+    if (!mounted) return;
+    onRefresh();
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(
+    List<HotStampOutput> currentOutputs,
+    VoidCallback onRefresh,
+  ) {
+    final total = currentOutputs.where((o) => _outputCode(o) != null).length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kStampingOutput,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : () => _deleteSelectedOutputs(onRefresh),
+    );
+  }
+
   Widget _buildOutputPanel({
     required List<HotStampOutput> outputs,
     required bool isLoading,
@@ -999,8 +1153,16 @@ class _HotStampingProductionInputScreenState
                                                     ),
                                                 children: selectedOutputs
                                                     .map(
-                                                      (o) => HotStampOutputTile(
-                                                        output: o,
+                                                      (o) => wrapOutputTile(
+                                                        code: o.labelCode.trim(),
+                                                        item: o,
+                                                        accentColor:
+                                                            _kStampingOutput,
+                                                        builder: (overrideTap) =>
+                                                            HotStampOutputTile(
+                                                              output: o,
+                                                              onTap: overrideTap,
+                                                            ),
                                                       ),
                                                     )
                                                     .toList(),
@@ -1023,6 +1185,9 @@ class _HotStampingProductionInputScreenState
                                     ),
                                   ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(selectedOutputs, onRefresh)
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -1101,7 +1266,7 @@ class _HotStampingProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
         final canDelete = perm.can('label_crusher:delete') && !locked;
 
         return PopScope(

@@ -29,6 +29,10 @@ import '../../../label/furniture_wip/repository/furniture_wip_repository.dart';
 import '../../../label/reject/repository/reject_repository.dart';
 import '../../../../core/network/endpoints.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/label_print_lock_api.dart';
+import '../../../../core/services/label_print_sync_queue.dart';
+import '../../../../core/utils/pdf_print_service.dart';
+import '../../../../core/view_model/label_print_lock_socket_manager.dart';
 import '../widgets/inject_sak_picker_dialog.dart';
 import '../widgets/inject_split_time_dialog_v1.dart';
 import '../../../label/packing/repository/packing_repository.dart';
@@ -68,6 +72,10 @@ class _InjectProductionInputScreenState
   // ── Header (fetched from API) ─────────────────────────────────────────────
   final _prodRepo = InjectProductionRepository();
   InjectProduction? _header;
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
   // Cache label so dispose() can read it after _header may be gone
   late String _cachedBreadcrumbLabel;
 
@@ -737,21 +745,11 @@ class _InjectProductionInputScreenState
   Future<void> _deleteSelectedOutputs(VoidCallback onRefresh) async {
     if (_selectedOutputItems.isEmpty) return;
     final count = _selectedOutputItems.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => ConfirmDialog(
-        title: 'Hapus Label Output?',
-        message:
-            'Yakin ingin menghapus $count label yang dipilih?\n'
-            'Aksi ini tidak dapat dibatalkan.',
-        confirmLabel: 'Hapus',
-        confirmIcon: Icons.delete_outline,
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
 
     int deleted = 0;
     int failed = 0;
+    final errors = <String>[];
     for (final item in _selectedOutputItems.values) {
       try {
         if (item is InjectOutputItem) {
@@ -766,75 +764,335 @@ class _InjectProductionInputScreenState
           await BonggolanRepository().deleteBonggolan(item.noBonggolan);
         }
         deleted++;
-      } catch (_) {
+      } catch (e) {
         failed++;
+        final msg = cleanProductionErrorMessage(e);
+        if (!errors.contains(msg)) errors.add(msg);
       }
     }
     if (!mounted) return;
     _cancelOutputSelection();
     onRefresh();
-    _showSnack(
-      failed == 0
-          ? '✅ $deleted label output berhasil dihapus'
-          : '$deleted berhasil dihapus, $failed gagal',
-      backgroundColor: failed == 0 ? Colors.green : Colors.orange,
-    );
+    if (failed == 0) {
+      _showSnack(
+        '✅ $deleted label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (deleted > 0) '$deleted label berhasil dihapus, $failed gagal.',
+            ...errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
   }
 
-  Widget _buildOutputSelectionBar(VoidCallback onRefresh) {
+  /// Nomor label dari satu item output (tipe apa pun).
+  String? _outputLabelCode(dynamic item) {
+    if (item is InjectOutputItem) return item.noFurnitureWip;
+    if (item is InjectBjOutputItem) return item.noBj;
+    if (item is InjectRejectOutputItem) return item.noReject;
+    if (item is InjectBonggolanOutputItem) return item.noBonggolan;
+    return null;
+  }
+
+  void _selectAllOutputs(List<dynamic> currentOutputs) {
+    setState(() {
+      _isSelectingOutput = true;
+      for (final item in currentOutputs) {
+        final code = _outputLabelCode(item);
+        if (code != null) _selectedOutputItems[code] = item;
+      }
+    });
+  }
+
+  void _clearOutputSelection() {
+    setState(() => _selectedOutputItems.clear());
+  }
+
+  /// Petakan satu item output terpilih ke data yang dibutuhkan untuk cetak.
+  ({String code, String pdfUrl, String feature, Future<int?> Function() mark})?
+  _printTargetForOutput(dynamic item) {
+    if (item is InjectOutputItem) {
+      final code = item.noFurnitureWip;
+      return (
+        code: code,
+        pdfUrl: ApiConstants.furnitureWipLabelPdf(code),
+        feature: 'furniture_wip',
+        mark: () => FurnitureWipRepository().markAsPrinted(code),
+      );
+    }
+    if (item is InjectBjOutputItem) {
+      final code = item.noBj;
+      return (
+        code: code,
+        pdfUrl: ApiConstants.packingLabelPdf(code),
+        feature: 'packing',
+        mark: () => PackingRepository(api: ApiClient()).markAsPrinted(code),
+      );
+    }
+    if (item is InjectRejectOutputItem) {
+      final code = item.noReject;
+      return (
+        code: code,
+        pdfUrl: ApiConstants.rejectLabelPdf(code),
+        feature: 'reject',
+        mark: () => RejectRepository(api: ApiClient()).markAsPrinted(code),
+      );
+    }
+    if (item is InjectBonggolanOutputItem) {
+      final code = item.noBonggolan;
+      return (
+        code: code,
+        pdfUrl: ApiConstants.bonggolanLabelPdf(code),
+        feature: 'bonggolan',
+        mark: () => BonggolanRepository().markAsPrinted(code),
+      );
+    }
+    return null;
+  }
+
+  /// Cetak semua label output yang dipilih sekaligus dalam satu PDF viewer.
+  Future<void> _printSelectedOutputs() async {
+    final targets = _selectedOutputItems.values
+        .map(_printTargetForOutput)
+        .whereType<
+          ({
+            String code,
+            String pdfUrl,
+            String feature,
+            Future<int?> Function() mark,
+          })
+        >()
+        .toList();
+    if (targets.isEmpty) return;
+
+    final lockApi = LabelPrintLockApi();
+    final lockVm = context.read<LabelPrintLockSocketManager>();
+    final queue = context.read<LabelPrintSyncQueue>();
+    final rootCtx = Navigator.of(context, rootNavigator: true).context;
+
+    // Ambil lock untuk semua label sebelum viewer dibuka.
+    final acquiredCodes = <String>{};
+    for (final t in targets) {
+      if (!mounted) break;
+      try {
+        await lockApi.acquire(t.code);
+        acquiredCodes.add(t.code);
+      } catch (e) {
+        if (mounted) {
+          _showSnack('Gagal lock ${t.code}: $e', backgroundColor: Colors.red);
+        }
+      }
+    }
+
+    final printedCodes = <String>{};
+    final callbacks = targets.map((t) {
+      return (() {
+            printedCodes.add(t.code);
+            () async {
+              var needsIncrement = false;
+              var needsRelease = false;
+              try {
+                final count = await t.mark();
+                if (count != null) lockVm.setPrintCount(t.code, count);
+              } catch (_) {
+                needsIncrement = true;
+              }
+              try {
+                await lockApi.release(t.code);
+              } catch (_) {
+                needsRelease = true;
+              }
+              if (needsIncrement || needsRelease) {
+                await queue.enqueue(
+                  feature: t.feature,
+                  noLabel: t.code,
+                  needsIncrement: needsIncrement,
+                  needsReleaseLock: needsRelease,
+                );
+              }
+            }().ignore();
+          })
+          as VoidCallback;
+    }).toList();
+
+    try {
+      await PdfPrintService(defaultSystem: 'pps').previewMultipleFromUrls(
+        // ignore: use_build_context_synchronously
+        context: rootCtx,
+        pdfUrls: targets.map((t) => Uri.parse(t.pdfUrl)).toList(),
+        title: 'Cetak ${targets.length} Label',
+        onPrintedCallbacks: callbacks,
+      );
+    } finally {
+      // Lepas lock untuk label yang tidak jadi dicetak.
+      for (final t in targets) {
+        if (acquiredCodes.contains(t.code) && !printedCodes.contains(t.code)) {
+          () async {
+            try {
+              await lockApi.release(t.code);
+            } catch (_) {
+              await queue.enqueue(
+                feature: t.feature,
+                noLabel: t.code,
+                needsReleaseLock: true,
+              );
+            }
+          }().ignore();
+        }
+      }
+      if (mounted) _cancelOutputSelection();
+    }
+  }
+
+  Widget _buildOutputSelectionBar(
+    VoidCallback onRefresh, {
+    List<dynamic> currentOutputs = const [],
+  }) {
     final count = _selectedOutputItems.length;
+    final totalAvailable = currentOutputs
+        .where((o) => _outputLabelCode(o) != null)
+        .length;
+    final allSelected = totalAvailable > 0 && count >= totalAvailable;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: _kInjectOutput,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.check_circle,
-            size: 16,
-            color: Colors.white.withValues(alpha: 0.9),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$count label dipilih',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+          Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                size: 16,
+                color: Colors.white.withValues(alpha: 0.9),
               ),
-            ),
-          ),
-          TextButton(
-            onPressed: _cancelOutputSelection,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('Batal', style: TextStyle(fontSize: 12)),
-          ),
-          const SizedBox(width: 4),
-          FilledButton.icon(
-            onPressed: () => _deleteSelectedOutputs(onRefresh),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$count label dipilih',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
               ),
-            ),
-            icon: const Icon(Icons.delete_outline, size: 14),
-            label: const Text(
-              'Hapus',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              TextButton(
+                onPressed: _cancelOutputSelection,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Batal', style: TextStyle(fontSize: 12)),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: totalAvailable == 0
+                    ? null
+                    : allSelected
+                    ? _clearOutputSelection
+                    : () => _selectAllOutputs(currentOutputs),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white38,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: Icon(
+                  allSelected ? Icons.remove_done : Icons.done_all,
+                  size: 14,
+                ),
+                label: Text(
+                  allSelected ? 'Bersihkan' : 'Pilih Semua',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              FilledButton.icon(
+                onPressed: (count == 0 || _isLockedOrComplete)
+                    ? null
+                    : _printSelectedOutputs,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: _kInjectOutput,
+                  disabledBackgroundColor: Colors.white24,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.print_outlined, size: 14),
+                label: Text(
+                  'Cetak $count',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              FilledButton.icon(
+                onPressed: (count == 0 || _isLockedOrComplete)
+                    ? null
+                    : () => _deleteSelectedOutputs(onRefresh),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red.shade600,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.red.shade200,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.delete_outline, size: 14),
+                label: const Text(
+                  'Hapus',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -851,7 +1109,7 @@ class _InjectProductionInputScreenState
       _isSelectingOutput ? () => _toggleOutputSelection(labelCode, item) : null,
     );
     return GestureDetector(
-      onLongPress: _isSelectingOutput
+      onLongPress: (_isSelectingOutput || _isLockedOrComplete)
           ? null
           : () => _startSelectingOutput(labelCode, item),
       child: Stack(
@@ -863,11 +1121,8 @@ class _InjectProductionInputScreenState
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFF1565C0),
-                      width: 2,
-                    ),
-                    color: const Color(0xFFE3F2FD).withValues(alpha: 0.45),
+                    border: Border.all(color: _kInjectOutput, width: 2),
+                    color: _kInjectOutput.withValues(alpha: 0.12),
                   ),
                 ),
               ),
@@ -881,7 +1136,7 @@ class _InjectProductionInputScreenState
                   width: 16,
                   height: 16,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF1565C0),
+                    color: _kInjectOutput,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.check, size: 11, color: Colors.white),
@@ -900,6 +1155,7 @@ class _InjectProductionInputScreenState
     String labelKey,
     List<dynamic> items,
   ) async {
+    if (_isLockedOrComplete) return;
     _startSelecting(labelKey, items);
   }
 
@@ -1140,7 +1396,15 @@ class _InjectProductionInputScreenState
                           ),
                           const SizedBox(height: 6),
                           if (_isSelecting)
-                            _buildSelectionBar(vm)
+                            _buildSelectionBar(
+                              vm,
+                              _activeInputGroups(
+                                fwipGroups: fwipGroups,
+                                brokerGroups: brokerGroups,
+                                mixerGroups: mixerGroups,
+                                gilinganGroups: gilinganGroups,
+                              ),
+                            )
                           else
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
@@ -1477,72 +1741,49 @@ class _InjectProductionInputScreenState
     );
   }
 
-  Widget _buildSelectionBar(InjectProductionInputViewModel vm) {
-    final count = _selectedGroups.length;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1565C0),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle,
-            size: 16,
-            color: Colors.white.withValues(alpha: 0.9),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$count label dipilih',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: _cancelSelection,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('Batal', style: TextStyle(fontSize: 12)),
-          ),
-          const SizedBox(width: 4),
-          FilledButton.icon(
-            onPressed: vm.isDeleting ? null : () => _deleteSelected(vm),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: vm.isDeleting
-                ? const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.logout, size: 14),
-            label: Text(
-              vm.isDeleting ? 'Memproses...' : 'Keluarkan',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
+  /// Grup-grup pada tab input yang sedang aktif (untuk aksi "Pilih Semua").
+  Map<String, List<Object>> _activeInputGroups({
+    required Map<String, List<FurnitureWipItem>> fwipGroups,
+    required Map<String, List<BrokerItem>> brokerGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<GilinganItem>> gilinganGroups,
+  }) {
+    Map<String, List<Object>> cast(Map<String, List<Object>> m) => m;
+    switch (_selectedInputTab) {
+      case 'fwip':
+        return {for (final e in fwipGroups.entries) e.key: e.value};
+      case 'broker':
+        return {for (final e in brokerGroups.entries) e.key: e.value};
+      case 'mixer':
+        return {for (final e in mixerGroups.entries) e.key: e.value};
+      case 'gilingan':
+        return {for (final e in gilinganGroups.entries) e.key: e.value};
+      default:
+        return cast(const {});
+    }
+  }
+
+  Widget _buildSelectionBar(
+    InjectProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && _selectedGroups.length >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kInjectPrimary,
+      count: _selectedGroups.length,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: _cancelSelection,
+      onToggleAll: allSelected
+          ? () => setState(_selectedGroups.clear)
+          : () => setState(() {
+              for (final e in groups.entries) {
+                _selectedGroups[e.key] = e.value;
+              }
+            }),
+      onRelease: _isLockedOrComplete ? null : () => _deleteSelected(vm),
     );
   }
 
@@ -2159,7 +2400,16 @@ class _InjectProductionInputScreenState
                           ),
                           const SizedBox(height: 6),
                           if (_isSelectingOutput)
-                            _buildOutputSelectionBar(onRefresh)
+                            _buildOutputSelectionBar(
+                              onRefresh,
+                              currentOutputs: isBonggolan
+                                  ? bonggolanOutputs
+                                  : isReject
+                                  ? rejectOutputs
+                                  : isBj
+                                  ? bjOutputs
+                                  : fwipOutputs,
+                            )
                           else
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
@@ -2220,12 +2470,12 @@ class _InjectProductionInputScreenState
                                         'fab_add_inject_output_$_selectedOutputTab',
                                     mini: true,
                                     backgroundColor:
-                                        (_header == null || _header!.isLocked)
+                                        (_header == null || _isLockedOrComplete)
                                         ? Colors.grey.shade300
                                         : _kInjectOutput,
                                     foregroundColor: Colors.white,
                                     onPressed:
-                                        (_header == null || _header!.isLocked)
+                                        (_header == null || _isLockedOrComplete)
                                         ? null
                                         : () {
                                             if (isBonggolan) {
@@ -2309,9 +2559,10 @@ class _InjectProductionInputScreenState
                           o.noFurnitureWip,
                         ),
                         feature: 'furniture_wip',
+                        canPrint: !_isLockedOrComplete,
                         markAsPrinted: () => FurnitureWipRepository()
                             .markAsPrinted(o.noFurnitureWip),
-                        onDelete: (_header == null || _header!.isLocked)
+                        onDelete: (_header == null || _isLockedOrComplete)
                             ? null
                             : () => _deleteFwipOutput(o, onRefresh),
                         metrics: [
@@ -2377,9 +2628,10 @@ class _InjectProductionInputScreenState
                         accentColor: _kInjectOutput,
                         pdfUrl: ApiConstants.bonggolanLabelPdf(o.noBonggolan),
                         feature: 'bonggolan',
+                        canPrint: !_isLockedOrComplete,
                         markAsPrinted: () =>
                             BonggolanRepository().markAsPrinted(o.noBonggolan),
-                        onDelete: (_header == null || _header!.isLocked)
+                        onDelete: (_header == null || _isLockedOrComplete)
                             ? null
                             : () => _deleteBonggolanOutput(o, onRefresh),
                         metrics: [
@@ -2441,10 +2693,11 @@ class _InjectProductionInputScreenState
                         accentColor: _kInjectOutput,
                         pdfUrl: ApiConstants.rejectLabelPdf(o.noReject),
                         feature: 'reject',
+                        canPrint: !_isLockedOrComplete,
                         markAsPrinted: () => RejectRepository(
                           api: ApiClient(),
                         ).markAsPrinted(o.noReject),
-                        onDelete: (_header == null || _header!.isLocked)
+                        onDelete: (_header == null || _isLockedOrComplete)
                             ? null
                             : () => _deleteRejectOutput(o, onRefresh),
                         metrics: [
@@ -2510,10 +2763,11 @@ class _InjectProductionInputScreenState
                         accentColor: _kInjectOutput,
                         pdfUrl: ApiConstants.packingLabelPdf(o.noBj),
                         feature: 'packing',
+                        canPrint: !_isLockedOrComplete,
                         markAsPrinted: () => PackingRepository(
                           api: ApiClient(),
                         ).markAsPrinted(o.noBj),
-                        onDelete: (_header == null || _header!.isLocked)
+                        onDelete: (_header == null || _isLockedOrComplete)
                             ? null
                             : () => _deleteBjOutput(o, onRefresh),
                         metrics: [
@@ -2541,7 +2795,7 @@ class _InjectProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
         final canDelete = perm.can('label_crusher:delete') && !locked;
 
         return PopScope(

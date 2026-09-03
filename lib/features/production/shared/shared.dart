@@ -33,6 +33,8 @@ export 'widgets/production_workspace_toolbar.dart';
 export 'widgets/production_flow_helpers.dart';
 export 'widgets/production_pcs_input_dialog.dart';
 export 'widgets/production_scan_label_dialog.dart';
+export 'widgets/production_output_multi_select.dart';
+export 'widgets/production_input_multi_select.dart';
 export 'models/production_formula_model.dart';
 
 // ── Output tiles per kategori ─────────────────────────────────────────────────

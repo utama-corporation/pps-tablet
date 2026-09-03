@@ -5,15 +5,23 @@ import '../../../label/mixer/repository/mixer_repository.dart';
 import '../../../../core/network/endpoints.dart';
 import '../model/mixer_output_model.dart';
 
-const _kMixerOutput = Color(0xFF1565C0);
+const _kMixerOutput = Color(0xFF00796B); // teal — output
 const _kMixerBorder = Color(0xFFE2E6EA);
 
 // ── Output tile ───────────────────────────────────────────────────────────────
 
 class MixerOutputTile extends StatelessWidget {
   final MixerOutput output;
+  final VoidCallback? onTap;
 
-  const MixerOutputTile({super.key, required this.output});
+  final bool canPrint;
+
+  const MixerOutputTile({
+    super.key,
+    required this.output,
+    this.onTap,
+    this.canPrint = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +33,9 @@ class MixerOutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => showDialog<void>(
+        onTap:
+            onTap ??
+            () => showDialog<void>(
           context: context,
           builder: (_) => ProductionOutputDetailDialog(
             labelCode: output.noMixer,
@@ -34,6 +44,7 @@ class MixerOutputTile extends StatelessWidget {
             accentColor: _kMixerOutput,
             pdfUrl: ApiConstants.mixerLabelPdf(output.noMixer),
             feature: 'mixer',
+            canPrint: canPrint,
             markAsPrinted: () => MixerRepository().markAsPrinted(output.noMixer),
             metrics: [
               ProductionMetric(

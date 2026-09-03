@@ -83,6 +83,10 @@ class _InjectProductionInputScreenState
   // ── Header (fetched from API) ─────────────────────────────────────────────
   final _prodRepo = InjectProductionRepository();
   InjectProduction? _header;
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
   // Cache label so dispose() can read it after _header may be gone
   late String _cachedBreadcrumbLabel;
 
@@ -1311,6 +1315,7 @@ class _InjectProductionInputScreenState
   // ── Multi-select input (keluarkan label dari proses) ───────────────────────
 
   void _startSelecting(String key, List<dynamic> items) {
+    if (_isLockedOrComplete) return;
     setState(() {
       _isSelecting = true;
       _selectedGroups[key] = items;
@@ -1371,72 +1376,48 @@ class _InjectProductionInputScreenState
     );
   }
 
-  Widget _buildSelectionBar(InjectProductionInputViewModel vm) {
-    final count = _selectedGroups.length;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1565C0),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle,
-            size: 16,
-            color: Colors.white.withValues(alpha: 0.9),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$count label dipilih',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: _cancelSelection,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('Batal', style: TextStyle(fontSize: 12)),
-          ),
-          const SizedBox(width: 4),
-          FilledButton.icon(
-            onPressed: vm.isDeleting ? null : () => _deleteSelected(vm),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: vm.isDeleting
-                ? const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.logout, size: 14),
-            label: Text(
-              vm.isDeleting ? 'Memproses...' : 'Keluarkan',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
+  /// Grup-grup pada tab input yang sedang aktif (untuk aksi "Pilih Semua").
+  Map<String, List<Object>> _activeInputGroups({
+    required Map<String, List<FurnitureWipItem>> fwipGroups,
+    required Map<String, List<BrokerItem>> brokerGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<GilinganItem>> gilinganGroups,
+  }) {
+    switch (_selectedInputTab) {
+      case 'fwip':
+        return {for (final e in fwipGroups.entries) e.key: e.value};
+      case 'broker':
+        return {for (final e in brokerGroups.entries) e.key: e.value};
+      case 'mixer':
+        return {for (final e in mixerGroups.entries) e.key: e.value};
+      case 'gilingan':
+        return {for (final e in gilinganGroups.entries) e.key: e.value};
+      default:
+        return const {};
+    }
+  }
+
+  Widget _buildSelectionBar(
+    InjectProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && _selectedGroups.length >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kInjectPrimary,
+      count: _selectedGroups.length,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: _cancelSelection,
+      onToggleAll: allSelected
+          ? () => setState(_selectedGroups.clear)
+          : () => setState(() {
+              for (final e in groups.entries) {
+                _selectedGroups[e.key] = e.value;
+              }
+            }),
+      onRelease: _isLockedOrComplete ? null : () => _deleteSelected(vm),
     );
   }
 
@@ -1742,7 +1723,15 @@ class _InjectProductionInputScreenState
                           ),
                           const SizedBox(height: 6),
                           if (_isSelecting)
-                            _buildSelectionBar(vm)
+                            _buildSelectionBar(
+                              vm,
+                              _activeInputGroups(
+                                fwipGroups: fwipGroups,
+                                brokerGroups: brokerGroups,
+                                mixerGroups: mixerGroups,
+                                gilinganGroups: gilinganGroups,
+                              ),
+                            )
                           else
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
@@ -2544,7 +2533,9 @@ class _InjectProductionInputScreenState
                 isLastBucket: isLastBucket,
                 isDowntime: isDowntime,
               ),
-          onPrint: (ctx) => _openBucketPrintDialog(ctx, label),
+          onPrint: _isLockedOrComplete
+              ? null
+              : (ctx) => _openBucketPrintDialog(ctx, label),
           counterCurrent: _pcsPerLabelData?.counterCurrent,
           standarBerat: _pcsPerLabelData?.standarBerat,
           standarCycleTime: _pcsPerLabelData?.standarCycleTime,
@@ -2581,7 +2572,7 @@ class _InjectProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
         final canDelete = perm.can('label_crusher:delete') && !locked;
 
         // Tab input dibatasi oleh kategori pada formula produksi.

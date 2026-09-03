@@ -30,6 +30,7 @@ class ProductionOutputDetailDialog extends StatefulWidget {
     required this.feature,
     this.markAsPrinted,
     this.onDelete,
+    this.canPrint = true,
   });
 
   final String labelCode;
@@ -51,6 +52,9 @@ class ProductionOutputDetailDialog extends StatefulWidget {
 
   /// When provided, a delete button is shown. Caller is responsible for confirm dialog + API call.
   final VoidCallback? onDelete;
+
+  /// Bila `false` (produksi selesai/terkunci), tombol cetak disembunyikan.
+  final bool canPrint;
 
   @override
   State<ProductionOutputDetailDialog> createState() =>
@@ -254,7 +258,8 @@ class _ProductionOutputDetailDialogState
             ),
 
             // ── Print button ────────────────────────────────────────
-            Padding(
+            if (widget.canPrint)
+              Padding(
               padding: EdgeInsets.fromLTRB(
                 16,
                 14,

@@ -305,7 +305,7 @@ class _PackingProductionMesinScreenState
                         final allMesin = snapshot.data ?? [];
                         return LayoutBuilder(
                           builder: (context, constraints) {
-                            final cols = (constraints.maxWidth / 150)
+                            final cols = (constraints.maxWidth / 165)
                                 .floor()
                                 .clamp(2, 6);
                             return GridView.builder(
@@ -313,7 +313,7 @@ class _PackingProductionMesinScreenState
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: cols,
-                                    mainAxisExtent: 110,
+                                    mainAxisExtent: 130,
                                     crossAxisSpacing: 10,
                                     mainAxisSpacing: 10,
                                   ),

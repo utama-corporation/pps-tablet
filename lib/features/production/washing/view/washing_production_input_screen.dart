@@ -25,6 +25,8 @@ import '../widgets/washing_workspace_toolbar.dart';
 import '../../../washing_type/model/washing_type_model.dart';
 import '../../../washing_type/widgets/washing_type_dropdown.dart';
 import '../repository/washing_production_repository.dart';
+import '../../../label/washing/repository/washing_repository.dart';
+import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
 import '../widgets/washing_lookup_label_dialog.dart';
@@ -52,9 +54,20 @@ class WashingProductionInputScreen extends StatefulWidget {
 }
 
 class _WashingProductionInputScreenState
-    extends State<WashingProductionInputScreen> {
+    extends State<WashingProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<WashingProductionInputScreen>,
+        ProductionInputMultiSelectMixin<WashingProductionInputScreen> {
   final _repo = WashingProductionInputRepository();
   final _prodRepo = WashingProductionRepository();
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
 
   WashingProduction? _header;
   late String _cachedBreadcrumbLabel;
@@ -1023,6 +1036,58 @@ class _WashingProductionInputScreenState
   // Header mengikuti broker _buildInputPanel:
   //   section header kiri | Spacer | mode chips | scan button | save badge | clear-temp
 
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(WashingProductionInputViewModel vm) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(widget.noProduksi, selectedInputItems);
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    WashingProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kWashingPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
+  Map<String, List<Object>> _activeInputGroups({
+    required Map<String, List<BbItem>> bbGroups,
+    required Map<String, List<WashingItem>> washingGroups,
+    required Map<String, List<GilinganItem>> gilinganGroups,
+  }) {
+    switch (_selectedInputTab) {
+      case 'washing':
+        return {for (final e in washingGroups.entries) e.key: e.value};
+      case 'gilingan':
+        return {for (final e in gilinganGroups.entries) e.key: e.value};
+      default:
+        return {for (final e in bbGroups.entries) e.key: e.value};
+    }
+  }
+
   Widget _buildInputPanel({
     required WashingProductionInputViewModel vm,
     required bool locked,
@@ -1178,6 +1243,16 @@ class _WashingProductionInputScreenState
                             ),
                           ),
                           const SizedBox(height: 10),
+                          if (isSelectingInput)
+                            _inputSelectionBar(
+                              vm,
+                              _activeInputGroups(
+                                bbGroups: bbGroups,
+                                washingGroups: washingGroups,
+                                gilinganGroups: gilinganGroups,
+                              ),
+                            )
+                          else
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -1238,6 +1313,85 @@ class _WashingProductionInputScreenState
 
   // ── Output panel ───────────────────────────────────────────────────────────
 
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    if (item is! WashingOutput) return null;
+    final c = item.noWashing.trim();
+    return c.isEmpty ? null : c;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is! WashingOutput) return null;
+    final code = item.noWashing.trim();
+    if (code.isEmpty) return null;
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: ApiConstants.washingLabelPdf(code),
+      feature: 'washing',
+      markAsPrinted: () => WashingRepository().markAsPrinted(code),
+    );
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs() async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is WashingOutput) {
+        await WashingRepository().deleteWashing(item.noWashing.trim());
+      }
+    });
+    if (!mounted) return;
+    context.read<WashingProductionInputViewModel>().loadOutputs(
+      widget.noProduksi,
+      force: true,
+    );
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(List<WashingOutput> currentOutputs) {
+    final total = currentOutputs.where((o) => _outputCode(o) != null).length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kWashingOutput,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+    );
+  }
+
   Widget _buildOutputSection({
     required List<WashingOutput> outputs,
     required bool isLoading,
@@ -1251,28 +1405,7 @@ class _WashingProductionInputScreenState
       totalBerat += o.totalBerat;
     }
     Future<void> onAddWashing() async {
-      if (grandInputBerat == 0) {
-        showDialog<void>(
-          context: context,
-          builder: (_) => const ErrorStatusDialog(
-            title: 'Belum Ada Input',
-            message:
-                'Masukkan label input terlebih dahulu sebelum membuat output.',
-          ),
-        );
-        return;
-      }
-      if (totalBerat >= grandInputBerat) {
-        showDialog<void>(
-          context: context,
-          builder: (_) => ErrorStatusDialog(
-            title: 'Berat Output Melebihi Input',
-            message:
-                'Total berat output (${num2(totalBerat)} kg) sudah mencapai atau melebihi total berat input (${num2(grandInputBerat)} kg).\n\nTidak dapat menambah output baru.',
-          ),
-        );
-        return;
-      }
+      // Input & output bebas diisi tanpa urutan/batasan berat.
       if (_header?.outputJenisId == null) {
         _showSnack(
           'Jenis output belum dikonfigurasi pada produksi ini.',
@@ -1399,8 +1532,18 @@ class _WashingProductionInputScreenState
                                                     ),
                                                 children: outputs
                                                     .map(
-                                                      (o) => WashingOutputTile(
-                                                        output: o,
+                                                      (o) => wrapOutputTile(
+                                                        code: o.noWashing.trim(),
+                                                        item: o,
+                                                        accentColor:
+                                                            _kWashingOutput,
+                                                        builder: (overrideTap) =>
+                                                            WashingOutputTile(
+                                                              output: o,
+                                                              onTap: overrideTap,
+                                                              canPrint:
+                                                                  !_isLockedOrComplete,
+                                                            ),
                                                       ),
                                                     )
                                                     .toList(),
@@ -1410,6 +1553,9 @@ class _WashingProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(outputs)
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -1435,11 +1581,15 @@ class _WashingProductionInputScreenState
                                     FloatingActionButton(
                                       heroTag: 'fab_add_washing_output',
                                       mini: true,
-                                      backgroundColor: _header == null
+                                      backgroundColor:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? Colors.grey.shade300
                                           : _kWashingOutput,
                                       foregroundColor: Colors.white,
-                                      onPressed: _header == null
+                                      onPressed:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? null
                                           : onAddWashing,
                                       child: const Icon(Icons.add),
@@ -1566,9 +1716,15 @@ class _WashingProductionInputScreenState
                   ],
                   color: _kWashingPrimary,
                   isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                  onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                      ? () => _showTempCardOptions(entry.key)
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
                       : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
+                      : () => startSelectingInput(entry.key, entry.value),
                   expandable: !hasPartial,
                   isPartialGroup: hasPartial,
                   partialReference: hasPartial
@@ -1673,9 +1829,15 @@ class _WashingProductionInputScreenState
                   ],
                   color: _kWashingPrimary,
                   isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                  onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                      ? () => _showTempCardOptions(entry.key)
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
                       : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
+                      : () => startSelectingInput(entry.key, entry.value),
                   detailsBuilder: () => [],
                   chipItemsBuilder: () {
                     final currentInputs = vm.inputsOf(widget.noProduksi);
@@ -1773,9 +1935,15 @@ class _WashingProductionInputScreenState
                   ],
                   color: _kWashingPrimary,
                   isTemp: vm.hasTemporaryDataForLabel(entry.key),
-                  onLongPress: vm.hasTemporaryDataForLabel(entry.key)
-                      ? () => _showTempCardOptions(entry.key)
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
                       : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
+                      : () => startSelectingInput(entry.key, entry.value),
                   expandable: !hasPartial,
                   isPartialGroup: hasPartial,
                   partialReference: hasPartial
@@ -1892,7 +2060,7 @@ class _WashingProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
 
         final canDelete = perm.can('label_washing:delete') && !locked;
 

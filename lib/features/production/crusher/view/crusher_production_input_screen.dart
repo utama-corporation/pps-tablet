@@ -28,6 +28,8 @@ import '../repository/crusher_production_input_repository.dart';
 import '../widgets/crusher_lookup_label_dialog.dart';
 import '../widgets/crusher_lookup_label_partial_dialog.dart';
 import '../widgets/crusher_production_output_form_dialog.dart';
+import '../../../label/crusher/repository/crusher_repository.dart';
+import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
@@ -49,10 +51,21 @@ class CrusherProductionInputScreen extends StatefulWidget {
 }
 
 class _CrusherProductionInputScreenState
-    extends State<CrusherProductionInputScreen> {
+    extends State<CrusherProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<CrusherProductionInputScreen>,
+        ProductionInputMultiSelectMixin<CrusherProductionInputScreen> {
   final _repo = CrusherProductionInputRepository();
   final _prodRepo = CrusherProductionRepository();
   CrusherProduction? _header;
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
   late String _cachedBreadcrumbLabel;
 
   String _selectedMode = 'full';
@@ -546,6 +559,46 @@ class _CrusherProductionInputScreenState
     );
   }
 
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(CrusherProductionInputViewModel vm) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(
+      widget.noCrusherProduksi,
+      selectedInputItems,
+    );
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    CrusherProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kCrusherPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
   // ── Input panel ────────────────────────────────────────────────────────────
 
   Widget _buildInputPanel({
@@ -662,6 +715,14 @@ class _CrusherProductionInputScreenState
                             ),
                           ),
                           const SizedBox(height: 10),
+                          if (isSelectingInput)
+                            _inputSelectionBar(
+                              vm,
+                              _selectedInputTab == 'bonggolan'
+                                  ? bonggolGroups
+                                  : bbGroups,
+                            )
+                          else
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -672,6 +733,8 @@ class _CrusherProductionInputScreenState
                                     ProductionCategorySummaryTile(
                                       summary: selectedSummary,
                                       accentColor: _kCrusherPrimary,
+                                      // Bonggolan hanya pakai UOM berat, tidak ada pcs
+                                      showSak: _selectedInputTab != 'bonggolan',
                                     ),
                                     const SizedBox(height: 10),
                                     ProductionInputGrandTotalBar(
@@ -789,6 +852,13 @@ class _CrusherProductionInputScreenState
                   isTemp: vm.hasTemporaryDataForLabel(entry.key),
                   expandable: !hasPartial,
                   isPartialGroup: hasPartial,
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
+                      : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : () => startSelectingInput(entry.key, entry.value),
                   partialReference: hasPartial
                       ? _bbPairLabel(
                           entry.value.firstWhere((x) => x.isPartialRow),
@@ -857,6 +927,8 @@ class _CrusherProductionInputScreenState
               totalBerat: totalBerat,
             ),
             accentColor: _kCrusherPrimary,
+            // Bonggolan hanya pakai UOM berat, tidak ada pcs
+            showSak: false,
           )
         : const SizedBox.shrink();
 
@@ -874,11 +946,16 @@ class _CrusherProductionInputScreenState
                 mainAxisExtent: 72,
               ),
               children: bonggolGroups.entries.map((entry) {
+                final namaJenis =
+                    (entry.value.isNotEmpty
+                        ? entry.value.first.namaJenis
+                        : null) ??
+                    '-';
                 return ProductionInputGroupTile(
-                  title: entry.key,
-                  headerSubtitle: 'Bonggolan',
+                  title: namaJenis,
+                  headerSubtitle: entry.key,
                   tileMetrics: [
-                    (Icons.category_outlined, '${entry.value.length} item'),
+                    // Bonggolan hanya pakai UOM berat, tidak ada pcs
                     (
                       Icons.scale_outlined,
                       '${num2(entry.value.fold<double>(0.0, (s, i) => s + (i.berat ?? 0.0)))} kg',
@@ -887,6 +964,13 @@ class _CrusherProductionInputScreenState
                   color: _kCrusherPrimary,
                   isTemp: vm.hasTemporaryDataForLabel(entry.key),
                   expandable: true,
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
+                      : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : () => startSelectingInput(entry.key, entry.value),
                   detailsBuilder: () => [],
                   chipItemsBuilder: () {
                     final currentInputs = vm.inputsOf(widget.noCrusherProduksi);
@@ -1113,6 +1197,85 @@ class _CrusherProductionInputScreenState
 
   static const _kCrusherOutput = Color(0xFF00796B);
 
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    if (item is! CrusherOutput) return null;
+    final c = item.noCrusher.trim();
+    return c.isEmpty ? null : c;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is! CrusherOutput) return null;
+    final code = item.noCrusher.trim();
+    if (code.isEmpty) return null;
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: ApiConstants.crusherLabelPdf(code),
+      feature: 'crusher',
+      markAsPrinted: () => CrusherRepository().markAsPrinted(code),
+    );
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs() async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is CrusherOutput) {
+        await CrusherRepository().deleteCrusher(item.noCrusher.trim());
+      }
+    });
+    if (!mounted) return;
+    context.read<CrusherProductionInputViewModel>().loadOutputs(
+      widget.noCrusherProduksi,
+      force: true,
+    );
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(List<CrusherOutput> currentOutputs) {
+    final total = currentOutputs.where((o) => _outputCode(o) != null).length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kCrusherOutput,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+    );
+  }
+
   Widget _buildOutputSection({
     required List<CrusherOutput> outputs,
     required bool isLoading,
@@ -1217,8 +1380,18 @@ class _CrusherProductionInputScreenState
                                                     ),
                                                 children: outputs
                                                     .map(
-                                                      (o) => CrusherOutputTile(
-                                                        output: o,
+                                                      (o) => wrapOutputTile(
+                                                        code: o.noCrusher.trim(),
+                                                        item: o,
+                                                        accentColor:
+                                                            _kCrusherOutput,
+                                                        builder: (overrideTap) =>
+                                                            CrusherOutputTile(
+                                                              output: o,
+                                                              onTap: overrideTap,
+                                                              canPrint:
+                                                                  !_isLockedOrComplete,
+                                                            ),
                                                       ),
                                                     )
                                                     .toList(),
@@ -1228,6 +1401,9 @@ class _CrusherProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(outputs)
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -1251,11 +1427,15 @@ class _CrusherProductionInputScreenState
                                     FloatingActionButton(
                                       heroTag: 'fab_add_crusher_output',
                                       mini: true,
-                                      backgroundColor: _header == null
+                                      backgroundColor:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? Colors.grey.shade300
                                           : _kCrusherOutput,
                                       foregroundColor: Colors.white,
-                                      onPressed: _header == null
+                                      onPressed:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? null
                                           : _openAddOutputDialog,
                                       child: const Icon(Icons.add),
@@ -1306,7 +1486,7 @@ class _CrusherProductionInputScreenState
         final err = vm.inputsError(widget.noCrusherProduksi);
         final inputs = vm.inputsOf(widget.noCrusherProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
 
         final canDelete = perm.can('label_washing:delete') && !locked;
 

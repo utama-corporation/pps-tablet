@@ -32,6 +32,8 @@ import '../widgets/mixer_output_tile.dart';
 import '../widgets/mixer_sak_picker_dialog.dart';
 import '../widgets/mixer_gilingan_weight_dialog.dart';
 import '../widgets/mixer_production_output_form_dialog.dart';
+import '../../../label/mixer/repository/mixer_repository.dart';
+import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
 // ── Mixer colour palette ──────────────────────────────────────────────────────
@@ -52,9 +54,20 @@ class MixerProductionInputScreen extends StatefulWidget {
 }
 
 class _MixerProductionInputScreenState
-    extends State<MixerProductionInputScreen> {
+    extends State<MixerProductionInputScreen>
+    with
+        ProductionOutputMultiSelectMixin<MixerProductionInputScreen>,
+        ProductionInputMultiSelectMixin<MixerProductionInputScreen> {
   final _repo = MixerProductionInputRepository();
   final _prodRepo = MixerProductionRepository();
+
+  /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
+  @override
+  bool get isOutputInteractionLocked => _isLockedOrComplete;
+  @override
+  bool get isInputInteractionLocked => _isLockedOrComplete;
 
   String _selectedMode = 'full';
   String _selectedTab = 'bb';
@@ -439,13 +452,7 @@ class _MixerProductionInputScreenState
     if (!mounted) return;
     final vm = context.read<MixerProductionInputViewModel>();
 
-    if (grandInputBerat == 0) {
-      _showSnack(
-        'Masukkan label input terlebih dahulu sebelum membuat output.',
-        backgroundColor: Colors.orange,
-      );
-      return;
-    }
+    // Output tidak wajib menunggu input — boleh diisi kapan saja.
 
     if (_header?.outputJenisId == null) {
       _showSnack(
@@ -635,7 +642,86 @@ class _MixerProductionInputScreenState
 
   // ── Output panel ───────────────────────────────────────────────────────────
 
-  static const _kMixerOutputColor = Color(0xFF1565C0);
+  static const _kMixerOutputColor = Color(0xFF00796B); // teal — output
+
+  // ── Multi-select output (long-press) ──────────────────────────────────────
+
+  String? _outputCode(Object? item) {
+    if (item is! MixerOutput) return null;
+    final c = item.noMixer.trim();
+    return c.isEmpty || c == '-' ? null : c;
+  }
+
+  ProductionOutputPrintTarget? _outputPrintTarget(Object item) {
+    if (item is! MixerOutput) return null;
+    final code = item.noMixer.trim();
+    if (code.isEmpty || code == '-') return null;
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: ApiConstants.mixerLabelPdf(code),
+      feature: 'mixer',
+      markAsPrinted: () => MixerRepository().markAsPrinted(code),
+    );
+  }
+
+  Future<void> _printSelectedOutputs() async {
+    final targets = selectedOutputItems
+        .map(_outputPrintTarget)
+        .whereType<ProductionOutputPrintTarget>()
+        .toList();
+    await runBatchPrintOutputs(targets);
+  }
+
+  Future<void> _deleteSelectedOutputs() async {
+    final count = selectedOutputCount;
+    if (count == 0) return;
+    if (!await confirmDeleteOutputsDialog(context, count) || !mounted) return;
+    final r = await deleteSelectedOutputs((item) async {
+      if (item is MixerOutput) {
+        await MixerRepository().deleteMixer(item.noMixer.trim());
+      }
+    });
+    if (!mounted) return;
+    context.read<MixerProductionInputViewModel>().loadOutputs(
+      widget.noProduksi,
+      force: true,
+    );
+    if (r.failed == 0) {
+      _showSnack(
+        '✅ ${r.deleted} label output berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus Label',
+          message: [
+            if (r.deleted > 0)
+              '${r.deleted} label berhasil dihapus, ${r.failed} gagal.',
+            ...r.errors,
+          ].join('\n\n'),
+        ),
+      );
+    }
+  }
+
+  Widget _outputSelectionBar(List<MixerOutput> currentOutputs) {
+    final total = currentOutputs.where((o) => _outputCode(o) != null).length;
+    final allSelected = total > 0 && selectedOutputCount >= total;
+    return ProductionOutputSelectionBar(
+      accentColor: _kMixerOutputColor,
+      count: selectedOutputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      onCancel: cancelOutputSelection,
+      onToggleAll: allSelected
+          ? clearOutputSelection
+          : () => selectAllOutputs(currentOutputs, _outputCode),
+      onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
+      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+    );
+  }
 
   Widget _buildOutputSection({
     required List<MixerOutput> outputs,
@@ -736,8 +822,20 @@ class _MixerProductionInputScreenState
                                                       ),
                                                   children: outputs
                                                       .map(
-                                                        (o) => MixerOutputTile(
-                                                          output: o,
+                                                        (o) => wrapOutputTile(
+                                                          code: o.noMixer.trim(),
+                                                          item: o,
+                                                          accentColor:
+                                                              _kMixerOutputColor,
+                                                          builder:
+                                                              (overrideTap) =>
+                                                                  MixerOutputTile(
+                                                                    output: o,
+                                                                    onTap:
+                                                                        overrideTap,
+                                                                    canPrint:
+                                                                        !_isLockedOrComplete,
+                                                                  ),
                                                         ),
                                                       )
                                                       .toList(),
@@ -746,6 +844,9 @@ class _MixerProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(height: 10),
+                                if (isSelectingOutput)
+                                  _outputSelectionBar(outputs)
+                                else
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -771,11 +872,15 @@ class _MixerProductionInputScreenState
                                     FloatingActionButton(
                                       heroTag: 'fab_add_mixer_output',
                                       mini: true,
-                                      backgroundColor: _header == null
+                                      backgroundColor:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? Colors.grey.shade300
                                           : _kMixerOutputColor,
                                       foregroundColor: Colors.white,
-                                      onPressed: _header == null
+                                      onPressed:
+                                          (_header == null ||
+                                              _isLockedOrComplete)
                                           ? null
                                           : () => _openAddOutputDialog(
                                               grandInputBerat,
@@ -795,6 +900,64 @@ class _MixerProductionInputScreenState
         ],
       ),
     );
+  }
+
+  // ── Multi-select input (long-press → Keluarkan) ───────────────────────────
+
+  Future<void> _releaseSelectedInput(MixerProductionInputViewModel vm) async {
+    final count = selectedInputCount;
+    if (count == 0) return;
+    if (!await confirmReleaseInputDialog(context, count) || !mounted) return;
+    final success = await vm.deleteItems(widget.noProduksi, selectedInputItems);
+    if (!mounted) return;
+    cancelInputSelection();
+    _showSnack(
+      success
+          ? '✅ $count label berhasil dikeluarkan dari proses'
+          : (vm.deleteError ?? 'Gagal mengeluarkan label'),
+      backgroundColor: success ? Colors.green : Colors.red,
+    );
+  }
+
+  Widget _inputSelectionBar(
+    MixerProductionInputViewModel vm,
+    Map<String, List<Object>> groups,
+  ) {
+    final total = groups.length;
+    final allSelected = total > 0 && selectedInputCount >= total;
+    return ProductionInputSelectionBar(
+      accentColor: _kMixerPrimary,
+      count: selectedInputCount,
+      totalAvailable: total,
+      allSelected: allSelected,
+      isBusy: vm.isDeleting,
+      onCancel: cancelInputSelection,
+      onToggleAll: allSelected
+          ? clearInputSelection
+          : () => selectAllInputGroups(groups),
+      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+    );
+  }
+
+  Map<String, List<Object>> _activeInputGroups({
+    required Map<String, List<BbItem>> bbGroups,
+    required Map<String, List<BrokerItem>> brokerGroups,
+    required Map<String, List<WashingItem>> washingGroups,
+    required Map<String, List<GilinganItem>> gilinganGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
+  }) {
+    switch (_selectedTab) {
+      case 'broker':
+        return {for (final e in brokerGroups.entries) e.key: e.value};
+      case 'washing':
+        return {for (final e in washingGroups.entries) e.key: e.value};
+      case 'gilingan':
+        return {for (final e in gilinganGroups.entries) e.key: e.value};
+      case 'mixer':
+        return {for (final e in mixerGroups.entries) e.key: e.value};
+      default:
+        return {for (final e in bbGroups.entries) e.key: e.value};
+    }
   }
 
   // ── Input panel ────────────────────────────────────────────────────────────
@@ -956,6 +1119,18 @@ class _MixerProductionInputScreenState
                             ),
                           ),
                           const SizedBox(height: 10),
+                          if (isSelectingInput)
+                            _inputSelectionBar(
+                              vm,
+                              _activeInputGroups(
+                                bbGroups: bbGroups,
+                                brokerGroups: brokerGroups,
+                                washingGroups: washingGroups,
+                                gilinganGroups: gilinganGroups,
+                                mixerGroups: mixerGroups,
+                              ),
+                            )
+                          else
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -1103,6 +1278,13 @@ class _MixerProductionInputScreenState
                     ],
                     color: _kMixerPrimary,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1198,6 +1380,13 @@ class _MixerProductionInputScreenState
                     ],
                     color: _kMixerPrimary,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1284,6 +1473,13 @@ class _MixerProductionInputScreenState
                     isTemp: vm.tempWashing.any(
                       (x) => _washingTitleKey(x) == entry.key,
                     ),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     chipItemsBuilder: () {
                       final dbItems =
                           vm
@@ -1363,6 +1559,13 @@ class _MixerProductionInputScreenState
                     ],
                     color: _kMixerPrimary,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1470,6 +1673,13 @@ class _MixerProductionInputScreenState
                     ],
                     color: _kMixerPrimary,
                     isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
                     expandable: !hasPartial,
                     isPartialGroup: hasPartial,
                     partialReference: hasPartial
@@ -1646,7 +1856,7 @@ class _MixerProductionInputScreenState
         final err = vm.inputsError(widget.noProduksi);
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
-        final locked = _header?.isLocked == true;
+        final locked = _isLockedOrComplete;
         final canDelete = perm.can('label_washing:delete') && !locked;
 
         return PopScope(
