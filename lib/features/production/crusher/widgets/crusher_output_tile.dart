@@ -37,7 +37,10 @@ class CrusherOutputTile extends StatelessWidget {
             feature: 'crusher',
             markAsPrinted: () => CrusherRepository().markAsPrinted(output.noCrusher),
             metrics: [
-              (icon: Icons.scale_outlined, text: '${num2(output.berat)} kg'),
+              ProductionMetric(
+                icon: Icons.scale_outlined,
+                text: '${num2(output.berat)} kg',
+              ),
             ],
           ),
         ),

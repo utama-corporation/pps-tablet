@@ -9,9 +9,9 @@ import 'package:http/http.dart' as http;
 import 'dart:async';
 import '../../common/widgets/loading_dialog.dart';
 import '../../common/widgets/pdf_viewer_screen.dart';
+import '../printing/label_printer.dart';
 import '../services/dialog_service.dart';
 import '../services/token_storage.dart';
-import 'bt_print_service.dart';
 import 'device_printer_service.dart';
 
 /// Dilempar saat fetch satu PDF label gagal — bawa statusCode & url supaya
@@ -218,17 +218,20 @@ class PdfPrintService {
   }) async {
     final url = buildUri(reportName: reportName, query: query, system: system);
 
-    Uint8List pdfBytes;
+    Uint8List rawPdf;
+    Uint8List previewPdf;
     try {
-      pdfBytes = await _withLoading<Uint8List>(
+      final result = await _withLoading<(Uint8List, Uint8List)>(
         context: context,
         enabled: true,
         message: 'Menyiapkan PDF…',
         run: () async {
           final dl = await _download(url);
-          return _remapPdfTo80mm(dl.body);
+          return (dl.body, await _remapPdfTo80mm(dl.body));
         },
       );
+      rawPdf = result.$1;
+      previewPdf = result.$2;
     } catch (_) {
       // Error sudah ditampilkan oleh _withLoading / _showSnack
       return;
@@ -245,7 +248,7 @@ class PdfPrintService {
             reportName,
             query,
           ).replaceAll(RegExp(r'\.pdf$', caseSensitive: false), ''),
-      pdfBytes: pdfBytes,
+      pdfBytes: previewPdf,
     );
 
     // Jika user menutup tanpa mencetak
@@ -254,17 +257,9 @@ class PdfPrintService {
     // Tampilkan snackbar loading sementara print berjalan
     _showPrintingSnack(context, outcome.printerName);
 
-    final btService = BtPrintService(
-      baseUrl: baseUrl,
-      defaultSystem: system ?? defaultSystem,
-    );
-
     String? errorMsg;
-    final ok = await btService.printLabel(
-      reportName: reportName,
-      query: query,
-      mac: outcome.mac,
-      onStatus: (_) {},
+    final ok = await LabelPrinter.forTarget(outcome.target).printPdf(
+      rawPdf,
       onError: (e) => errorMsg = e,
     );
 
@@ -358,20 +353,18 @@ class PdfPrintService {
 
     _showPrintingSnack(context, outcome.printerName);
 
-    final btService = BtPrintService(
-      baseUrl: baseUrl,
-      defaultSystem: defaultSystem,
-    );
+    final printer = LabelPrinter.forTarget(outcome.target);
 
     var anyOk = false;
     for (var i = 0; i < pdfUrls.length; i++) {
       String? errorMsg;
-      final ok = await btService.printLabelFromUrl(
-        url: pdfUrls[i],
-        mac: outcome.mac,
-        onStatus: (_) {},
-        onError: (e) => errorMsg = e,
-      );
+      var ok = false;
+      try {
+        final bytes = await _fetchPdfBytes(pdfUrls[i]);
+        ok = await printer.printPdf(bytes, onError: (e) => errorMsg = e);
+      } catch (e) {
+        errorMsg = '$e';
+      }
       if (ok) {
         anyOk = true;
         onPrintedCallbacks?.elementAtOrNull(i)?.call();
@@ -443,16 +436,9 @@ class PdfPrintService {
 
     _showPrintingSnack(context, outcome.printerName);
 
-    final btService = BtPrintService(
-      baseUrl: baseUrl,
-      defaultSystem: defaultSystem,
-    );
-
     String? errorMsg;
-    final ok = await btService.printLabelFromUrl(
-      url: pdfUrl,
-      mac: outcome.mac,
-      onStatus: (_) {},
+    final ok = await LabelPrinter.forTarget(outcome.target).printPdf(
+      pdfBytes,
       onError: (e) => errorMsg = e,
     );
 
@@ -490,16 +476,9 @@ class PdfPrintService {
 
     _showPrintingSnack(context, outcome.printerName);
 
-    final btService = BtPrintService(
-      baseUrl: baseUrl,
-      defaultSystem: defaultSystem,
-    );
-
     String? errorMsg;
-    final ok = await btService.printBytes(
-      pdfBytes: pdfBytes,
-      mac: outcome.mac,
-      onStatus: (_) {},
+    final ok = await LabelPrinter.forTarget(outcome.target).printPdf(
+      pdfBytes,
       onError: (e) => errorMsg = e,
     );
 
@@ -718,6 +697,26 @@ class PdfPrintService {
     return _HttpBytes(resp, resp.bodyBytes);
   }
 
+  /// Unduh satu PDF label pakai Bearer token (dipakai jalur cetak multi-label,
+  /// yang perlu bytes tiap label untuk dikirim ke [LabelPrinter]).
+  Future<Uint8List> _fetchPdfBytes(Uri url) async {
+    final token = await TokenStorage.getToken();
+    final client = httpClient ?? http.Client();
+    final resp = await client
+        .get(
+          url,
+          headers: {
+            if (token != null && token.isNotEmpty)
+              'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 30));
+    if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+      throw Exception('HTTP ${resp.statusCode} — tidak ada data PDF.');
+    }
+    return resp.bodyBytes;
+  }
+
   Future<void> _saveOriginalTemp(Uint8List src, String filename) async {
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}/$filename');
@@ -742,7 +741,7 @@ class PdfPrintService {
   Future<Uint8List> _remapPdfTo80mm(Uint8List srcBytes) async {
     final doc = pw.Document();
     final pageWidthPt = 80 * PdfPageFormat.mm;
-    final rasters = Printing.raster(srcBytes, dpi: 150);
+    final rasters = Printing.raster(srcBytes, dpi: 300);
 
     await for (final r in rasters) {
       final pageHeightPt = pageWidthPt * (r.height / r.width);
@@ -760,22 +759,26 @@ class PdfPrintService {
     return doc.save();
   }
 
-  /// Gabungkan beberapa PDF (sudah berformat thermal) menjadi satu dokumen
-  /// multi-halaman dengan cara rasterisasi setiap halaman.
+  /// Gabungkan beberapa PDF menjadi satu dokumen multi-halaman untuk preview.
+  /// Tiap halaman dirasterisasi lalu ditempel pada halaman berukuran sama persis
+  /// dengan resolusi rasternya (tanpa paksa 80mm / tanpa rescale) supaya preview
+  /// tetap tajam untuk ukuran label apa pun.
   Future<Uint8List> _mergePdfs(List<Uint8List> pdfs) async {
     if (pdfs.length == 1) return pdfs.first;
     final doc = pw.Document();
-    const pageWidthPt = 80 * PdfPageFormat.mm;
+    const dpi = 300.0;
     for (final pdfBytes in pdfs) {
-      await for (final r in Printing.raster(pdfBytes, dpi: 150)) {
-        final pageHeightPt = pageWidthPt * (r.height / r.width);
+      await for (final r in Printing.raster(pdfBytes, dpi: dpi)) {
         final png = await r.toPng();
+        final wPt = r.width / dpi * 72.0;
+        final hPt = r.height / dpi * 72.0;
         doc.addPage(
           pw.Page(
-            pageFormat: PdfPageFormat(pageWidthPt, pageHeightPt),
+            pageFormat: PdfPageFormat(wPt, hPt),
             margin: pw.EdgeInsets.zero,
-            build: (_) => pw.Center(
-              child: pw.Image(pw.MemoryImage(png), fit: pw.BoxFit.contain),
+            build: (_) => pw.Image(
+              pw.MemoryImage(png),
+              fit: pw.BoxFit.fill,
             ),
           ),
         );

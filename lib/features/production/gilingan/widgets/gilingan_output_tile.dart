@@ -34,7 +34,10 @@ class GilinganOutputTile extends StatelessWidget {
             feature: 'gilingan',
             markAsPrinted: () => GilinganRepository().markAsPrinted(output.noGilingan),
             metrics: [
-              (icon: Icons.scale_outlined, text: '${num2(output.berat)} kg'),
+              ProductionMetric(
+                icon: Icons.scale_outlined,
+                text: '${num2(output.berat)} kg',
+              ),
             ],
           ),
         ),

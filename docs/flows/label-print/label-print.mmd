@@ -1,0 +1,26 @@
+sequenceDiagram
+    actor U as User (Tablet)
+    participant SC as Label List Screen
+    participant PS as PdfPrintService
+    participant PV as PdfViewerScreen
+    participant NT as NetworkTsplPrinter
+    participant PPS as PPS Backend :7500
+    participant DS as device-service :3000
+    participant PR as Printer 192.168.11.97:9100
+
+    U->>SC: tap Print
+    SC->>PS: previewMultipleFromUrls / previewFromUrl
+    PS->>PPS: GET /api/labels/barang-dagang/BD../pdf/
+    PPS-->>PS: PDF bytes (33 KB)
+    PS->>PV: push(pdfBytes) - preview + pilih printer
+    PV-->>PS: PrintOutcome(target = NetworkPrinterTarget)
+    PS->>NT: printPdf(pdfBytes)
+    Note over NT: raster PDF - dither - susun payload TSPL<br/>SIZE/GAP/BITMAP/PRINT (mis. 18.9 KB)
+    NT->>DS: POST /api/devices/printers/relay?ip=192.168.11.97<br/>body = payload TSPL (octet-stream)
+    DS->>DS: Device.findOne(network.ipAddress = ip)
+    DS->>PR: TCP connect :9100 + write(payload)
+    PR-->>DS: socket close (job diterima)
+    DS-->>NT: 200 { ok:true, bytesSent, latencyMs }
+    NT-->>PS: true
+    PS->>PPS: PATCH /api/labels/barang-dagang/BD../print (HasBeenPrinted++)
+    PS->>DS: POST /api/devices/printers/log (totalPrint++)

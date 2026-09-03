@@ -42,8 +42,14 @@ class WashingOutputTile extends StatelessWidget {
             feature: 'washing',
             markAsPrinted: () => WashingRepository().markAsPrinted(output.noWashing),
             metrics: [
-              (icon: Icons.inventory_2_outlined, text: '${output.totalSak} sak'),
-              (icon: Icons.scale_outlined, text: '${num2(output.totalBerat)} kg'),
+              ProductionMetric(
+                icon: Icons.inventory_2_outlined,
+                text: '${output.totalSak} sak',
+              ),
+              ProductionMetric(
+                icon: Icons.scale_outlined,
+                text: '${num2(output.totalBerat)} kg',
+              ),
             ],
           ),
         ),

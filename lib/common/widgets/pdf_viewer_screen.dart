@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
 import '../../common/widgets/master_printer_selector.dart';
 import '../../common/widgets/printer_selector_tile.dart';
+import '../../core/printing/printer_target.dart';
 import '../../core/utils/bt_print_service.dart';
 import '../../core/utils/device_printer_service.dart';
 
@@ -45,7 +45,17 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _printerId; // id dari microservice
   String? _printerMac;
   String? _printerName;
+  PrinterTarget? _printerTarget; // BT/ESC-POS atau jaringan/TSPL
   bool _printing = false;
+
+  bool get _hasPrinter =>
+      _printerTarget != null ||
+      (_printerMac != null && _printerMac!.isNotEmpty);
+
+  String get _targetSubtitle => switch (_printerTarget) {
+    NetworkPrinterTarget t => 'Jaringan · TSPL · ${t.host}',
+    _ => 'Thermal · Bluetooth · 80 mm',
+  };
 
   // ── Palette ──────────────────────────────────────────────────────────────
   static const _kDark = Color(0xFF0F172A); // preview bg
@@ -61,10 +71,23 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   // ── Printer ───────────────────────────────────────────────────────────────
 
+  static final _macRe = RegExp(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$');
+
   Future<void> _loadSavedPrinter() async {
-    // Prioritaskan printer dari microservice (ada id-nya)
+    // 1. Default lengkap (BT atau jaringan) — menyimpan PrinterTarget utuh.
+    final last = await DevicePrinterService.loadLastTarget();
+    if (last != null && mounted) {
+      setState(() {
+        _printerTarget = last.target;
+        _printerId = last.id;
+        _printerMac = last.target.identifier;
+        _printerName = last.name;
+      });
+      return;
+    }
+    // 2. Fallback lama — hanya berlaku untuk Bluetooth (identifier = MAC).
     final saved = await DevicePrinterService.loadDefaultPrinter();
-    if (saved != null && mounted) {
+    if (saved != null && _macRe.hasMatch(saved.mac) && mounted) {
       setState(() {
         _printerId = saved.id;
         _printerMac = saved.mac;
@@ -72,9 +95,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       });
       return;
     }
-    // Fallback ke BtPrintService lama (tanpa id microservice)
     final legacy = await BtPrintService.loadSavedPrinter();
-    if (legacy != null && mounted) {
+    if (legacy != null && _macRe.hasMatch(legacy.mac) && mounted) {
       setState(() {
         _printerMac = legacy.mac;
         _printerName = legacy.name;
@@ -92,13 +114,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _printerId = selection.id;
       _printerMac = selection.mac;
       _printerName = selection.printerName;
+      _printerTarget = selection.target;
     });
   }
 
   // ── Print ─────────────────────────────────────────────────────────────────
 
   Future<void> _doPrint() async {
-    if (_printerMac == null || _printing) return;
+    if (!_hasPrinter || _printing) return;
 
     setState(() => _printing = true);
 
@@ -122,8 +145,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       Navigator.of(context).pop(
         PrintOutcome(
           id: _printerId ?? '',
-          mac: _printerMac!,
-          printerName: _printerName ?? _printerMac!,
+          mac: _printerMac ?? '',
+          printerName: _printerName ?? _printerMac ?? '',
+          target: _printerTarget,
         ),
       );
     } finally {
@@ -151,7 +175,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildLandscape() {
-    final hasPrinter = _printerMac != null;
+    final hasPrinter = _hasPrinter;
     const panelW = 340.0;
 
     return Row(
@@ -171,7 +195,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           allowSharing: false,
           canChangePageFormat: false,
           canChangeOrientation: false,
-          maxPageWidth: 300,
+          // dpi tinggi supaya bitmap render tajam; maxPageWidth = batas ukuran tampil
+          dpi: 300,
+          maxPageWidth: 320,
           scrollViewDecoration: const BoxDecoration(color: _kDark),
         ),
 
@@ -291,12 +317,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                const Text(
                   'Cetak Label',
                   style: TextStyle(
                     fontSize: 15,
@@ -306,8 +332,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   ),
                 ),
                 Text(
-                  'Thermal · 80 mm',
-                  style: TextStyle(
+                  _targetSubtitle,
+                  style: const TextStyle(
                     fontSize: 11,
                     color: Colors.white38,
                     height: 1.2,
@@ -411,7 +437,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // ══════════════════════════════════════════════════════════════════════════
 
   Widget _buildPortrait() {
-    final hasPrinter = _printerMac != null;
+    final hasPrinter = _hasPrinter;
     return Column(
       children: [
         Expanded(child: _buildPortraitPreview()),
@@ -429,7 +455,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           allowSharing: false,
           canChangePageFormat: false,
           canChangeOrientation: false,
-          maxPageWidth: 300,
+          // dpi tinggi supaya bitmap render tajam; maxPageWidth = batas ukuran tampil
+          dpi: 300,
+          maxPageWidth: 320,
           scrollViewDecoration: const BoxDecoration(color: _kDark),
         ),
 

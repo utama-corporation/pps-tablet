@@ -13,3 +13,4 @@ Untuk setiap flow, buat subfolder sendiri:
 Contoh:
 
 - `docs/flows/print-lock/`
+- `docs/flows/label-print/`

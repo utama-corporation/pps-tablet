@@ -7,7 +7,6 @@ String formatDateToFullId(dynamic value) {
   return DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(dt.toLocal());
 }
 
-
 /// "2025-10-03T00:00:00.000Z" -> "03 Okt 2025"
 String formatDateToShortId(dynamic value) {
   final dt = parseAnyToDateTime(value);
@@ -47,7 +46,7 @@ DateTime? parseAnyToDateTime(dynamic value) {
       'd/M/yyyy',
       'M/d/yyyy',
       'EEEE, dd MMM yyyy', // "Minggu, 05 Okt 2025"
-      'dd MMM yyyy',       // "05 Okt 2025"
+      'dd MMM yyyy', // "05 Okt 2025"
     ];
 
     for (final p in patterns) {

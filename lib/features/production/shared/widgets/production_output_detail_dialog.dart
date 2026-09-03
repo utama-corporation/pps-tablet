@@ -6,6 +6,18 @@ import '../../../../core/services/label_print_sync_queue.dart';
 import '../../../../core/utils/pdf_print_service.dart';
 import '../../../../core/view_model/label_print_lock_socket_manager.dart';
 
+/// Satu baris metrik pada [ProductionOutputDetailDialog].
+///
+/// [label] opsional — kalau diisi, tampil sebagai "label : value" (field
+/// berlabel). Kalau null, [icon] dipakai sebagai penanda di kolom label.
+class ProductionMetric {
+  const ProductionMetric({required this.icon, required this.text, this.label});
+
+  final IconData icon;
+  final String text;
+  final String? label;
+}
+
 class ProductionOutputDetailDialog extends StatefulWidget {
   const ProductionOutputDetailDialog({
     super.key,
@@ -18,21 +30,14 @@ class ProductionOutputDetailDialog extends StatefulWidget {
     required this.feature,
     this.markAsPrinted,
     this.onDelete,
-    this.titleIsNamaJenis = false,
   });
 
   final String labelCode;
   final String namaJenis;
   final int printCount;
 
-  /// Saat true, header menampilkan [namaJenis] sebagai judul (bold) dan
-  /// [labelCode] sebagai subjudul — dibalik dari default. [labelCode] tetap
-  /// dipakai apa adanya untuk lock key / judul preview PDF, hanya tampilan
-  /// header yang berubah.
-  final bool titleIsNamaJenis;
-
-  /// Each entry: (icon, label text) e.g. (Icons.scale_outlined, '2.5 kg')
-  final List<({IconData icon, String text})> metrics;
+  /// Daftar metrik tambahan (di luar Nomor & Jenis) yang tampil di body.
+  final List<ProductionMetric> metrics;
   final Color accentColor;
 
   /// Full PDF URL string (from ApiConstants.*LabelPdf)
@@ -168,32 +173,14 @@ class _ProductionOutputDetailDialogState
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.titleIsNamaJenis
-                              ? widget.namaJenis
-                              : widget.labelCode,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF1F2937),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          widget.titleIsNamaJenis
-                              ? widget.labelCode
-                              : widget.namaJenis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF6B7280),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                  const Expanded(
+                    child: Text(
+                      'Detail Label',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1F2937),
+                      ),
                     ),
                   ),
                   IconButton(
@@ -211,21 +198,25 @@ class _ProductionOutputDetailDialogState
             ),
             const Divider(height: 1, color: Color(0xFFE2E6EA)),
 
-            // ── Metrics ─────────────────────────────────────────────
+            // ── Detail fields ───────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: widget.metrics
-                    .map(
-                      (m) => _MetricChip(
-                        icon: m.icon,
-                        text: m.text,
-                        accentColor: widget.accentColor,
-                      ),
-                    )
-                    .toList(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DetailRow(label: 'Nomor', value: widget.labelCode),
+                  const SizedBox(height: 9),
+                  _DetailRow(label: 'Jenis', value: widget.namaJenis),
+                  for (final m in widget.metrics) ...[
+                    const SizedBox(height: 9),
+                    _DetailRow(
+                      label: m.label,
+                      icon: m.label == null ? m.icon : null,
+                      value: m.text,
+                      accentColor: widget.accentColor,
+                    ),
+                  ],
+                ],
               ),
             ),
 
@@ -337,40 +328,55 @@ class _ProductionOutputDetailDialogState
   }
 }
 
-class _MetricChip extends StatelessWidget {
-  const _MetricChip({
-    required this.icon,
-    required this.text,
-    required this.accentColor,
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    this.label,
+    this.icon,
+    required this.value,
+    this.accentColor,
   });
 
-  final IconData icon;
-  final String text;
-  final Color accentColor;
+  final String? label;
+  final IconData? icon;
+  final String value;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: accentColor),
-          const SizedBox(width: 5),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: accentColor,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 66,
+          child: label != null
+              ? Text(
+                  label!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(
+                    icon ?? Icons.chevron_right,
+                    size: 14,
+                    color: accentColor ?? const Color(0xFF9CA3AF),
+                  ),
+                ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1F2937),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

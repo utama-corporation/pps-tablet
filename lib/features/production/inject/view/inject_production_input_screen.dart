@@ -2315,12 +2315,15 @@ class _InjectProductionInputScreenState
                             ? null
                             : () => _deleteFwipOutput(o, onRefresh),
                         metrics: [
-                          (
+                          ProductionMetric(
                             icon: Icons.inventory_2_outlined,
                             text: '${o.pcs} pcs',
                           ),
                           if (o.berat > 0)
-                            (icon: Icons.scale_outlined, text: '${o.berat} kg'),
+                            ProductionMetric(
+                              icon: Icons.scale_outlined,
+                              text: '${o.berat} kg',
+                            ),
                         ],
                       ),
                     ),
@@ -2380,7 +2383,10 @@ class _InjectProductionInputScreenState
                             ? null
                             : () => _deleteBonggolanOutput(o, onRefresh),
                         metrics: [
-                          (icon: Icons.scale_outlined, text: '${o.berat} kg'),
+                          ProductionMetric(
+                            icon: Icons.scale_outlined,
+                            text: '${o.berat} kg',
+                          ),
                         ],
                       ),
                     ),
@@ -2442,9 +2448,12 @@ class _InjectProductionInputScreenState
                             ? null
                             : () => _deleteRejectOutput(o, onRefresh),
                         metrics: [
-                          (icon: Icons.scale_outlined, text: '${o.berat} kg'),
+                          ProductionMetric(
+                            icon: Icons.scale_outlined,
+                            text: '${o.berat} kg',
+                          ),
                           if (o.pcs != null)
-                            (
+                            ProductionMetric(
                               icon: Icons.inventory_2_outlined,
                               text: '${o.pcs} pcs',
                             ),
@@ -2508,7 +2517,7 @@ class _InjectProductionInputScreenState
                             ? null
                             : () => _deleteBjOutput(o, onRefresh),
                         metrics: [
-                          (
+                          ProductionMetric(
                             icon: Icons.inventory_2_outlined,
                             text: '${o.pcs} pcs',
                           ),

@@ -36,8 +36,14 @@ class MixerOutputTile extends StatelessWidget {
             feature: 'mixer',
             markAsPrinted: () => MixerRepository().markAsPrinted(output.noMixer),
             metrics: [
-              (icon: Icons.inventory_2_outlined, text: '${output.totalSak} sak'),
-              (icon: Icons.scale_outlined, text: '${num2(output.totalBerat)} kg'),
+              ProductionMetric(
+                icon: Icons.inventory_2_outlined,
+                text: '${output.totalSak} sak',
+              ),
+              ProductionMetric(
+                icon: Icons.scale_outlined,
+                text: '${num2(output.totalBerat)} kg',
+              ),
             ],
           ),
         ),

@@ -4,11 +4,11 @@ import 'dart:typed_data';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../printing/label_raster.dart';
 import '../services/token_storage.dart';
 
 /// Key untuk SharedPreferences
@@ -161,13 +161,15 @@ class BtPrintService {
       onStatus?.call('Mengunduh PDF dari server...');
       final token = await TokenStorage.getToken();
       final client = httpClient ?? http.Client();
-      final resp = await client.get(
-        url,
-        headers: {
-          if (token != null && token.isNotEmpty)
-            'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 30));
+      final resp = await client
+          .get(
+            url,
+            headers: {
+              if (token != null && token.isNotEmpty)
+                'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
       if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
         throw Exception('HTTP ${resp.statusCode} — tidak ada data PDF.');
       }
@@ -181,7 +183,9 @@ class BtPrintService {
       onStatus?.call('Mengecek Bluetooth...');
       final btOn = await PrintBluetoothThermal.bluetoothEnabled;
       if (!btOn) {
-        onError?.call('Bluetooth tidak aktif. Aktifkan Bluetooth lalu coba lagi.');
+        onError?.call(
+          'Bluetooth tidak aktif. Aktifkan Bluetooth lalu coba lagi.',
+        );
         return false;
       }
 
@@ -190,7 +194,9 @@ class BtPrintService {
       await Future.delayed(const Duration(milliseconds: 2500));
 
       onStatus?.call('Menghubungkan ke printer...');
-      bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
+      bool connected = await PrintBluetoothThermal.connect(
+        macPrinterAddress: mac,
+      );
       if (!connected) {
         debugPrint('⚠️ Connect pertama gagal, coba lagi setelah 2s...');
         await Future.delayed(const Duration(milliseconds: 2000));
@@ -251,7 +257,9 @@ class BtPrintService {
       onStatus?.call('Mengecek Bluetooth...');
       final btOn = await PrintBluetoothThermal.bluetoothEnabled;
       if (!btOn) {
-        onError?.call('Bluetooth tidak aktif. Aktifkan Bluetooth lalu coba lagi.');
+        onError?.call(
+          'Bluetooth tidak aktif. Aktifkan Bluetooth lalu coba lagi.',
+        );
         return false;
       }
 
@@ -260,7 +268,9 @@ class BtPrintService {
       await Future.delayed(const Duration(milliseconds: 2500));
 
       onStatus?.call('Menghubungkan ke printer...');
-      bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
+      bool connected = await PrintBluetoothThermal.connect(
+        macPrinterAddress: mac,
+      );
       if (!connected) {
         debugPrint('⚠️ Connect pertama gagal, coba lagi setelah 2s...');
         await Future.delayed(const Duration(milliseconds: 2000));
@@ -428,19 +438,16 @@ class BtPrintService {
     await for (final page in pages) {
       final pngBytes = await page.toPng();
 
-      // Jalankan image processing (CPU-intensive) di background isolate
-      // agar UI tidak freeze selama proses dithering & resize.
-      final result = await Isolate.run(() => _processPage(pngBytes));
+      // Image processing (grayscale + trim + resize + dither) dijalankan di
+      // background isolate lewat helper bersama [LabelRaster] agar UI tidak
+      // freeze. Lebar 576 dot = printable area thermal 80mm @203dpi.
+      final result = await Isolate.run(
+        () => LabelRaster.processPage(pngBytes, targetWidth: 576),
+      );
       if (result == null) continue;
 
-      // Rekonstruksi img.Image dari raw bytes yang dikembalikan isolate
-      final processed = img.Image.fromBytes(
-        width: result.$1,
-        height: result.$2,
-        bytes: result.$3.buffer,
-        numChannels: 3,
-      );
-      debugPrint('✂️ Page processed: ${result.$2}px high');
+      final processed = LabelRaster.toImage(result);
+      debugPrint('✂️ Page processed: ${result.height}px high');
 
       bytes.addAll(
         generator.imageRaster(
@@ -456,109 +463,5 @@ class BtPrintService {
     bytes.addAll(generator.cut());
 
     return bytes;
-  }
-
-  /// Semua operasi image processing yang berat dijalankan di background isolate.
-  /// Static agar bisa diakses dari Isolate.run() tanpa closure capture.
-  /// Mengembalikan (width, height, rawRgbBytes) atau null jika decode gagal.
-  static (int, int, Uint8List)? _processPage(Uint8List pngBytes) {
-    var decoded = img.decodeImage(pngBytes);
-    if (decoded == null) return null;
-
-    // Flatten transparency → background putih
-    final whiteBg = img.Image(
-      width: decoded.width,
-      height: decoded.height,
-      numChannels: 3,
-    );
-    img.fill(whiteBg, color: img.ColorRgb8(255, 255, 255));
-    img.compositeImage(whiteBg, decoded);
-    decoded = whiteBg;
-
-    // Grayscale → trim near-white borders → resize 576px → dither
-    // Dithering diperlukan agar grayscale (mis. watermark 0.3 opacity)
-    // tampil sebagai pola titik pada printer 1-bit, bukan hilang.
-    final gray = img.grayscale(decoded);
-    final trimmed = _trimNearWhite(gray);
-    final resized = img.copyResize(
-      trimmed,
-      width: 576,
-      interpolation: img.Interpolation.linear,
-    );
-    final dithered = _floydSteinbergDither(resized);
-
-    return (dithered.width, dithered.height, dithered.getBytes());
-  }
-
-  /// Trim semua sisi yang mengandung hanya pixel near-white (luminance >= 250).
-  /// Lebih robust dari [img.trim] karena tidak bergantung pada warna pojok tertentu.
-  static img.Image _trimNearWhite(img.Image src, {int threshold = 250}) {
-    final w = src.width;
-    final h = src.height;
-
-    bool isNearWhiteRow(int y) {
-      for (var x = 0; x < w; x++) {
-        if (src.getPixel(x, y).r < threshold) return false;
-      }
-      return true;
-    }
-
-    bool isNearWhiteCol(int x) {
-      for (var y = 0; y < h; y++) {
-        if (src.getPixel(x, y).r < threshold) return false;
-      }
-      return true;
-    }
-
-    var top = 0;
-    var bottom = h - 1;
-    var left = 0;
-    var right = w - 1;
-
-    while (top <= bottom && isNearWhiteRow(top)) { top++; }
-    while (bottom >= top && isNearWhiteRow(bottom)) { bottom--; }
-    while (left <= right && isNearWhiteCol(left)) { left++; }
-    while (right >= left && isNearWhiteCol(right)) { right--; }
-
-    if (top > bottom || left > right) return src;
-    return img.copyCrop(src, x: left, y: top, width: right - left + 1, height: bottom - top + 1);
-  }
-
-  static img.Image _floydSteinbergDither(img.Image src) {
-    final w = src.width;
-    final h = src.height;
-
-    final buf = List<double>.filled(w * h, 0.0);
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        buf[y * w + x] = src.getPixel(x, y).r.toDouble();
-      }
-    }
-
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        final idx = y * w + x;
-        final old = buf[idx].clamp(0.0, 255.0);
-        final neu = old < 128.0 ? 0.0 : 255.0;
-        final err = old - neu;
-        buf[idx] = neu;
-
-        if (x + 1 < w) buf[idx + 1] += err * 7 / 16;
-        if (y + 1 < h) {
-          if (x > 0) buf[idx + w - 1] += err * 3 / 16;
-          buf[idx + w] += err * 5 / 16;
-          if (x + 1 < w) buf[idx + w + 1] += err * 1 / 16;
-        }
-      }
-    }
-
-    final out = img.Image(width: w, height: h, numChannels: 3);
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        final v = buf[y * w + x] < 128.0 ? 0 : 255;
-        out.setPixelRgb(x, y, v, v, v);
-      }
-    }
-    return out;
   }
 }

@@ -164,7 +164,6 @@ class _PenerimaanBahanPendukungLabelListScreenState
         accentColor: _kAccent,
         pdfUrl: ApiConstants.bahanPendukungLabelPdf(item.noBahanPendukung),
         feature: 'bahan_pendukung',
-        titleIsNamaJenis: true,
         markAsPrinted: () async {
           final count = await _repo.markItemPrinted(item.noBahanPendukung);
           if (mounted) _reload();
@@ -172,9 +171,17 @@ class _PenerimaanBahanPendukungLabelListScreenState
         },
         onDelete: () => _deleteItem(item),
         metrics: [
-          (icon: Icons.numbers_outlined, text: '${_fmtQty(item.qty)} PCS'),
+          ProductionMetric(
+            label: 'Qty',
+            icon: Icons.numbers_outlined,
+            text: '${_fmtQty(item.qty)} PCS',
+          ),
           if (item.namaSupplier.isNotEmpty)
-            (icon: Icons.local_shipping_outlined, text: item.namaSupplier),
+            ProductionMetric(
+              label: 'Supplier',
+              icon: Icons.local_shipping_outlined,
+              text: item.namaSupplier,
+            ),
         ],
       ),
     );
