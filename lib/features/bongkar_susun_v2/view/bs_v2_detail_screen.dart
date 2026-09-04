@@ -6,10 +6,6 @@ import 'package:provider/provider.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/endpoints.dart';
-import '../../../core/network/label_print_lock_api.dart';
-import '../../../core/services/label_print_sync_queue.dart';
-import '../../../core/utils/pdf_print_service.dart';
-import '../../../core/view_model/label_print_lock_socket_manager.dart';
 import '../../label/bahan_baku/repository/bahan_baku_repository.dart';
 import '../../label/bahan_baku/view_model/bahan_baku_view_model.dart';
 import '../../label/bonggolan/repository/bonggolan_repository.dart';
@@ -163,7 +159,11 @@ class _BsV2DetailScreenState extends State<BsV2DetailScreen> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _OutputsCard(outputs: trx.outputs, nf: _nf),
+                child: _OutputsCard(
+                  outputs: trx.outputs,
+                  nf: _nf,
+                  onAfterPrint: _load,
+                ),
               ),
             ],
           ),
@@ -186,6 +186,13 @@ class _HeaderCard extends StatelessWidget {
     final balanced = trx.balance;
     final inputCount = trx.inputLabelCount ?? trx.inputs.length;
     final outputCount = trx.outputLabelCount ?? trx.outputs.length;
+
+    // Jenis barang yang diinput (distinct namaJenis), urut sesuai kemunculan.
+    final inputJenisList = <String>[];
+    for (final e in trx.inputs) {
+      final j = e.namaJenis.trim();
+      if (j.isNotEmpty && !inputJenisList.contains(j)) inputJenisList.add(j);
+    }
 
     return Container(
       decoration: _cardDecoration(),
@@ -282,6 +289,82 @@ class _HeaderCard extends StatelessWidget {
               ],
             ),
           ),
+          // ── Jenis barang input
+          if (inputJenisList.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF0F7FF),
+                border: Border(top: BorderSide(color: Color(0xFFD0E4FF))),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(_kRadius),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: _kPrimary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.category_rounded,
+                      size: 15,
+                      color: _kPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Jenis Item',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF8A94A6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            for (final j in inputJenisList)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _kPrimary.withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Text(
+                                  j,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1A1D23),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -528,7 +611,7 @@ class _InputsCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 const Text(
-                  'Label Input',
+                  'Input',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -578,10 +661,10 @@ class _InputsCard extends StatelessWidget {
                   physics: const NeverScrollableScrollPhysics(),
                   padding: EdgeInsets.zero,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: c.maxWidth < 380 ? 2 : 3,
+                    crossAxisCount: c.maxWidth < 560 ? 2 : 3,
                     crossAxisSpacing: 6,
                     mainAxisSpacing: 6,
-                    mainAxisExtent: 80,
+                    mainAxisExtent: 96,
                   ),
                   children: inputs
                       .map((lbl) => _BsV2InputTile(lbl: lbl, nf: nf))
@@ -737,14 +820,210 @@ class _BsV2InputTile extends StatelessWidget {
 
 // ─── Outputs Card ──────────────────────────────────────────────────────────
 
-class _OutputsCard extends StatelessWidget {
+class _OutputsCard extends StatefulWidget {
   final List<BsV2OutputLabel> outputs;
   final NumberFormat nf;
 
-  const _OutputsCard({required this.outputs, required this.nf});
+  /// Dipanggil setelah cetak batch selesai supaya parent reload detail
+  /// (status print count ikut ter-update).
+  final VoidCallback? onAfterPrint;
+
+  const _OutputsCard({
+    required this.outputs,
+    required this.nf,
+    this.onAfterPrint,
+  });
+
+  @override
+  State<_OutputsCard> createState() => _OutputsCardState();
+}
+
+class _OutputsCardState extends State<_OutputsCard>
+    with ProductionOutputMultiSelectMixin<_OutputsCard> {
+  NumberFormat get nf => widget.nf;
+
+  // Prefix label yang bisa dicetak (samakan dengan _printTargetFor).
+  static bool _canPrintCode(String? code) {
+    final c = (code ?? '').trim();
+    return c.startsWith('A') ||
+        c.startsWith('B') ||
+        c.startsWith('D') ||
+        c.startsWith('F') ||
+        c.startsWith('H') ||
+        c.startsWith('M') ||
+        c.startsWith('V');
+  }
+
+  static String _deriveNoBahanBaku(String noPallet) {
+    if (noPallet.contains('-')) {
+      return noPallet.substring(0, noPallet.lastIndexOf('-'));
+    }
+    return noPallet;
+  }
+
+  int get _printableCount =>
+      widget.outputs.where((o) => _canPrintCode(o.labelCode?.trim())).length;
+
+  /// Bangun target cetak untuk satu label output (prefix menentukan modul).
+  /// Return null bila label tidak bisa dicetak.
+  ProductionOutputPrintTarget? _printTargetFor(
+    BuildContext context,
+    BsV2OutputLabel out,
+  ) {
+    final labelCode = (out.labelCode ?? '').trim();
+    if (labelCode.isEmpty || !_canPrintCode(labelCode)) return null;
+
+    final isBahanBaku = labelCode.startsWith('A');
+    final isPacking = labelCode.startsWith('BA');
+    final isFurnitureWip = labelCode.startsWith('BB');
+    final isBroker = labelCode.startsWith('D');
+    final isCrusher = labelCode.startsWith('F');
+    final isMixer = labelCode.startsWith('H');
+    final isBonggolan = labelCode.startsWith('M');
+    final isGilingan = labelCode.startsWith('V');
+
+    final noPallet = (out.noPallet?.trim().isNotEmpty ?? false)
+        ? out.noPallet!.trim()
+        : labelCode;
+    final noBahanBaku = (out.noBahanBaku?.trim().isNotEmpty ?? false)
+        ? out.noBahanBaku!.trim()
+        : _deriveNoBahanBaku(noPallet);
+
+    final feature = isBahanBaku
+        ? 'bahan_baku'
+        : isPacking
+        ? 'packing'
+        : isFurnitureWip
+        ? 'furniture_wip'
+        : isBroker
+        ? 'broker'
+        : isCrusher
+        ? 'crusher'
+        : isMixer
+        ? 'mixer'
+        : isBonggolan
+        ? 'bonggolan'
+        : isGilingan
+        ? 'gilingan'
+        : 'washing';
+
+    final pdfUrl = isBahanBaku
+        ? ApiConstants.bahanBakuPalletLabelPdf(noBahanBaku, noPallet)
+        : isPacking
+        ? ApiConstants.packingLabelPdf(labelCode)
+        : isFurnitureWip
+        ? ApiConstants.furnitureWipLabelPdf(labelCode)
+        : isBroker
+        ? ApiConstants.brokerLabelPdf(labelCode)
+        : isCrusher
+        ? ApiConstants.crusherLabelPdf(labelCode)
+        : isMixer
+        ? ApiConstants.mixerLabelPdf(labelCode)
+        : isBonggolan
+        ? ApiConstants.bonggolanLabelPdf(labelCode)
+        : isGilingan
+        ? ApiConstants.gilinganLabelPdf(labelCode)
+        : ApiConstants.washingLabelPdf(labelCode);
+
+    final code = isBahanBaku ? noPallet : labelCode;
+
+    final bahanBakuRepo = isBahanBaku
+        ? BahanBakuRepository(api: ApiClient())
+        : null;
+    final bahanBakuVm = isBahanBaku ? context.read<BahanBakuViewModel>() : null;
+    final packingRepo = isPacking ? PackingRepository(api: ApiClient()) : null;
+    final furnitureWipRepo = isFurnitureWip ? FurnitureWipRepository() : null;
+    final brokerRepo = isBroker ? BrokerRepository(api: ApiClient()) : null;
+    final crusherRepo = isCrusher ? CrusherRepository() : null;
+    final mixerRepo = isMixer ? MixerRepository() : null;
+    final bonggolanRepo = isBonggolan ? BonggolanRepository() : null;
+    final gilinganRepo = isGilingan ? GilinganRepository() : null;
+    final washingRepo =
+        (isBahanBaku ||
+            isPacking ||
+            isFurnitureWip ||
+            isBroker ||
+            isCrusher ||
+            isMixer ||
+            isBonggolan ||
+            isGilingan)
+        ? null
+        : WashingRepository();
+
+    return ProductionOutputPrintTarget(
+      code: code,
+      pdfUrl: pdfUrl,
+      feature: feature,
+      markAsPrinted: () async {
+        if (isBahanBaku) {
+          final c = await bahanBakuRepo!.markAsPrinted(
+            noBahanBaku: noBahanBaku,
+            noPallet: noPallet,
+          );
+          if (c != null) {
+            bahanBakuVm!.setPalletPrintedCount(noPallet: noPallet, count: c);
+          }
+          return c;
+        }
+        if (isPacking) return packingRepo!.markAsPrinted(labelCode);
+        if (isFurnitureWip) return furnitureWipRepo!.markAsPrinted(labelCode);
+        if (isBroker) return brokerRepo!.markAsPrinted(labelCode);
+        if (isCrusher) return crusherRepo!.markAsPrinted(labelCode);
+        if (isMixer) return mixerRepo!.markAsPrinted(labelCode);
+        if (isBonggolan) return bonggolanRepo!.markAsPrinted(labelCode);
+        if (isGilingan) return gilinganRepo!.markAsPrinted(labelCode);
+        return washingRepo!.markAsPrinted(labelCode);
+      },
+    );
+  }
+
+  Future<void> _printSelected() async {
+    final targets = <ProductionOutputPrintTarget>[];
+    for (final item in selectedOutputItems) {
+      final t = _printTargetFor(context, item as BsV2OutputLabel);
+      if (t != null) targets.add(t);
+    }
+    if (targets.isEmpty) {
+      cancelOutputSelection();
+      return;
+    }
+    await runBatchPrintOutputs(targets);
+    widget.onAfterPrint?.call();
+  }
+
+  void _toggleSelectAll() {
+    final printable = widget.outputs
+        .where((o) => _canPrintCode(o.labelCode?.trim()))
+        .toList();
+    if (printable.isNotEmpty && selectedOutputCount >= printable.length) {
+      clearOutputSelection();
+    } else {
+      selectAllOutputs(printable, (o) {
+        final c = (o as BsV2OutputLabel).labelCode?.trim();
+        return (c != null && c.isNotEmpty) ? c : null;
+      });
+    }
+  }
+
+  Widget _buildOutputTile(BsV2OutputLabel out, int i) {
+    final code = out.labelCode?.trim();
+    final canPrint = _canPrintCode(code);
+    Widget tileBuilder(VoidCallback? overrideTap) =>
+        _BsV2OutputTile(out: out, nf: nf, index: i, overrideTap: overrideTap);
+    if (canPrint && code != null && code.isNotEmpty) {
+      return wrapOutputTile(
+        code: code,
+        item: out,
+        accentColor: _kGreen,
+        builder: tileBuilder,
+      );
+    }
+    return tileBuilder(null);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final outputs = widget.outputs;
     final totalPcs = outputs
         .where((e) => e.isPcsCategory)
         .fold(0.0, (s, e) => s + e.totalBerat);
@@ -776,7 +1055,7 @@ class _OutputsCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 const Text(
-                  'Label Output',
+                  'Output',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -784,7 +1063,7 @@ class _OutputsCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                if (outputs.isNotEmpty)
+                if (outputs.isNotEmpty && !isSelectingOutput)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -826,80 +1105,100 @@ class _OutputsCard extends StatelessWidget {
                   physics: const NeverScrollableScrollPhysics(),
                   padding: EdgeInsets.zero,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: c.maxWidth < 380 ? 2 : 3,
+                    crossAxisCount: c.maxWidth < 560 ? 2 : 3,
                     crossAxisSpacing: 6,
                     mainAxisSpacing: 6,
-                    mainAxisExtent: 80,
+                    mainAxisExtent: 96,
                   ),
                   children: [
                     for (var i = 0; i < outputs.length; i++)
-                      _BsV2OutputTile(out: outputs[i], nf: nf, index: i),
+                      _buildOutputTile(outputs[i], i),
                   ],
                 ),
               ),
             ),
-            // Total row
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: _kGreen.withValues(alpha: 0.04),
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(_kRadius),
+            if (isSelectingOutput)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+                child: ProductionOutputSelectionBar(
+                  accentColor: _kGreen,
+                  count: selectedOutputCount,
+                  totalAvailable: _printableCount,
+                  allSelected:
+                      _printableCount > 0 &&
+                      selectedOutputCount >= _printableCount,
+                  onCancel: cancelOutputSelection,
+                  onToggleAll: _toggleSelectAll,
+                  onPrint: _printSelected,
+                  // onDelete sengaja null → tombol "Hapus" tidak ditampilkan
                 ),
-                border: const Border(top: BorderSide(color: _kBorder)),
+              )
+            else
+              // Total row
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: _kGreen.withValues(alpha: 0.04),
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(_kRadius),
+                  ),
+                  border: const Border(top: BorderSide(color: _kBorder)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (totalBeratKg > 0)
+                      Row(
+                        children: [
+                          const Text(
+                            'Total Berat Output',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: _kGreen,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${nf.format(totalBeratKg)} kg',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: _kGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (totalBeratKg > 0 && totalPcs > 0)
+                      const SizedBox(height: 4),
+                    if (totalPcs > 0)
+                      Row(
+                        children: [
+                          const Text(
+                            'Total Pcs Output',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: _kGreen,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${totalPcs.toInt()} pcs',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: _kGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (totalBeratKg > 0)
-                    Row(
-                      children: [
-                        const Text(
-                          'Total Berat Output',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: _kGreen,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${nf.format(totalBeratKg)} kg',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: _kGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                  if (totalBeratKg > 0 && totalPcs > 0)
-                    const SizedBox(height: 4),
-                  if (totalPcs > 0)
-                    Row(
-                      children: [
-                        const Text(
-                          'Total Pcs Output',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: _kGreen,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${totalPcs.toInt()} pcs',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: _kGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
           ],
         ],
       ),
@@ -907,228 +1206,25 @@ class _OutputsCard extends StatelessWidget {
   }
 }
 
-// Card tile untuk satu label output — format identik dengan tile input/output
-// pada layar produksi (mis. broker): jenis sebagai judul, nomor label sebagai
-// sub judul, tombol print inline, metrics di baris bawah, tap untuk detail sak.
+// Card tile untuk satu label output — format identik dengan tile output pada
+// layar produksi shared: jenis sebagai judul, indikator status print count
+// (×N + ikon printer) di kanan judul, nomor label sebagai sub judul, metrics
+// di baris bawah. Cetak dilakukan lewat long-press multi-select.
 class _BsV2OutputTile extends StatelessWidget {
   final BsV2OutputLabel out;
   final NumberFormat nf;
   final int index;
+
+  /// Bila diisi (mode multi-select aktif), tap tile = toggle pilih, bukan
+  /// buka detail sak.
+  final VoidCallback? overrideTap;
+
   const _BsV2OutputTile({
     required this.out,
     required this.nf,
     required this.index,
+    this.overrideTap,
   });
-
-  bool get _canPrint {
-    final labelCode = (out.labelCode ?? '').trim();
-    return labelCode.startsWith('A') ||
-        labelCode.startsWith('B') ||
-        labelCode.startsWith('D') ||
-        labelCode.startsWith('F') ||
-        labelCode.startsWith('H') ||
-        labelCode.startsWith('M') ||
-        labelCode.startsWith('V');
-  }
-
-  String _deriveNoBahanBaku(String noPallet) {
-    if (noPallet.contains('-')) {
-      return noPallet.substring(0, noPallet.lastIndexOf('-'));
-    }
-    return noPallet;
-  }
-
-  Future<void> _handlePrint(BuildContext context, String labelCode) async {
-    final rootCtx = Navigator.of(context, rootNavigator: true).context;
-    final isBahanBakuLabel = labelCode.startsWith('A');
-    final isPackingLabel = labelCode.startsWith('BA');
-    final isFurnitureWipLabel = labelCode.startsWith('BB');
-    final isBrokerLabel = labelCode.startsWith('D');
-    final isCrusherLabel = labelCode.startsWith('F');
-    final isMixerLabel = labelCode.startsWith('H');
-    final isBonggolanLabel = labelCode.startsWith('M');
-    final isGilinganLabel = labelCode.startsWith('V');
-    final lockApi = LabelPrintLockApi();
-    final noPallet = (out.noPallet?.trim().isNotEmpty ?? false)
-        ? out.noPallet!.trim()
-        : labelCode;
-    final noBahanBaku = (out.noBahanBaku?.trim().isNotEmpty ?? false)
-        ? out.noBahanBaku!.trim()
-        : _deriveNoBahanBaku(noPallet);
-    final bahanBakuRepo = isBahanBakuLabel
-        ? BahanBakuRepository(api: ApiClient())
-        : null;
-    final bahanBakuVm = isBahanBakuLabel
-        ? context.read<BahanBakuViewModel>()
-        : null;
-    final packingRepo = isPackingLabel
-        ? PackingRepository(api: ApiClient())
-        : null;
-    final furnitureWipRepo = isFurnitureWipLabel
-        ? FurnitureWipRepository()
-        : null;
-    final brokerRepo = isBrokerLabel
-        ? BrokerRepository(api: ApiClient())
-        : null;
-    final crusherRepo = isCrusherLabel ? CrusherRepository() : null;
-    final mixerRepo = isMixerLabel ? MixerRepository() : null;
-    final bonggolanRepo = isBonggolanLabel ? BonggolanRepository() : null;
-    final gilinganRepo = isGilinganLabel ? GilinganRepository() : null;
-    final washingRepo =
-        isBahanBakuLabel ||
-            isPackingLabel ||
-            isFurnitureWipLabel ||
-            isBrokerLabel ||
-            isCrusherLabel ||
-            isMixerLabel ||
-            isBonggolanLabel ||
-            isGilinganLabel
-        ? null
-        : WashingRepository();
-    final lockVm = context.read<LabelPrintLockSocketManager>();
-    final queue = context.read<LabelPrintSyncQueue>();
-    final feature = isBahanBakuLabel
-        ? 'bahan_baku'
-        : isPackingLabel
-        ? 'packing'
-        : isFurnitureWipLabel
-        ? 'furniture_wip'
-        : isBrokerLabel
-        ? 'broker'
-        : isCrusherLabel
-        ? 'crusher'
-        : isMixerLabel
-        ? 'mixer'
-        : isBonggolanLabel
-        ? 'bonggolan'
-        : isGilinganLabel
-        ? 'gilingan'
-        : 'washing';
-    final pdfUrl = isBahanBakuLabel
-        ? ApiConstants.bahanBakuPalletLabelPdf(noBahanBaku, noPallet)
-        : isPackingLabel
-        ? ApiConstants.packingLabelPdf(labelCode)
-        : isFurnitureWipLabel
-        ? ApiConstants.furnitureWipLabelPdf(labelCode)
-        : isBrokerLabel
-        ? ApiConstants.brokerLabelPdf(labelCode)
-        : isCrusherLabel
-        ? ApiConstants.crusherLabelPdf(labelCode)
-        : isMixerLabel
-        ? ApiConstants.mixerLabelPdf(labelCode)
-        : isBonggolanLabel
-        ? ApiConstants.bonggolanLabelPdf(labelCode)
-        : isGilinganLabel
-        ? ApiConstants.gilinganLabelPdf(labelCode)
-        : ApiConstants.washingLabelPdf(labelCode);
-    final title = isBahanBakuLabel
-        ? '$noBahanBaku-$noPallet'
-        : isPackingLabel ||
-              isFurnitureWipLabel ||
-              isBrokerLabel ||
-              isCrusherLabel ||
-              isMixerLabel ||
-              isBonggolanLabel ||
-              isGilinganLabel
-        ? labelCode
-        : 'Label $labelCode';
-    var isLockAcquired = false;
-    var isPrinted = false;
-
-    try {
-      await lockApi.acquire(isBahanBakuLabel ? noPallet : labelCode);
-      isLockAcquired = true;
-
-      await PdfPrintService(defaultSystem: 'pps').previewFromUrl(
-        context: rootCtx,
-        pdfUrl: Uri.parse(pdfUrl),
-        title: title,
-        onPrinted: () {
-          isPrinted = true;
-          () async {
-            var needsIncrement = false;
-            var needsRelease = false;
-
-            try {
-              final count = isBahanBakuLabel
-                  ? await bahanBakuRepo!.markAsPrinted(
-                      noBahanBaku: noBahanBaku,
-                      noPallet: noPallet,
-                    )
-                  : isPackingLabel
-                  ? await packingRepo!.markAsPrinted(labelCode)
-                  : isFurnitureWipLabel
-                  ? await furnitureWipRepo!.markAsPrinted(labelCode)
-                  : isBrokerLabel
-                  ? await brokerRepo!.markAsPrinted(labelCode)
-                  : isCrusherLabel
-                  ? await crusherRepo!.markAsPrinted(labelCode)
-                  : isMixerLabel
-                  ? await mixerRepo!.markAsPrinted(labelCode)
-                  : isBonggolanLabel
-                  ? await bonggolanRepo!.markAsPrinted(labelCode)
-                  : isGilinganLabel
-                  ? await gilinganRepo!.markAsPrinted(labelCode)
-                  : await washingRepo!.markAsPrinted(labelCode);
-              if (count != null) {
-                lockVm.setPrintCount(
-                  isBahanBakuLabel ? noPallet : labelCode,
-                  count,
-                );
-                if (isBahanBakuLabel) {
-                  bahanBakuVm!.setPalletPrintedCount(
-                    noPallet: noPallet,
-                    count: count,
-                  );
-                }
-              }
-            } catch (_) {
-              needsIncrement = true;
-            }
-
-            try {
-              await lockApi.release(isBahanBakuLabel ? noPallet : labelCode);
-            } catch (_) {
-              needsRelease = true;
-            }
-
-            if (needsIncrement || needsRelease) {
-              await queue.enqueue(
-                feature: feature,
-                noLabel: isBahanBakuLabel ? noPallet : labelCode,
-                extra: isBahanBakuLabel
-                    ? {'noBahanBaku': noBahanBaku, 'noPallet': noPallet}
-                    : null,
-                needsIncrement: needsIncrement,
-                needsReleaseLock: needsRelease,
-              );
-            }
-          }().ignore();
-        },
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      final msg = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-    } finally {
-      if (isLockAcquired && !isPrinted) {
-        () async {
-          try {
-            await lockApi.release(isBahanBakuLabel ? noPallet : labelCode);
-          } catch (_) {
-            await queue.enqueue(
-              feature: feature,
-              noLabel: isBahanBakuLabel ? noPallet : labelCode,
-              extra: isBahanBakuLabel
-                  ? {'noBahanBaku': noBahanBaku, 'noPallet': noPallet}
-                  : null,
-              needsReleaseLock: true,
-            );
-          }
-        }().ignore();
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1147,27 +1243,30 @@ class _BsV2OutputTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: hasSakDetail
-            ? () => showDialog<void>(
-                context: context,
-                builder: (_) => BsV2SakDetailDialog(
-                  nf: nf,
-                  lbl: BsV2LabelInfo(
-                    labelCode: out.labelCode ?? '#${index + 1}',
-                    category: out.category,
-                    idJenis: out.idJenis,
-                    namaJenis: out.namaJenis,
-                    totalBerat: out.totalBerat,
-                    jumlahSak: out.jumlahSak,
-                    saks: out.saks
-                        .map(
-                          (s) => BsV2LabelSak(noSak: s.noSak, berat: s.berat),
-                        )
-                        .toList(),
-                  ),
-                ),
-              )
-            : null,
+        onTap:
+            overrideTap ??
+            (hasSakDetail
+                ? () => showDialog<void>(
+                    context: context,
+                    builder: (_) => BsV2SakDetailDialog(
+                      nf: nf,
+                      lbl: BsV2LabelInfo(
+                        labelCode: out.labelCode ?? '#${index + 1}',
+                        category: out.category,
+                        idJenis: out.idJenis,
+                        namaJenis: out.namaJenis,
+                        totalBerat: out.totalBerat,
+                        jumlahSak: out.jumlahSak,
+                        saks: out.saks
+                            .map(
+                              (s) =>
+                                  BsV2LabelSak(noSak: s.noSak, berat: s.berat),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  )
+                : null),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Column(
@@ -1188,12 +1287,23 @@ class _BsV2OutputTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (labelCode != null && _canPrint) ...[
-                    const SizedBox(width: 4),
-                    _OutputPrintButton(
-                      onPressed: () => _handlePrint(context, labelCode),
+                  const SizedBox(width: 4),
+                  Text(
+                    '×${out.printCount}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: out.printCount > 0
+                          ? _kGreen
+                          : Colors.grey.shade400,
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.print_outlined,
+                    size: 11,
+                    color: out.printCount > 0 ? _kGreen : Colors.grey.shade400,
+                  ),
                 ],
               ),
               const SizedBox(height: 1),
@@ -1225,34 +1335,6 @@ class _BsV2OutputTile extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OutputPrintButton extends StatelessWidget {
-  final VoidCallback onPressed;
-
-  const _OutputPrintButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Print',
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          width: 26,
-          height: 24,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: _kGreen.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: _kGreen.withValues(alpha: 0.18)),
-          ),
-          child: const Icon(Icons.print_outlined, size: 14, color: _kGreen),
         ),
       ),
     );

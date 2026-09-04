@@ -873,7 +873,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kBrokerPrimary,
                 ),
                 const Spacer(),
@@ -1191,7 +1191,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kBrokerOutput,
                   primaryColor: _kBrokerPrimary,
                 ),

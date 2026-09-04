@@ -195,8 +195,16 @@ class _PenerimaanBahanPendukungScreenState
   }
 
   static ProduksiRowData _toRowData(PenerimaanBahanPendukung row) {
+    final tgl = row.tglPenerimaan;
+    final tglText = tgl != null
+        ? DateFormat('dd MMM yyyy', 'id_ID').format(tgl)
+        : '-';
+    final tim = row.namaTim.trim().isNotEmpty ? row.namaTim.trim() : '-';
+    final by = (row.createBy ?? '').trim().isNotEmpty
+        ? row.createBy!.trim()
+        : '-';
     return ProduksiRowData(
-      tglProduksi: row.tglPenerimaan,
+      tglProduksi: tgl,
       hourStart: null,
       hourEnd: null,
       shift: 0,
@@ -204,6 +212,12 @@ class _PenerimaanBahanPendukungScreenState
       namaMesin: row.namaTim,
       noProduksi: row.noPenerimaan,
       produksiStatus: _rowStatusOf(row),
+      hideTimeRow: true,
+      metaOverride: [
+        ProduksiMetaEntry('Tim Penerima', tim),
+        ProduksiMetaEntry('Tanggal', tglText),
+        ProduksiMetaEntry('Dibuat oleh', by),
+      ],
     );
   }
 
@@ -415,6 +429,7 @@ class _PenerimaanBahanPendukungScreenState
           future: _timFuture,
           builder: (context, snapshot) {
             return ProductionRiwayatHeader(
+              title: 'Riwayat Penerimaan',
               mesinList: (snapshot.data ?? [])
                   .map(
                     (t) =>

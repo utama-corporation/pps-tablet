@@ -271,7 +271,7 @@ class _HotStampProductionMesinScreenState
   }
 
   static MesinCardData _toMesinCardData(HotStampMesinInfo mesin) {
-    final current = mesin.isActive ? _currentItem(mesin) : null;
+    final current = mesin.hasProduction ? _currentItem(mesin) : null;
     String? shiftTimeText;
     if (current != null) {
       final parts = <String>[];
@@ -284,6 +284,7 @@ class _HotStampProductionMesinScreenState
     return MesinCardData(
       namaMesin: mesin.namaMesin,
       isActive: mesin.isActive,
+      machineStatus: mesin.machineStatus,
       shiftTimeText: shiftTimeText,
       namaRegu: current?.namaRegu,
       outputJenisNama: current?.outputJenisNama,
@@ -301,6 +302,7 @@ class _HotStampProductionMesinScreenState
       namaRegu: row.namaRegu,
       outputJenisNama: row.outputJenisNama,
       noProduksi: row.noProduksi,
+      produksiStatus: row.produksiStatus,
     );
   }
 
@@ -322,10 +324,16 @@ class _HotStampProductionMesinScreenState
                       final activeCount = allMesin
                           .where((m) => m.isActive)
                           .length;
-                      final inactiveCount = allMesin.length - activeCount;
+                      final pendingCount = allMesin
+                          .where((m) => m.isPending)
+                          .length;
+                      final inactiveCount = allMesin
+                          .where((m) => !m.hasProduction)
+                          .length;
                       return MesinSectionHeader(
                         title: 'Status Mesin Hot Stamping',
                         activeCount: activeCount,
+                        pendingCount: pendingCount,
                         inactiveCount: inactiveCount,
                         isLoading:
                             snapshot.connectionState == ConnectionState.waiting,

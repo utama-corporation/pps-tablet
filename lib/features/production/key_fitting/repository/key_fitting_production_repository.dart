@@ -249,6 +249,32 @@ class KeyFittingProductionRepository {
   //  DELETE
   //  DELETE /api/production/key-fitting/:noProduksi
   // =========================
+  //  PATCH /api/production/key-fitting/:noProduksi/complete
+  Future<void> completeProduksi(String noProduksi) async {
+    print('✅ Completing key fitting production: $noProduksi');
+    try {
+      await api.patchJson('/api/production/key-fitting/$noProduksi/complete');
+    } catch (e) {
+      print('❌ Complete key fitting production error: $e');
+      if (e is ApiException) {
+        if (e.responseBody != null && e.responseBody!.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(e.responseBody!);
+            final msg = decoded['message'] ??
+                decoded['error'] ??
+                decoded['msg'] ??
+                'Gagal menyelesaikan key fitting produksi';
+            throw Exception(msg);
+          } catch (_) {
+            throw Exception(e.responseBody);
+          }
+        }
+        throw Exception('Gagal menyelesaikan key fitting produksi (${e.statusCode})');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> deleteProduksi(String noProduksi) async {
     print('🗑️ Deleting key fitting production: $noProduksi');
 

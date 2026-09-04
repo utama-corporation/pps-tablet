@@ -142,7 +142,7 @@ class _CrusherProductionMesinScreenState
 
   static MesinCardData _toMesinCardData(CrusherMesinInfo mesin) {
     String? shiftTimeText;
-    if (mesin.isActive) {
+    if (mesin.hasProduction) {
       final parts = <String>[];
       if (mesin.shift != null) parts.add('Shift ${mesin.shift}');
       parts.add('${mesin.hourStart ?? '--:--'} – ${mesin.hourEnd ?? '--:--'}');
@@ -151,6 +151,7 @@ class _CrusherProductionMesinScreenState
     return MesinCardData(
       namaMesin: mesin.namaMesin,
       isActive: mesin.isActive,
+      machineStatus: mesin.machineStatus,
       shiftTimeText: shiftTimeText,
       namaRegu: mesin.namaRegu,
       outputJenisNama: mesin.outputJenisNama,
@@ -262,7 +263,7 @@ class _CrusherProductionMesinScreenState
   Future<void> _onMesinTap(CrusherMesinInfo mesin) async {
     if (!mounted) return;
 
-    if (!mesin.isActive) {
+    if (!mesin.hasProduction) {
       await _openCreateDialog(mesin: mesin);
       return;
     }
@@ -297,10 +298,16 @@ class _CrusherProductionMesinScreenState
                       final activeCount = allMesin
                           .where((m) => m.isActive)
                           .length;
-                      final inactiveCount = allMesin.length - activeCount;
+                      final pendingCount = allMesin
+                          .where((m) => m.isPending)
+                          .length;
+                      final inactiveCount = allMesin
+                          .where((m) => !m.hasProduction)
+                          .length;
                       return MesinSectionHeader(
                         title: 'Status Mesin Crusher',
                         activeCount: activeCount,
+                        pendingCount: pendingCount,
                         inactiveCount: inactiveCount,
                         isLoading:
                             snapshot.connectionState == ConnectionState.waiting,
@@ -335,7 +342,7 @@ class _CrusherProductionMesinScreenState
                         final allMesin = snapshot.data ?? [];
                         return LayoutBuilder(
                           builder: (context, constraints) {
-                            final cols = (constraints.maxWidth / 150)
+                            final cols = (constraints.maxWidth / 165)
                                 .floor()
                                 .clamp(2, 6);
                             return GridView.builder(
@@ -343,7 +350,7 @@ class _CrusherProductionMesinScreenState
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: cols,
-                                    mainAxisExtent: 110,
+                                    mainAxisExtent: 130,
                                     crossAxisSpacing: 10,
                                     mainAxisSpacing: 10,
                                   ),

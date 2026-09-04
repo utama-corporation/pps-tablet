@@ -38,7 +38,7 @@ import '../widgets/inject_split_time_dialog_v1.dart';
 import '../../../label/packing/repository/packing_repository.dart';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
-const _kInjectPrimary = Color(0xFF0277BD); // biru — input
+const _kInjectPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kInjectOutput = Color(0xFF00695C); // darker teal — output
 const _kInjectSurface = Color(0xFFF8F9FB);
 const _kInjectBorder = Color(0xFFE2E6EA);
@@ -1296,7 +1296,7 @@ class _InjectProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kInjectPrimary,
                 ),
                 const Spacer(),
@@ -2297,7 +2297,7 @@ class _InjectProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kInjectOutput,
                   primaryColor: _kInjectPrimary,
                 ),

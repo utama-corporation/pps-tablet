@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+/// Satu baris meta (label : nilai) pada kartu riwayat.
+class ProduksiMetaEntry {
+  const ProduksiMetaEntry(this.label, this.value);
+  final String label;
+  final String value;
+}
+
 class ProduksiRowData {
   final DateTime? tglProduksi;
   final String? hourStart;
@@ -20,6 +27,18 @@ class ProduksiRowData {
   final String? produksiStatus;
   final String? completeRequestStatus;
 
+  /// Label kolom "Mesin" (default). Modul non-produksi (mis. penerimaan)
+  /// bisa menggantinya jadi "Tim Penerima", dll.
+  final String mesinLabel;
+
+  /// Sembunyikan baris jam (schedule) + badge "Shift N" — dipakai modul yang
+  /// tidak punya konsep jam/shift (penerimaan barang).
+  final bool hideTimeRow;
+
+  /// Bila diisi, daftar meta ini menggantikan seluruh meta default
+  /// (Mesin/Regu/Output/Cetakan). Dipakai untuk riwayat non-produksi.
+  final List<ProduksiMetaEntry>? metaOverride;
+
   const ProduksiRowData({
     required this.tglProduksi,
     required this.hourStart,
@@ -35,6 +54,9 @@ class ProduksiRowData {
     this.noProduksi,
     this.produksiStatus,
     this.completeRequestStatus,
+    this.mesinLabel = 'Mesin',
+    this.hideTimeRow = false,
+    this.metaOverride,
   });
 }
 
@@ -253,10 +275,14 @@ class _ProduksiRowState extends State<_ProduksiRow> {
         (data.namaWarna ?? '').trim().isNotEmpty ||
         (data.namaFurnitureMaterial ?? '').trim().isNotEmpty;
 
-    final metaItems = <_MetaItem>[
+    final metaItems = data.metaOverride != null
+        ? data.metaOverride!
+            .map((m) => _MetaItem(label: m.label, value: m.value))
+            .toList()
+        : <_MetaItem>[
       if (widget.showMesin)
         _MetaItem(
-          label: 'Mesin',
+          label: data.mesinLabel,
           value:
               data.namaMesin.trim().isNotEmpty ? data.namaMesin.trim() : '-',
         ),
@@ -328,22 +354,21 @@ class _ProduksiRowState extends State<_ProduksiRow> {
                                   Icon(Icons.calendar_today_outlined,
                                       size: 14, color: Colors.grey.shade600),
                                   const SizedBox(width: 6),
-                                  Text(
-                                    _fmtDate(data.tglProduksi),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF111827)),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Icon(Icons.schedule_outlined,
-                                      size: 14, color: Colors.grey.shade600),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      '${_fmtTime(data.hourStart)} - ${_fmtTime(data.hourEnd)}',
+                                  if (data.hideTimeRow)
+                                    Expanded(
+                                      child: Text(
+                                        _fmtDate(data.tglProduksi),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF111827)),
+                                      ),
+                                    )
+                                  else ...[
+                                    Text(
+                                      _fmtDate(data.tglProduksi),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -351,9 +376,24 @@ class _ProduksiRowState extends State<_ProduksiRow> {
                                           fontWeight: FontWeight.w700,
                                           color: Color(0xFF111827)),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _TitleBadge(text: 'Shift ${data.shift}'),
+                                    const SizedBox(width: 10),
+                                    Icon(Icons.schedule_outlined,
+                                        size: 14, color: Colors.grey.shade600),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        '${_fmtTime(data.hourStart)} - ${_fmtTime(data.hourEnd)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF111827)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _TitleBadge(text: 'Shift ${data.shift}'),
+                                  ],
                                   if (data.isLocked)
                                     const Padding(
                                       padding: EdgeInsets.only(left: 6),

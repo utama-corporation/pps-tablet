@@ -28,84 +28,95 @@ class _OutputsPanel extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
-              children: [
-                _sectionHeader(
-                  Icons.output_rounded,
-                  'Label Output',
-                  iconColor: const Color(0xFF0A7349),
-                ),
-                const Spacer(),
-                if (vm.outputs.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0A7349).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${vm.outputs.length} label',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0A7349),
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                Builder(
-                  builder: (_) {
-                    final canAdd =
-                        vm.inputs.isNotEmpty && !vm.allJenisAllocated;
-                    return Tooltip(
-                      message: vm.inputs.isNotEmpty && vm.allJenisAllocated
-                          ? 'Semua jenis sudah terpenuhi'
-                          : '',
-                      child: Material(
-                        color: canAdd
-                            ? const Color(0xFF0A7349)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
-                          onTap: canAdd ? vm.addOutput : null,
-                          borderRadius: BorderRadius.circular(10),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 7,
+            child: LayoutBuilder(
+              builder: (context, c) {
+                // Sembunyikan label tombol saat header sempit (mis. panel
+                // output menyusut di layar kecil) supaya tidak overflow.
+                final compact = c.maxWidth < 320;
+                final canAdd = vm.inputs.isNotEmpty && !vm.allJenisAllocated;
+                final addButton = Tooltip(
+                  message: vm.inputs.isNotEmpty && vm.allJenisAllocated
+                      ? 'Semua jenis sudah terpenuhi'
+                      : (compact ? 'Tambah Output' : ''),
+                  child: Material(
+                    color: canAdd
+                        ? const Color(0xFF0A7349)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: canAdd ? vm.addOutput : null,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 8 : 14,
+                          vertical: 7,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.add,
+                              size: 15,
+                              color: canAdd
+                                  ? Colors.white
+                                  : Colors.grey.shade400,
                             ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.add,
-                                  size: 15,
+                            if (!compact) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                'Tambah Output',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
                                   color: canAdd
                                       ? Colors.white
                                       : Colors.grey.shade400,
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Tambah Output',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: canAdd
-                                        ? Colors.white
-                                        : Colors.grey.shade400,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+
+                return Row(
+                  children: [
+                    Flexible(
+                      child: _sectionHeader(
+                        Icons.output_rounded,
+                        'Output',
+                        iconColor: const Color(0xFF0A7349),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (vm.outputs.isNotEmpty && !compact) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A7349).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${vm.outputs.length} label',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0A7349),
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
-              ],
+                      const SizedBox(width: 8),
+                    ],
+                    const Spacer(),
+                    addButton,
+                  ],
+                );
+              },
             ),
           ),
           const Divider(height: 1, color: _kBorder),

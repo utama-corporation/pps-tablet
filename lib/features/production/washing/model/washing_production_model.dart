@@ -1,6 +1,8 @@
 // lib/features/shared/washing_production/model/washing_production_model.dart
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class WashingProduction {
   final String noProduksi;
 
@@ -303,8 +305,24 @@ class WashingMesinInfo {
   final String? hourStart; // “HH:mm”
   final String? hourEnd;   // “HH:mm”
   final bool? isBlower;
+  final MachineStatus machineStatus;
 
-  bool get isActive => noProduksi != null && noProduksi!.isNotEmpty;
+  bool get hasProduction => noProduksi != null && noProduksi!.isNotEmpty;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   const WashingMesinInfo({
     required this.idMesin,
@@ -323,6 +341,7 @@ class WashingMesinInfo {
     this.hourStart,
     this.hourEnd,
     this.isBlower,
+    this.machineStatus = MachineStatus.inactive,
   });
 
   static String? _s(dynamic v) {
@@ -390,6 +409,7 @@ class WashingMesinInfo {
       hourStart: _time(j['HourStart']),
       hourEnd: _time(j['HourEnd']),
       isBlower: _b(j['IsBlower']),
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

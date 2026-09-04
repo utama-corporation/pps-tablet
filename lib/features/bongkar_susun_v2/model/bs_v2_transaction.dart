@@ -39,6 +39,9 @@ class BsV2OutputLabel {
   final List<BsV2SakItem> saks;
   final double? berat;
 
+  /// Berapa kali label ini sudah dicetak (dari HasBeenPrinted di label header).
+  final int printCount;
+
   const BsV2OutputLabel({
     this.labelCode,
     this.noBahanBaku,
@@ -50,6 +53,7 @@ class BsV2OutputLabel {
     this.jumlahSak = 0,
     this.saks = const [],
     this.berat,
+    this.printCount = 0,
   });
 
   bool get isWashing => category == 'washing';
@@ -127,6 +131,7 @@ class BsV2OutputLabel {
           .map((e) => BsV2SakItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
       berat: j['berat'] == null ? null : _d(j['berat']),
+      printCount: _i(j['printCount'] ?? j['hasBeenPrinted'] ?? j['HasBeenPrinted']),
     );
   }
 }

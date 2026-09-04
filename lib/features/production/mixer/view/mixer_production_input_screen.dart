@@ -37,7 +37,7 @@ import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
 // ── Mixer colour palette ──────────────────────────────────────────────────────
-const _kMixerPrimary = Color(0xFF1565C0);
+const _kMixerPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kMixerSurface = Color(0xFFF8F9FB);
 const _kMixerBorder = Color(0xFFE2E6EA);
 
@@ -750,7 +750,7 @@ class _MixerProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kMixerOutputColor,
                   primaryColor: _kMixerPrimary,
                 ),
@@ -1030,7 +1030,7 @@ class _MixerProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kMixerPrimary,
                 ),
                 const Spacer(),

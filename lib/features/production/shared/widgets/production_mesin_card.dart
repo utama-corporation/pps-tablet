@@ -59,7 +59,8 @@ class ProductionMesinCard extends StatelessWidget {
     if (data.machineStatus != null) {
       switch (data.machineStatus!) {
         case MachineStatus.active:
-          borderColor = const Color(0xFF86EFAC);
+          // Aktif = current / sedang berjalan → biru
+          borderColor = const Color(0xFF93C5FD);
           bgColor = null;
         case MachineStatus.pending:
           borderColor = const Color(0xFFFCD34D);
@@ -69,7 +70,7 @@ class ProductionMesinCard extends StatelessWidget {
           bgColor = null;
       }
     } else {
-      borderColor = data.isActive ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5);
+      borderColor = data.isActive ? const Color(0xFF93C5FD) : const Color(0xFFFCA5A5);
       bgColor = null;
     }
 

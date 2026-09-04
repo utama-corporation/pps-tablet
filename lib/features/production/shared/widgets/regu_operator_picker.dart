@@ -17,6 +17,7 @@ class ReguOperatorPickerField extends StatelessWidget {
     required this.selectedOperators,
     required this.isLoading,
     required this.onTap,
+    this.errorText,
   });
 
   final MstRegu? selectedRegu;
@@ -24,48 +25,73 @@ class ReguOperatorPickerField extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onTap;
 
+  /// Pesan error inline (mis. "Regu & operator wajib dipilih"). Saat diisi,
+  /// border jadi merah dan teks error tampil di bawah field — tidak pakai
+  /// SnackBar yang bisa ketutup dialog.
+  final String? errorText;
+
   @override
   Widget build(BuildContext context) {
     final hasRegu = selectedRegu != null;
     final hasOperator = selectedOperators.isNotEmpty;
     final hasAny = hasRegu || hasOperator;
+    final hasError = errorText != null && errorText!.isNotEmpty;
 
     final reguValue = hasRegu ? selectedRegu!.namaRegu : null;
     final operatorValue = hasOperator
         ? selectedOperators.map((o) => o.namaOperator).join(', ')
         : null;
 
-    return _PickerContainer(
-      hasValue: hasAny,
-      isLoading: isLoading,
-      onTap: onTap,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Col(
-              icon: Icons.groups_outlined,
-              label: 'REGU',
-              value: reguValue,
-              hint: 'Pilih regu',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PickerContainer(
+          hasValue: hasAny,
+          isLoading: isLoading,
+          onTap: onTap,
+          hasError: hasError,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Col(
+                  icon: Icons.groups_outlined,
+                  label: 'REGU',
+                  value: reguValue,
+                  hint: 'Pilih regu',
+                ),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  color: const Color(0xFFE5E7EB),
+                ),
+                _Col(
+                  icon: Icons.person_outline,
+                  label: 'OPERATOR',
+                  value: operatorValue,
+                  hint: 'Pilih operator',
+                  extraLabel: hasOperator
+                      ? '${selectedOperators.length} orang'
+                      : null,
+                ),
+              ],
             ),
-            Container(
-              width: 1,
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              color: const Color(0xFFE5E7EB),
-            ),
-            _Col(
-              icon: Icons.person_outline,
-              label: 'OPERATOR',
-              value: operatorValue,
-              hint: 'Pilih operator',
-              extraLabel: hasOperator
-                  ? '${selectedOperators.length} orang'
-                  : null,
-            ),
-          ],
+          ),
         ),
-      ),
+        if (hasError)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              errorText!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFFDC2626),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -76,12 +102,14 @@ class _PickerContainer extends StatelessWidget {
     required this.isLoading,
     required this.onTap,
     required this.child,
+    this.hasError = false,
   });
 
   final bool hasValue;
   final bool isLoading;
   final VoidCallback onTap;
   final Widget child;
+  final bool hasError;
 
   @override
   Widget build(BuildContext context) {
@@ -97,10 +125,12 @@ class _PickerContainer extends StatelessWidget {
             color: hasValue ? Colors.white : Colors.white,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: hasValue
-                  ? const Color(0xFF6B7280)
-                  : const Color(0xFFD1D5DB),
-              width: hasValue ? 1.0 : 1.2,
+              color: hasError
+                  ? const Color(0xFFDC2626)
+                  : hasValue
+                      ? const Color(0xFF6B7280)
+                      : const Color(0xFFD1D5DB),
+              width: hasError ? 1.4 : (hasValue ? 1.0 : 1.2),
             ),
           ),
           child: Row(

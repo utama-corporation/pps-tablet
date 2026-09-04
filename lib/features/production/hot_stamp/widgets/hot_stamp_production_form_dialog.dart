@@ -67,6 +67,7 @@ class _HotStampProductionFormDialogState
   MstRegu? _selectedRegu;
   List<MstOperator> _selectedOperators = [];
   bool _loadingReguOperator = false;
+  String? _reguOperatorError;
   int? _selectedShift;
   int? _selectedReguId;
   FurnitureWipType? _selectedStampingType;
@@ -226,6 +227,7 @@ class _HotStampProductionFormDialogState
     if (mounted) setState(() => _loadingReguOperator = false);
     if (result != null && mounted) {
       setState(() {
+        _reguOperatorError = null;
         _selectedRegu = result.regu;
         _selectedReguId = result.regu.idRegu;
         _selectedOperators
@@ -257,10 +259,8 @@ class _HotStampProductionFormDialogState
     }
 
     final idOperatorList = _selectedOperators.map((o) => o.idOperator).toList();
-    if (idOperatorList.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Minimal 1 operator wajib dipilih')),
-      );
+    if (idOperatorList.isEmpty || _selectedRegu == null) {
+      setState(() => _reguOperatorError = 'Regu & operator wajib dipilih');
       return;
     }
 
@@ -608,6 +608,7 @@ class _HotStampProductionFormDialogState
             selectedOperators: _selectedOperators,
             isLoading: _loadingReguOperator,
             onTap: _openReguOperatorPicker,
+            errorText: _reguOperatorError,
           ),
 
           const SizedBox(height: 16),

@@ -1,6 +1,8 @@
 // lib/features/shared/mixer_production/model/mixer_production_model.dart
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class MixerProduction {
   final String noProduksi;
   final int idOperator;
@@ -408,8 +410,11 @@ class MixerMesinInfo {
   final String namaMesin;
   final String bagian;
   final List<MixerProduksiItem> produksiList;
+  final MachineStatus machineStatus;
 
-  bool get isActive => produksiList.isNotEmpty;
+  bool get hasProduction => produksiList.isNotEmpty;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
 
   String? get noProduksi =>
       produksiList.isNotEmpty ? produksiList.first.noProduksi : null;
@@ -426,7 +431,21 @@ class MixerMesinInfo {
     required this.namaMesin,
     required this.bagian,
     this.produksiList = const [],
+    this.machineStatus = MachineStatus.inactive,
   });
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   factory MixerMesinInfo.fromJson(Map<String, dynamic> j) {
     String? s(dynamic v) =>
@@ -447,6 +466,7 @@ class MixerMesinInfo {
       namaMesin: s(j['NamaMesin']) ?? '',
       bagian: s(j['Bagian']) ?? '',
       produksiList: items,
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

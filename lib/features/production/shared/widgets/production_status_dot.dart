@@ -20,12 +20,13 @@ class ProductionStatusDot extends StatelessWidget {
     final Color color;
     if (machineStatus != null) {
       color = switch (machineStatus!) {
-        MachineStatus.active => const Color(0xFF16A34A),
+        // Aktif = current / sedang berjalan → biru
+        MachineStatus.active => const Color(0xFF2563EB),
         MachineStatus.pending => const Color(0xFFD97706),
         MachineStatus.inactive => const Color(0xFFDC2626),
       };
     } else {
-      color = (active ?? false) ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+      color = (active ?? false) ? const Color(0xFF2563EB) : const Color(0xFFDC2626);
     }
 
     return Container(

@@ -69,6 +69,7 @@ class _PackingProductionFormDialogState
   MstRegu? _selectedRegu;
   List<MstOperator> _selectedOperators = [];
   bool _loadingReguOperator = false;
+  String? _reguOperatorError;
   int? _selectedShift;
   PackingType? _selectedOutputJenis;
 
@@ -220,6 +221,7 @@ class _PackingProductionFormDialogState
     if (mounted) setState(() => _loadingReguOperator = false);
     if (result != null && mounted) {
       setState(() {
+        _reguOperatorError = null;
         _selectedRegu = result.regu;
         _selectedOperators
           ..clear()
@@ -243,10 +245,8 @@ class _PackingProductionFormDialogState
 
     final idOperatorList =
         _selectedOperators.map((o) => o.idOperator).toList();
-    if (idOperatorList.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Minimal 1 operator wajib dipilih')),
-      );
+    if (idOperatorList.isEmpty || _selectedRegu == null) {
+      setState(() => _reguOperatorError = 'Regu & operator wajib dipilih');
       return;
     }
 
@@ -274,9 +274,7 @@ class _PackingProductionFormDialogState
     }
 
     if (_selectedRegu == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Regu wajib dipilih')),
-      );
+      setState(() => _reguOperatorError = 'Regu & operator wajib dipilih');
       return;
     }
 
@@ -601,6 +599,7 @@ class _PackingProductionFormDialogState
             selectedOperators: _selectedOperators,
             isLoading: _loadingReguOperator,
             onTap: _openReguOperatorPicker,
+            errorText: _reguOperatorError,
           ),
 
           const SizedBox(height: 16),

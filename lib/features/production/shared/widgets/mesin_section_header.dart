@@ -49,8 +49,8 @@ class MesinSectionHeader extends StatelessWidget {
             ProductionStatBadge(
               count: activeCount,
               label: 'Aktif',
-              color: const Color(0xFF16A34A),
-              bg: const Color(0xFFDCFCE7),
+              color: const Color(0xFF2563EB),
+              bg: const Color(0xFFDBEAFE),
             ),
             if (pendingCount > 0 || alwaysShowPending) ...[
               const SizedBox(width: 6),

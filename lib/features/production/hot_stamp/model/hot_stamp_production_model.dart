@@ -1,6 +1,8 @@
 // lib/features/shared/hot_stamp_production/model/hot_stamp_production_model.dart
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class HotStampProduction {
   final String noProduksi;
   final int idMesin;
@@ -34,6 +36,8 @@ class HotStampProduction {
 
   final DateTime? lastClosedDate;
   final bool isLocked;
+  final bool isComplete;
+  final String? produksiStatus;
 
   const HotStampProduction({
     required this.noProduksi,
@@ -58,6 +62,8 @@ class HotStampProduction {
     this.hourEnd,
     this.lastClosedDate,
     this.isLocked = false,
+    this.isComplete = false,
+    this.produksiStatus,
   });
 
   // ---------- tolerant parsers ----------
@@ -178,6 +184,9 @@ class HotStampProduction {
       hourEnd: _asTimeHHmm(j['HourEnd']),
       lastClosedDate: _asDateTime(j['LastClosedDate']),
       isLocked: _asBool(j['IsLocked']),
+      isComplete: _asBool(j['IsComplete']) ||
+          j['status']?.toString() == 'complete',
+      produksiStatus: j['status']?.toString(),
     );
   }
 
@@ -300,6 +309,8 @@ class HotStampProduction {
     String? hourEnd,
     DateTime? lastClosedDate,
     bool? isLocked,
+    bool? isComplete,
+    String? produksiStatus,
   }) {
     return HotStampProduction(
       noProduksi: noProduksi ?? this.noProduksi,
@@ -324,6 +335,8 @@ class HotStampProduction {
       hourEnd: hourEnd ?? this.hourEnd,
       lastClosedDate: lastClosedDate ?? this.lastClosedDate,
       isLocked: isLocked ?? this.isLocked,
+      isComplete: isComplete ?? this.isComplete,
+      produksiStatus: produksiStatus ?? this.produksiStatus,
     );
   }
 }
@@ -404,8 +417,11 @@ class HotStampMesinInfo {
   final String namaMesin;
   final String bagian;
   final List<HotStampProduksiItem> produksiList;
+  final MachineStatus machineStatus;
 
-  bool get isActive => produksiList.isNotEmpty;
+  bool get hasProduction => produksiList.isNotEmpty;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
 
   String? get noProduksi =>
       produksiList.isNotEmpty ? produksiList.first.noProduksi : null;
@@ -426,7 +442,21 @@ class HotStampMesinInfo {
     required this.namaMesin,
     required this.bagian,
     this.produksiList = const [],
+    this.machineStatus = MachineStatus.inactive,
   });
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   factory HotStampMesinInfo.fromJson(Map<String, dynamic> j) {
     String? s(dynamic v) =>
@@ -447,6 +477,7 @@ class HotStampMesinInfo {
       namaMesin: s(j['NamaMesin']) ?? '',
       bagian: s(j['Bagian']) ?? '',
       produksiList: items,
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

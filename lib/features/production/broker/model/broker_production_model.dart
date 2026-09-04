@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class BrokerProduction {
   final String noProduksi;
   /// List of operator IDs (multi-operator support)
@@ -309,8 +311,11 @@ class BrokerMesinInfo {
   final String namaMesin;
   final String bagian;
   final List<BrokerProduksiItem> produksiList;
+  final MachineStatus machineStatus;
 
-  bool get isActive => produksiList.isNotEmpty;
+  bool get hasProduction => produksiList.isNotEmpty;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
 
   // backward-compat getters (first item)
   String? get noProduksi => produksiList.isNotEmpty ? produksiList.first.noProduksi : null;
@@ -325,7 +330,21 @@ class BrokerMesinInfo {
     required this.namaMesin,
     required this.bagian,
     this.produksiList = const [],
+    this.machineStatus = MachineStatus.inactive,
   });
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   factory BrokerMesinInfo.fromJson(Map<String, dynamic> j) {
     String? s(dynamic v) => v == null ? null : v.toString().trim().isEmpty ? null : v.toString().trim();
@@ -347,6 +366,7 @@ class BrokerMesinInfo {
       namaMesin: s(j['NamaMesin']) ?? '',
       bagian: s(j['Bagian']) ?? '',
       produksiList: items,
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

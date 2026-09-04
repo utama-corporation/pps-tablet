@@ -242,7 +242,7 @@ class _KeyFittingProductionMesinScreenState
   // ── helpers untuk shared widgets ────────────────────────────────
 
   static MesinCardData _toMesinCardData(KeyFittingMesinInfo mesin) {
-    final current = mesin.isActive && mesin.produksiList.isNotEmpty
+    final current = mesin.hasProduction && mesin.produksiList.isNotEmpty
         ? mesin.produksiList.first
         : null;
     String? shiftTimeText;
@@ -257,6 +257,7 @@ class _KeyFittingProductionMesinScreenState
     return MesinCardData(
       namaMesin: mesin.namaMesin,
       isActive: mesin.isActive,
+      machineStatus: mesin.machineStatus,
       shiftTimeText: shiftTimeText,
       namaRegu: current?.namaRegu,
       outputJenisNama: current?.outputJenisNama,
@@ -274,6 +275,7 @@ class _KeyFittingProductionMesinScreenState
       namaRegu: row.namaRegu,
       outputJenisNama: row.outputJenisNama,
       noProduksi: row.noProduksi,
+      produksiStatus: row.produksiStatus,
     );
   }
 
@@ -295,10 +297,16 @@ class _KeyFittingProductionMesinScreenState
                       final activeCount = allMesin
                           .where((m) => m.isActive)
                           .length;
-                      final inactiveCount = allMesin.length - activeCount;
+                      final pendingCount = allMesin
+                          .where((m) => m.isPending)
+                          .length;
+                      final inactiveCount = allMesin
+                          .where((m) => !m.hasProduction)
+                          .length;
                       return MesinSectionHeader(
                         title: 'Status Mesin Pasang Kunci',
                         activeCount: activeCount,
+                        pendingCount: pendingCount,
                         inactiveCount: inactiveCount,
                         isLoading:
                             snapshot.connectionState == ConnectionState.waiting,

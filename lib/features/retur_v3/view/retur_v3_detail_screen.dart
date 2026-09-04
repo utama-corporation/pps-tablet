@@ -21,7 +21,6 @@ import '../model/retur_v3_turnover.dart';
 import '../repository/retur_v3_repository.dart';
 import '../view_model/retur_v3_detail_view_model.dart';
 import '../widgets/retur_v3_reject_generate_dialog.dart';
-import '../widgets/retur_v3_target_input_dialog.dart';
 
 const _kPrimary = Color(0xFF1E6FD9);
 const _kSurface = Color(0xFFF3F5F8);
@@ -365,41 +364,9 @@ class _ReturV3DetailScreenState extends State<ReturV3DetailScreen> {
     );
   }
 
-  // ── Target pengganti (DIGANTI, sebelum scan) ────────────────────────
-
-  Future<void> _addTurnoverTarget(ReturV3Item item) async {
-    final result = await showDialog<ReturV3TargetInput>(
-      context: context,
-      builder: (_) => const ReturV3TargetInputDialog(),
-    );
-    if (result == null) return;
-    final ok = await _vm.addTurnoverTarget(
-      item.idItem,
-      kodeKategori: result.kodeKategori,
-      idJenis: result.idJenis,
-      pcs: result.pcs,
-    );
-    if (!mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_vm.targetError ?? 'Gagal menambah target'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _removeTurnoverTarget(int idTarget) async {
-    final ok = await _vm.removeTurnoverTarget(idTarget);
-    if (!mounted || ok) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_vm.targetError ?? 'Gagal menghapus target'),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
+  // Target pengganti (DIGANTI) dibuat OTOMATIS oleh backend saat keputusan
+  // "DIGANTI" disimpan — like-for-like: kategori/jenis/pcs mengikuti item
+  // retur asalnya. Tidak ada input target manual di layar ini.
 
   Future<void> _complete() async {
     final confirmed = await showDialog<bool>(
@@ -1263,11 +1230,8 @@ class _DigantiSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isComplete = vm.header?.isComplete == true;
-    // Tambah target pengganti (item + pcs) adalah bagian dari keputusan
-    // penggantian, jadi wewenangnya sama dengan retur:decide (Sales) —
-    // bukan retur:update (Admin). User tanpa retur:decide cuma bisa
-    // melihat daftar target, tidak bisa menambah.
-    final canDecide = context.watch<PermissionViewModel>().can('retur:decide');
+    // Target pengganti dibuat otomatis oleh backend (like-for-like dari item
+    // retur) — tidak ada aksi tambah/hapus manual di sini.
 
     return Container(
       decoration: BoxDecoration(
@@ -1331,9 +1295,6 @@ class _DigantiSection extends StatelessWidget {
                     item: item,
                     turnover: t,
                     isComplete: isComplete,
-                    canAddTarget: canDecide,
-                    onAddTarget: () => screen._addTurnoverTarget(item),
-                    onRemoveTarget: screen._removeTurnoverTarget,
                     onUndoScan: screen._undoScan,
                   );
                 },
@@ -1425,16 +1386,13 @@ class _KirimSection extends StatelessWidget {
 }
 
 /// Blok per item retur: info barang yang KEMBALI (asal), lalu daftar target
-/// pengganti yang akan DIKIRIM (bisa lebih dari satu, kategori/jenis bebas
-/// beda dari asalnya) — masing-masing dengan progress scan-nya sendiri.
+/// pengganti yang akan DIKIRIM — dibuat otomatis like-for-like dari item
+/// retur oleh backend, masing-masing dengan progress scan-nya sendiri.
 class _TurnoverItemBlock extends StatelessWidget {
   final int startNumber;
   final ReturV3Item item;
   final ReturV3Turnover? turnover;
   final bool isComplete;
-  final bool canAddTarget;
-  final VoidCallback onAddTarget;
-  final ValueChanged<int> onRemoveTarget;
   final ValueChanged<int> onUndoScan;
 
   const _TurnoverItemBlock({
@@ -1442,9 +1400,6 @@ class _TurnoverItemBlock extends StatelessWidget {
     required this.item,
     required this.turnover,
     required this.isComplete,
-    required this.canAddTarget,
-    required this.onAddTarget,
-    required this.onRemoveTarget,
     required this.onUndoScan,
   });
 
@@ -1457,26 +1412,11 @@ class _TurnoverItemBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isComplete && canAddTarget)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: onAddTarget,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Tambah', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ],
-            ),
           if (targets.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 4),
               child: Text(
-                'Belum ada target pengganti',
+                'Target pengganti belum dibuat',
                 style: TextStyle(fontSize: 12, color: _kMuted),
               ),
             )
@@ -1488,8 +1428,6 @@ class _TurnoverItemBlock extends StatelessWidget {
                   number: startNumber + entry.key,
                   target: entry.value,
                   isComplete: isComplete,
-                  canRemoveTarget: canAddTarget,
-                  onRemove: () => onRemoveTarget(entry.value.idTarget),
                   onUndoScan: onUndoScan,
                 ),
               ),
@@ -1504,16 +1442,12 @@ class _TurnoverTargetTile extends StatelessWidget {
   final int number;
   final ReturV3TurnoverTarget target;
   final bool isComplete;
-  final bool canRemoveTarget;
-  final VoidCallback onRemove;
   final ValueChanged<int> onUndoScan;
 
   const _TurnoverTargetTile({
     required this.number,
     required this.target,
     required this.isComplete,
-    required this.canRemoveTarget,
-    required this.onRemove,
     required this.onUndoScan,
   });
 
@@ -1522,7 +1456,6 @@ class _TurnoverTargetTile extends StatelessWidget {
     final scanned = target.scannedPcs;
     final targetPcs = target.targetPcs;
     final fulfilled = target.isFulfilled;
-    final canRemove = !isComplete && target.scans.isEmpty && canRemoveTarget;
 
     return Container(
       padding: const EdgeInsets.all(8),
@@ -1580,17 +1513,6 @@ class _TurnoverTargetTile extends StatelessWidget {
                   color: fulfilled ? _kSuccess : _kMuted,
                 ),
               ),
-              if (canRemove) ...[
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: onRemove,
-                  borderRadius: BorderRadius.circular(12),
-                  child: const Padding(
-                    padding: EdgeInsets.all(2),
-                    child: Icon(Icons.close_rounded, size: 15, color: _kMuted),
-                  ),
-                ),
-              ],
             ],
           ),
           if (target.scans.isNotEmpty) ...[

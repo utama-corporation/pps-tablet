@@ -144,7 +144,7 @@ class _PackingProductionMesinScreenState
 
   static MesinCardData _toMesinCardData(PackingMesinInfo mesin) {
     String? shiftTimeText;
-    if (mesin.isActive) {
+    if (mesin.hasProduction) {
       final parts = <String>[];
       if (mesin.shift != null) parts.add('Shift ${mesin.shift}');
       parts.add('${mesin.hourStart ?? '--:--'} – ${mesin.hourEnd ?? '--:--'}');
@@ -153,6 +153,7 @@ class _PackingProductionMesinScreenState
     return MesinCardData(
       namaMesin: mesin.namaMesin,
       isActive: mesin.isActive,
+      machineStatus: mesin.machineStatus,
       shiftTimeText: shiftTimeText,
       namaRegu: mesin.namaRegu,
       outputJenisNama: mesin.outputJenisNama,
@@ -170,6 +171,7 @@ class _PackingProductionMesinScreenState
       namaRegu: row.namaOperator,
       outputJenisNama: row.outputJenisNama,
       noProduksi: row.noPacking,
+      produksiStatus: row.produksiStatus,
     );
   }
 
@@ -232,7 +234,7 @@ class _PackingProductionMesinScreenState
   Future<void> _onMesinTap(PackingMesinInfo mesin) async {
     if (!mounted) return;
 
-    if (!mesin.isActive) {
+    if (!mesin.hasProduction) {
       await _openCreateDialog(mesin: mesin, isBackdate: false);
       return;
     }
@@ -267,10 +269,16 @@ class _PackingProductionMesinScreenState
                       final activeCount = allMesin
                           .where((m) => m.isActive)
                           .length;
-                      final inactiveCount = allMesin.length - activeCount;
+                      final pendingCount = allMesin
+                          .where((m) => m.isPending)
+                          .length;
+                      final inactiveCount = allMesin
+                          .where((m) => !m.hasProduction)
+                          .length;
                       return MesinSectionHeader(
                         title: 'Status Mesin Packing',
                         activeCount: activeCount,
+                        pendingCount: pendingCount,
                         inactiveCount: inactiveCount,
                         isLoading:
                             snapshot.connectionState == ConnectionState.waiting,

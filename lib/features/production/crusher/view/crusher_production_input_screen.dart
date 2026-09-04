@@ -33,7 +33,7 @@ import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
-const _kCrusherPrimary = Color(0xFF0277BD);
+const _kCrusherPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kCrusherSurface = Color(0xFFF8F9FB);
 const _kCrusherBorder = Color(0xFFE2E6EA);
 
@@ -638,7 +638,7 @@ class _CrusherProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kCrusherPrimary,
                 ),
                 const Spacer(),
@@ -1298,7 +1298,7 @@ class _CrusherProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kCrusherOutput,
                   primaryColor: _kCrusherPrimary,
                 ),

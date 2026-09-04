@@ -19,7 +19,12 @@ class ProductionRiwayatHeader extends StatelessWidget {
     this.isExpanded = true,
     this.showTitle = true,
     this.showSemuaChip = true,
+    this.title = 'Riwayat Produksi',
   });
+
+  /// Judul section (default "Riwayat Produksi"). Modul non-produksi bisa
+  /// menggantinya, mis. "Riwayat Penerimaan".
+  final String title;
 
   final List<MesinFilterItem> mesinList;
   final int? selectedIdMesin;
@@ -77,9 +82,9 @@ class ProductionRiwayatHeader extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                     ],
-                    const Text(
-                      'Riwayat Produksi',
-                      style: TextStyle(
+                    Text(
+                      title,
+                      style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF1F2937),

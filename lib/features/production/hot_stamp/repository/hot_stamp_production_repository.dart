@@ -330,6 +330,32 @@ class HotStampProductionRepository {
   //  DELETE
   //  DELETE /api/production/hot-stamp/:noProduksi
   // =========================
+  //  PATCH /api/production/hot-stamp/:noProduksi/complete
+  Future<void> completeProduksi(String noProduksi) async {
+    print('✅ Completing hot stamp production: $noProduksi');
+    try {
+      await api.patchJson('/api/production/hot-stamp/$noProduksi/complete');
+    } catch (e) {
+      print('❌ Complete hot stamp production error: $e');
+      if (e is ApiException) {
+        if (e.responseBody != null && e.responseBody!.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(e.responseBody!);
+            final msg = decoded['message'] ??
+                decoded['error'] ??
+                decoded['msg'] ??
+                'Gagal menyelesaikan hot stamp produksi';
+            throw Exception(msg);
+          } catch (_) {
+            throw Exception(e.responseBody);
+          }
+        }
+        throw Exception('Gagal menyelesaikan hot stamp produksi (${e.statusCode})');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> deleteProduksi(String noProduksi) async {
     print('🗑️ Deleting hot stamp production: $noProduksi');
 

@@ -70,6 +70,7 @@ class _GilinganProductionFormDialogState
   MstRegu? _selectedRegu;
   final List<MstOperator> _selectedOperators = [];
   bool _loadingReguOperator = false;
+  String? _reguOperatorError;
   int? _selectedShift;
   GilinganType? _selectedGilinganType;
 
@@ -208,6 +209,7 @@ class _GilinganProductionFormDialogState
     if (mounted) setState(() => _loadingReguOperator = false);
     if (result != null && mounted) {
       setState(() {
+        _reguOperatorError = null;
         _selectedRegu = result.regu;
         _selectedOperators
           ..clear()
@@ -288,11 +290,9 @@ class _GilinganProductionFormDialogState
           hadir: hadir,
         );
       } else {
-        if (_selectedOperators.isEmpty) {
+        if (_selectedOperators.isEmpty || _selectedRegu == null) {
           if (mounted) Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Minimal 1 operator wajib dipilih')),
-          );
+          setState(() => _reguOperatorError = 'Regu & operator wajib dipilih');
           return;
         }
 
@@ -610,6 +610,7 @@ class _GilinganProductionFormDialogState
                   selectedOperators: _selectedOperators,
                   isLoading: _loadingReguOperator,
                   onTap: _openReguOperatorPicker,
+                  errorText: _reguOperatorError,
                 ),
               ),
               const SizedBox(width: 12),

@@ -37,6 +37,7 @@ BoxDecoration _cardDecoration({Color? borderColor}) => BoxDecoration(
 
 Widget _sectionHeader(IconData icon, String title, {Color? iconColor}) {
   return Row(
+    mainAxisSize: MainAxisSize.min,
     children: [
       Container(
         padding: const EdgeInsets.all(6),
@@ -47,12 +48,16 @@ Widget _sectionHeader(IconData icon, String title, {Color? iconColor}) {
         child: Icon(icon, size: 16, color: iconColor ?? _kPrimary),
       ),
       const SizedBox(width: 10),
-      Text(
-        title,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF1A1D23),
+      Flexible(
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1D23),
+          ),
         ),
       ),
     ],
@@ -180,66 +185,105 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
     return Consumer<BsV2CreateViewModel>(
       builder: (context, vm, _) {
         _cleanupCtls(vm);
+        final rightPanel = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (vm.inputBeratByJenis.isNotEmpty) ...[
+              _BeratSummaryCard(
+                inputByJenis: vm.inputBeratByJenis,
+                remainingByJenis: vm.remainingByJenis,
+                jenisNames: {
+                  for (final j in vm.jenisOptions) j.idJenis: j.namaJenis,
+                },
+                nf: _nf,
+                unit: vm.quantityUnit,
+              ),
+              const SizedBox(height: 12),
+            ],
+            _SubmitCard(
+              isSubmitting: vm.isSubmitting,
+              isBalanced: vm.isBalanced,
+              allOutputsValid: vm.allOutputsValid,
+              inputCount: vm.inputs.length,
+              outputCount: vm.outputs.length,
+              onSubmit: () => _submit(context, vm),
+            ),
+          ],
+        );
+
         return Scaffold(
           backgroundColor: _kSurface,
           resizeToAvoidBottomInset: false,
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── LEFT PANEL: Label Input ────────────────────────────────
-                SizedBox(
-                  width: 320,
-                  child: _InputsCard(
-                    inputs: vm.inputs,
-                    onRemove: vm.removeInput,
-                    onScan: () => _openScanDialog(context, vm),
-                    nf: _nf,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // ── CENTER PANEL: Label Output ─────────────────────────────
-                Expanded(
-                  child: _OutputsPanel(
-                    vm: vm,
-                    nf: _nf,
-                    beratCtlOf: _beratCtl,
-                    sakBeratCtlOf: _getSakBeratCtl,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // ── RIGHT PANEL: Alokasi Berat + Submit ────────────────────
-                SizedBox(
-                  width: 300,
-                  child: Column(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                // Breakpoint: di bawah ~840px ruang tidak cukup untuk 3 kolom,
+                // panel kanan (Alokasi + Submit) dipindah ke bawah.
+                final stackRight = w < 840;
+                final leftW = w < 720
+                    ? 200.0
+                    : w < 1000
+                    ? 260.0
+                    : 320.0;
+                final rightW = w < 1000 ? 260.0 : 300.0;
+
+                final inputCard = _InputsCard(
+                  inputs: vm.inputs,
+                  onRemove: vm.removeInput,
+                  onScan: () => _openScanDialog(context, vm),
+                  nf: _nf,
+                );
+                final outputPanel = _OutputsPanel(
+                  vm: vm,
+                  nf: _nf,
+                  beratCtlOf: _beratCtl,
+                  sakBeratCtlOf: _getSakBeratCtl,
+                );
+
+                if (stackRight) {
+                  // Input | Output berdampingan, panel kanan di bawah (scroll).
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (vm.inputBeratByJenis.isNotEmpty) ...[
-                        _BeratSummaryCard(
-                          inputByJenis: vm.inputBeratByJenis,
-                          remainingByJenis: vm.remainingByJenis,
-                          jenisNames: {
-                            for (final j in vm.jenisOptions)
-                              j.idJenis: j.namaJenis,
-                          },
-                          nf: _nf,
-                          unit: vm.quantityUnit,
+                      Expanded(
+                        flex: 3,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(width: leftW, child: inputCard),
+                            const SizedBox(width: 12),
+                            Expanded(child: outputPanel),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                      ],
-                      _SubmitCard(
-                        isSubmitting: vm.isSubmitting,
-                        isBalanced: vm.isBalanced,
-                        allOutputsValid: vm.allOutputsValid,
-                        inputCount: vm.inputs.length,
-                        outputCount: vm.outputs.length,
-                        onSubmit: () => _submit(context, vm),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(child: rightPanel),
                       ),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── LEFT: Label Input ──────────────────────────────────
+                    SizedBox(width: leftW, child: inputCard),
+                    const SizedBox(width: 16),
+                    // ── CENTER: Label Output ───────────────────────────────
+                    Expanded(child: outputPanel),
+                    const SizedBox(width: 16),
+                    // ── RIGHT: Alokasi Berat + Submit ──────────────────────
+                    SizedBox(
+                      width: rightW,
+                      child: SingleChildScrollView(child: rightPanel),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         );
@@ -274,7 +318,7 @@ class _InputsCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             child: Row(
               children: [
-                _sectionHeader(Icons.input_rounded, 'Label Input'),
+                _sectionHeader(Icons.input_rounded, 'Input'),
                 const Spacer(),
                 if (inputs.isNotEmpty) ...[
                   Container(

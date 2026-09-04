@@ -1,6 +1,8 @@
 // lib/features/shared/packing_production/model/packing_production_model.dart
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class PackingProduction {
   final String noPacking;
   final int idMesin;
@@ -34,6 +36,8 @@ class PackingProduction {
   // ✅ Tutup transaksi flags (optional from backend)
   final DateTime? lastClosedDate; // date only
   final bool isLocked;
+  final bool isComplete;
+  final String? produksiStatus;
 
   const PackingProduction({
     required this.noPacking,
@@ -57,6 +61,8 @@ class PackingProduction {
     this.hourEnd,
     this.lastClosedDate,
     this.isLocked = false,
+    this.isComplete = false,
+    this.produksiStatus,
   });
 
   // ---------- tolerant parsers ----------
@@ -178,6 +184,9 @@ class PackingProduction {
       // ✅ optional lock flags if backend sends
       lastClosedDate: _asDateTime(j['LastClosedDate']),
       isLocked: _asBool(j['IsLocked']),
+      isComplete: _asBool(j['IsComplete']) ||
+          j['status']?.toString() == 'complete',
+      produksiStatus: j['status']?.toString(),
     );
   }
 
@@ -294,6 +303,8 @@ class PackingProduction {
     String? hourEnd,
     DateTime? lastClosedDate,
     bool? isLocked,
+    bool? isComplete,
+    String? produksiStatus,
   }) {
     return PackingProduction(
       noPacking: noPacking ?? this.noPacking,
@@ -317,6 +328,8 @@ class PackingProduction {
       hourEnd: hourEnd ?? this.hourEnd,
       lastClosedDate: lastClosedDate ?? this.lastClosedDate,
       isLocked: isLocked ?? this.isLocked,
+      isComplete: isComplete ?? this.isComplete,
+      produksiStatus: produksiStatus ?? this.produksiStatus,
     );
   }
 }
@@ -337,6 +350,7 @@ class PackingMesinInfo {
   final int? shift;
   final String? hourStart;
   final String? hourEnd;
+  final MachineStatus machineStatus;
 
   const PackingMesinInfo({
     required this.idMesin,
@@ -351,9 +365,25 @@ class PackingMesinInfo {
     this.shift,
     this.hourStart,
     this.hourEnd,
+    this.machineStatus = MachineStatus.inactive,
   });
 
-  bool get isActive => noProduksi != null;
+  bool get hasProduction => noProduksi != null;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   static String? _asTimeHHmm(dynamic v) {
     if (v == null) return null;
@@ -398,6 +428,7 @@ class PackingMesinInfo {
       shift: asInt(j['Shift']),
       hourStart: _asTimeHHmm(j['HourStart']),
       hourEnd: _asTimeHHmm(j['HourEnd']),
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

@@ -68,6 +68,7 @@ class _InjectProductionFormDialogState
   MstRegu? _selectedRegu;
   List<MstOperator> _selectedOperators = [];
   bool _loadingReguOperator = false;
+  String? _reguOperatorError;
   bool _loadingCetakanWarna = false;
   int? _selectedShift;
 
@@ -297,6 +298,7 @@ class _InjectProductionFormDialogState
     if (mounted) setState(() => _loadingReguOperator = false);
     if (result != null && mounted) {
       setState(() {
+        _reguOperatorError = null;
         _selectedRegu = result.regu;
         _selectedOperators
           ..clear()
@@ -349,10 +351,8 @@ class _InjectProductionFormDialogState
     }
 
     final idOperatorList = _selectedOperators.map((o) => o.idOperator).toList();
-    if (idOperatorList.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Minimal 1 operator wajib dipilih')),
-      );
+    if (idOperatorList.isEmpty || _selectedRegu == null) {
+      setState(() => _reguOperatorError = 'Regu & operator wajib dipilih');
       return;
     }
 
@@ -728,6 +728,7 @@ class _InjectProductionFormDialogState
             selectedOperators: _selectedOperators,
             isLoading: _loadingReguOperator,
             onTap: _openReguOperatorPicker,
+            errorText: _reguOperatorError,
           ),
 
           const SizedBox(height: 16),

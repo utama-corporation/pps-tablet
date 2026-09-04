@@ -1,6 +1,8 @@
 // lib/features/shared/key_fitting_production/model/packing_production_model.dart
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class KeyFittingProduction {
   final String noProduksi;
   final int idMesin;
@@ -35,6 +37,8 @@ class KeyFittingProduction {
   // ✅ Tutup transaksi flags (kalau backend kirim)
   final DateTime? lastClosedDate; // date only
   final bool isLocked;
+  final bool isComplete;
+  final String? produksiStatus;
 
   const KeyFittingProduction({
     required this.noProduksi,
@@ -58,6 +62,8 @@ class KeyFittingProduction {
     this.hourEnd,
     this.lastClosedDate,
     this.isLocked = false,
+    this.isComplete = false,
+    this.produksiStatus,
   });
 
   // ---------- tolerant parsers ----------
@@ -200,6 +206,9 @@ class KeyFittingProduction {
       // ✅ optional lock flags jika backend kirim
       lastClosedDate: _asDateTime(j['LastClosedDate']),
       isLocked: _asBool(j['IsLocked']),
+      isComplete: _asBool(j['IsComplete']) ||
+          j['status']?.toString() == 'complete',
+      produksiStatus: j['status']?.toString(),
     );
   }
 
@@ -312,6 +321,8 @@ class KeyFittingProduction {
     String? hourEnd,
     DateTime? lastClosedDate,
     bool? isLocked,
+    bool? isComplete,
+    String? produksiStatus,
   }) {
     return KeyFittingProduction(
       noProduksi: noProduksi ?? this.noProduksi,
@@ -335,6 +346,8 @@ class KeyFittingProduction {
       hourEnd: hourEnd ?? this.hourEnd,
       lastClosedDate: lastClosedDate ?? this.lastClosedDate,
       isLocked: isLocked ?? this.isLocked,
+      isComplete: isComplete ?? this.isComplete,
+      produksiStatus: produksiStatus ?? this.produksiStatus,
     );
   }
 }
@@ -414,8 +427,11 @@ class KeyFittingMesinInfo {
   final String namaMesin;
   final String bagian;
   final List<KeyFittingProduksiItem> produksiList;
+  final MachineStatus machineStatus;
 
-  bool get isActive => produksiList.isNotEmpty;
+  bool get hasProduction => produksiList.isNotEmpty;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
 
   String? get noProduksi =>
       produksiList.isNotEmpty ? produksiList.first.noProduksi : null;
@@ -434,7 +450,21 @@ class KeyFittingMesinInfo {
     required this.namaMesin,
     required this.bagian,
     this.produksiList = const [],
+    this.machineStatus = MachineStatus.inactive,
   });
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   factory KeyFittingMesinInfo.fromJson(Map<String, dynamic> j) {
     String? s(dynamic v) =>
@@ -455,6 +485,7 @@ class KeyFittingMesinInfo {
       namaMesin: s(j['NamaMesin']) ?? '',
       bagian: s(j['Bagian']) ?? '',
       produksiList: items,
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

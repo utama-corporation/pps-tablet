@@ -36,7 +36,7 @@ import '../model/washing_production_model.dart';
 
 // ── Washing colour palette ─────────────────────────────────────────────────────
 
-const _kWashingPrimary = Color(0xFF0277BD); // biru washing
+const _kWashingPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kWashingOutput = Color(0xFF00796B); // teal output
 const _kWashingSurface = Color(0xFFF8F9FB);
 const _kWashingBorder = Color(0xFFE2E6EA);
@@ -1137,7 +1137,7 @@ class _WashingProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kWashingPrimary,
                 ),
                 const Spacer(),
@@ -1447,7 +1447,7 @@ class _WashingProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kWashingOutput,
                   primaryColor: _kWashingPrimary,
                 ),

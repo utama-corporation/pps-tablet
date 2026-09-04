@@ -143,7 +143,7 @@ class _WashingProductionMesinScreenState
 
   static MesinCardData _toMesinCardData(WashingMesinInfo mesin) {
     String? shiftTimeText;
-    if (mesin.isActive) {
+    if (mesin.hasProduction) {
       final parts = <String>[];
       if (mesin.shift != null) parts.add('Shift ${mesin.shift}');
       parts.add('${mesin.hourStart ?? '--:--'} – ${mesin.hourEnd ?? '--:--'}');
@@ -152,6 +152,7 @@ class _WashingProductionMesinScreenState
     return MesinCardData(
       namaMesin: mesin.namaMesin,
       isActive: mesin.isActive,
+      machineStatus: mesin.machineStatus,
       shiftTimeText: shiftTimeText,
       namaRegu: mesin.namaRegu,
       outputJenisNama: mesin.outputJenisNama,
@@ -251,7 +252,7 @@ class _WashingProductionMesinScreenState
   Future<void> _onMesinTap(WashingMesinInfo mesin) async {
     if (!mounted) return;
 
-    if (!mesin.isActive) {
+    if (!mesin.hasProduction) {
       await _openCreateDialog(mesin: mesin);
       return;
     }
@@ -286,10 +287,16 @@ class _WashingProductionMesinScreenState
                       final activeCount = allMesin
                           .where((m) => m.isActive)
                           .length;
-                      final inactiveCount = allMesin.length - activeCount;
+                      final pendingCount = allMesin
+                          .where((m) => m.isPending)
+                          .length;
+                      final inactiveCount = allMesin
+                          .where((m) => !m.hasProduction)
+                          .length;
                       return MesinSectionHeader(
                         title: 'Status Mesin Washing',
                         activeCount: activeCount,
+                        pendingCount: pendingCount,
                         inactiveCount: inactiveCount,
                         isLoading:
                             snapshot.connectionState == ConnectionState.waiting,

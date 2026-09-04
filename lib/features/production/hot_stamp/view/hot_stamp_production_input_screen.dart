@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:pps_tablet/core/view/app_shell.dart';
 import 'package:pps_tablet/features/production/hot_stamp/view_model/hot_stamp_production_input_view_model.dart';
 
+import '../../../../common/widgets/confirm_dialog.dart';
 import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../common/widgets/success_status_dialog.dart';
 import '../../../../common/widgets/scan_label_dialog.dart';
@@ -34,7 +35,7 @@ import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
-const _kStampingPrimary = Color(0xFF1565C0); // blue — input
+const _kStampingPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kStampingOutput = Color(0xFF00796B); // teal — output  (seperti crusher)
 const _kStampingSurface = Color(0xFFF8F9FB);
 const _kStampingBorder = Color(0xFFE2E6EA);
@@ -60,7 +61,8 @@ class _HotStampingProductionInputScreenState
   final _prodRepo = HotStampProductionRepository();
 
   /// Produksi sudah selesai / terkunci -> tidak boleh diubah maupun dicetak.
-  bool get _isLockedOrComplete => _header?.isLocked == true;
+  bool get _isLockedOrComplete =>
+      _header?.isLocked == true || _header?.isComplete == true;
   @override
   bool get isOutputInteractionLocked => _isLockedOrComplete;
   @override
@@ -254,6 +256,50 @@ class _HotStampingProductionInputScreenState
   }
 
   // ── Snack ──────────────────────────────────────────────────────────────────
+
+  // ── Complete (Selesaikan produksi) ─────────────────────────────────────────
+  Future<void> _handleComplete() async {
+    final vm = context.read<HotStampingProductionInputViewModel>();
+    if (vm.totalTempCount > 0) {
+      _showSnack(
+        'Masih ada ${vm.totalTempCount} data belum disimpan. '
+        'Simpan atau hapus dulu sebelum menyelesaikan.',
+        backgroundColor: Colors.orange,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ConfirmDialog(
+        title: 'Selesaikan Produksi?',
+        message:
+            'Yakin ingin menyelesaikan produksi ${widget.noProduksi}? '
+            'Setelah selesai, produksi akan dikunci dan tidak dapat diubah.',
+        confirmLabel: 'Selesaikan',
+        confirmIcon: Icons.check_circle_outline,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _prodRepo.completeProduksi(widget.noProduksi);
+      if (!mounted) return;
+      _showSnack('✅ Produksi berhasil diselesaikan',
+          backgroundColor: Colors.green);
+      await _loadHeader();
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menyelesaikan',
+          message: e.toString().replaceFirst('Exception: ', ''),
+        ),
+      );
+    }
+  }
 
   void _showSnack(String msg, {Color? backgroundColor}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -549,7 +595,7 @@ class _HotStampingProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kStampingPrimary,
                 ),
                 const Spacer(),
@@ -1069,7 +1115,7 @@ class _HotStampingProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kStampingOutput,
                   primaryColor: _kStampingPrimary,
                 ),
@@ -1296,6 +1342,12 @@ class _HotStampingProductionInputScreenState
                   hourEnd: _header?.hourEnd,
                   primaryColor: _kStampingPrimary,
                   onGanti: locked ? null : _openSplitDialog,
+                  onComplete: (_header == null || _isLockedOrComplete)
+                      ? null
+                      : _handleComplete,
+                  completeDisabledReason: (_header?.isComplete == true)
+                      ? 'Produksi sudah selesai'
+                      : null,
                   onRefresh: () {
                     vm.loadInputs(widget.noProduksi, force: true);
                     _showSnack('Data di-refresh');

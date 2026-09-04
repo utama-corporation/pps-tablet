@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 class CrusherProduction {
   final String noCrusherProduksi;
   final int idOperator;
@@ -318,8 +320,24 @@ class CrusherMesinInfo {
   final int? shift;
   final String? hourStart;
   final String? hourEnd;
+  final MachineStatus machineStatus;
 
-  bool get isActive => noProduksi != null;
+  bool get hasProduction => noProduksi != null;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   const CrusherMesinInfo({
     required this.idMesin,
@@ -335,6 +353,7 @@ class CrusherMesinInfo {
     this.shift,
     this.hourStart,
     this.hourEnd,
+    this.machineStatus = MachineStatus.inactive,
   });
 
   factory CrusherMesinInfo.fromJson(Map<String, dynamic> j) {
@@ -379,6 +398,7 @@ class CrusherMesinInfo {
       shift: i(j['Shift']),
       hourStart: timeHHmm(j['HourStart']),
       hourEnd: timeHHmm(j['HourEnd']),
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }

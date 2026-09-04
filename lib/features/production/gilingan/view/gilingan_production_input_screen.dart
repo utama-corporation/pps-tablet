@@ -31,7 +31,7 @@ import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
 
-const _kGilinganPrimary = Color(0xFF0277BD);
+const _kGilinganPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kGilinganSurface = Color(0xFFF8F9FB);
 const _kGilinganBorder = Color(0xFFE2E6EA);
 
@@ -598,7 +598,7 @@ class _GilinganProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.input_rounded,
-                  'Label Input',
+                  'Input',
                   primaryColor: _kGilinganPrimary,
                 ),
                 const Spacer(),
@@ -1442,7 +1442,7 @@ class _GilinganProductionInputScreenState
               children: [
                 productionSectionHeader(
                   Icons.output_rounded,
-                  'Label Output',
+                  'Output',
                   iconColor: _kGilinganOutputColor,
                   primaryColor: _kGilinganPrimary,
                 ),

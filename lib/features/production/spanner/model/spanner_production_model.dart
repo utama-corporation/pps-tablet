@@ -1,6 +1,8 @@
 // lib/features/shared/spanner_production/model/spanner_production_model.dart
 import 'package:intl/intl.dart';
 
+import '../../inject/model/inject_production_model.dart' show MachineStatus;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SpannerMesinInfo — untuk panel kiri mesin screen
 // Hasil dari GET /api/mst-mesin/spanner
@@ -20,8 +22,24 @@ class SpannerMesinInfo {
   final int? shift;
   final String? hourStart;
   final String? hourEnd;
+  final MachineStatus machineStatus;
 
-  bool get isActive => noProduksi != null && noProduksi!.isNotEmpty;
+  bool get hasProduction => noProduksi != null && noProduksi!.isNotEmpty;
+  bool get isActive => machineStatus == MachineStatus.active;
+  bool get isPending => machineStatus == MachineStatus.pending;
+
+  static MachineStatus parseStatus(dynamic v) {
+    switch (v?.toString()) {
+      case 'current':
+      case 'active':
+      case 'aktif':
+        return MachineStatus.active;
+      case 'pending':
+        return MachineStatus.pending;
+      default:
+        return MachineStatus.inactive;
+    }
+  }
 
   const SpannerMesinInfo({
     required this.idMesin,
@@ -38,6 +56,7 @@ class SpannerMesinInfo {
     this.shift,
     this.hourStart,
     this.hourEnd,
+    this.machineStatus = MachineStatus.inactive,
   });
 
   static String? _s(dynamic v) {
@@ -102,6 +121,7 @@ class SpannerMesinInfo {
       shift: _i(j['Shift']),
       hourStart: _time(j['HourStart']),
       hourEnd: _time(j['HourEnd']),
+      machineStatus: parseStatus(j['status'] ?? j['machineStatus'] ?? j['MachineStatus']),
     );
   }
 }
@@ -135,6 +155,8 @@ class SpannerProduction {
   // ✅ Tutup transaksi flags (kalau backend kirim)
   final DateTime? lastClosedDate; // date only
   final bool isLocked;
+  final bool isComplete;
+  final String? produksiStatus;
 
   // ── New fields (API v2) ─────────────────────────────────────────
   final int? outputJenisId;
@@ -161,6 +183,8 @@ class SpannerProduction {
     this.hourEnd,
     this.lastClosedDate,
     this.isLocked = false,
+    this.isComplete = false,
+    this.produksiStatus,
     this.outputJenisId,
     this.outputJenisNama,
     this.idRegu,
@@ -280,6 +304,9 @@ class SpannerProduction {
 
       lastClosedDate: _asDateTime(j['LastClosedDate']),
       isLocked: _asBool(j['IsLocked']),
+      isComplete: _asBool(j['IsComplete']) ||
+          j['status']?.toString() == 'complete',
+      produksiStatus: j['status']?.toString(),
 
       outputJenisId: _asInt(j['OutputJenisId']),
       outputJenisNama: j['OutputJenisNama']?.toString().trim().isEmpty ?? true
@@ -398,6 +425,8 @@ class SpannerProduction {
     String? hourEnd,
     DateTime? lastClosedDate,
     bool? isLocked,
+    bool? isComplete,
+    String? produksiStatus,
     int? outputJenisId,
     String? outputJenisNama,
     int? idRegu,
@@ -422,6 +451,8 @@ class SpannerProduction {
       hourEnd: hourEnd ?? this.hourEnd,
       lastClosedDate: lastClosedDate ?? this.lastClosedDate,
       isLocked: isLocked ?? this.isLocked,
+      isComplete: isComplete ?? this.isComplete,
+      produksiStatus: produksiStatus ?? this.produksiStatus,
       outputJenisId: outputJenisId ?? this.outputJenisId,
       outputJenisNama: outputJenisNama ?? this.outputJenisNama,
       idRegu: idRegu ?? this.idRegu,

@@ -204,8 +204,16 @@ class _PenerimaanBahanBakuScreenState extends State<PenerimaanBahanBakuScreen> {
   }
 
   static ProduksiRowData _toRowData(PenerimaanBahanBaku row) {
+    final tgl = row.tglPenerimaan;
+    final tglText = tgl != null
+        ? DateFormat('dd MMM yyyy', 'id_ID').format(tgl)
+        : '-';
+    final tim = row.namaTim.trim().isNotEmpty ? row.namaTim.trim() : '-';
+    final by = (row.createBy ?? '').trim().isNotEmpty
+        ? row.createBy!.trim()
+        : '-';
     return ProduksiRowData(
-      tglProduksi: row.tglPenerimaan,
+      tglProduksi: tgl,
       hourStart: null,
       hourEnd: null,
       shift: 0,
@@ -213,6 +221,12 @@ class _PenerimaanBahanBakuScreenState extends State<PenerimaanBahanBakuScreen> {
       namaMesin: row.namaTim,
       noProduksi: row.noPenerimaan,
       produksiStatus: _rowStatusOf(row),
+      hideTimeRow: true,
+      metaOverride: [
+        ProduksiMetaEntry('Tim Penerima', tim),
+        ProduksiMetaEntry('Tanggal', tglText),
+        ProduksiMetaEntry('Dibuat oleh', by),
+      ],
     );
   }
 

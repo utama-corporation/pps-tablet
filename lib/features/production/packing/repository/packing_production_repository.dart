@@ -267,6 +267,32 @@ class PackingProductionRepository {
   //  DELETE
   //  DELETE /api/production/packing/:noPacking
   // =========================
+  //  PATCH /api/production/packing/:noPacking/complete
+  Future<void> completeProduksi(String noPacking) async {
+    print('✅ Completing packing production: $noPacking');
+    try {
+      await api.patchJson('/api/production/packing/$noPacking/complete');
+    } catch (e) {
+      print('❌ Complete packing production error: $e');
+      if (e is ApiException) {
+        if (e.responseBody != null && e.responseBody!.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(e.responseBody!);
+            final msg = decoded['message'] ??
+                decoded['error'] ??
+                decoded['msg'] ??
+                'Gagal menyelesaikan packing produksi';
+            throw Exception(msg);
+          } catch (_) {
+            throw Exception(e.responseBody);
+          }
+        }
+        throw Exception('Gagal menyelesaikan packing produksi (${e.statusCode})');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> deleteProduksi(String noPacking) async {
     print('🗑️ Deleting packing production: $noPacking');
 

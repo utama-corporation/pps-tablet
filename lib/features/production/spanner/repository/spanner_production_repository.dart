@@ -230,6 +230,32 @@ class SpannerProductionRepository {
   //  DELETE
   //  DELETE /api/spanner/spanner/:noProduksi
   // =========================
+  //  PATCH /api/production/spanner/:noProduksi/complete
+  Future<void> completeProduksi(String noProduksi) async {
+    print('✅ Completing spanner production: $noProduksi');
+    try {
+      await api.patchJson('/api/production/spanner/$noProduksi/complete');
+    } catch (e) {
+      print('❌ Complete spanner production error: $e');
+      if (e is ApiException) {
+        if (e.responseBody != null && e.responseBody!.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(e.responseBody!);
+            final msg = decoded['message'] ??
+                decoded['error'] ??
+                decoded['msg'] ??
+                'Gagal menyelesaikan spanner produksi';
+            throw Exception(msg);
+          } catch (_) {
+            throw Exception(e.responseBody);
+          }
+        }
+        throw Exception('Gagal menyelesaikan spanner produksi (${e.statusCode})');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> deleteProduksi(String noProduksi) async {
     print('🗑️ Deleting spanner production: $noProduksi');
 
