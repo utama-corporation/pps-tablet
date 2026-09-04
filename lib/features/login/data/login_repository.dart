@@ -13,10 +13,22 @@ import '../model/login_result.dart';
 import '../model/user_model.dart';
 
 class LoginRepository {
-  Future<LoginResult> login(User user) async {
+  /// [nik] & [confirmNik] hanya dipakai pada flow gate NIK (user belum punya
+  /// NIK di MstUsername). Endpoint yang sama (`/api/auth/login2`) menangani
+  /// verifikasi, konfirmasi, dan penyimpanan NIK — tidak ada token yang
+  /// dikeluarkan sampai NIK terisi.
+  Future<LoginResult> login(
+    User user, {
+    String? nik,
+    bool confirmNik = false,
+  }) async {
     try {
       final uri = Uri.parse(ApiConstants.login);
-      final payload = user.toJson();
+      final payload = <String, dynamic>{
+        ...user.toJson(),
+        if (nik != null && nik.trim().isNotEmpty) 'nik': nik.trim(),
+        if (confirmNik) 'confirmNik': true,
+      };
 
       print('Login URL: $uri');
       print('Login payload: ${jsonEncode(payload)}');
@@ -108,12 +120,57 @@ class LoginRepository {
         print('✅ Token disimpan: ${token.substring(0, token.length > 12 ? 12 : token.length)}...');
         print('✅ Permissions disimpan: ${permissions.length} item');
 
-        return LoginResult.ok(data['message']?.toString() ?? 'Login berhasil');
+        return LoginResult.ok(
+          data['message']?.toString() ?? 'Login berhasil',
+        );
       }
 
       // ERROR FROM BACKEND
       final backendErrorType = (data['errorType'] ?? 'unknown').toString();
       final backendMessage = (data['message'] ?? 'Terjadi kesalahan').toString();
+
+      // 🔒 Gate NIK — ditangani endpoint login yang sama (bukan endpoint baru).
+      if (backendErrorType == 'user_inactive') {
+        return LoginResult(
+          success: false,
+          message: backendMessage.isNotEmpty
+              ? backendMessage
+              : 'Akun Anda telah dinonaktifkan. Hubungi kepala divisi atau IT untuk mengaktifkan kembali.',
+          errorType: 'account_disabled',
+          detailCode: 'account_disabled',
+        );
+      }
+      if (backendErrorType == 'nik_required') {
+        return LoginResult(
+          success: false,
+          message: backendMessage,
+          errorType: 'nik_required',
+          detailCode: 'nik_required',
+        );
+      }
+      if (backendErrorType == 'nik_not_found') {
+        return LoginResult(
+          success: false,
+          message: backendMessage,
+          errorType: 'nik_not_found',
+          detailCode: 'nik_not_found',
+        );
+      }
+      if (backendErrorType == 'nik_confirm') {
+        final emp = data['employee'];
+        return LoginResult(
+          success: false,
+          message: backendMessage,
+          errorType: 'nik_confirm',
+          detailCode: 'nik_confirm',
+          employeeFullName: emp is Map<String, dynamic>
+              ? emp['fullName']?.toString()
+              : null,
+          companyId: emp is Map<String, dynamic>
+              ? emp['companyId']?.toString()
+              : null,
+        );
+      }
 
       if (response.statusCode == 503) {
         return LoginResult(
