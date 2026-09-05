@@ -637,7 +637,6 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-
   Future<void> _safeLoadPermissions() async {
     try {
       final permVm = context.read<PermissionViewModel>();
