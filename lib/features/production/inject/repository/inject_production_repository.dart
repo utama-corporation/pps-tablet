@@ -545,6 +545,27 @@ class InjectProductionRepository {
   }
 
   /* =============================
+   * UNCOMPLETE (buka kunci)
+   * PATCH /api/production/inject/:noProduksi/uncomplete
+   * IsComplete 1 -> 0 supaya produksi bisa diubah lagi.
+   * ============================= */
+
+  Future<Map<String, dynamic>> uncompleteProduksi(String noProduksi) async {
+    final encoded = Uri.encodeComponent(noProduksi.trim());
+    try {
+      final body = await api.patchJson(
+        '/api/production/inject/$encoded/uncomplete',
+      );
+      return body;
+    } on ApiException catch (e) {
+      final parsed = _tryDecodeMap(e.responseBody);
+      final msg = (parsed['message'] as String?) ??
+          'Gagal membuka kunci produksi (HTTP ${e.statusCode})';
+      throw Exception(msg);
+    }
+  }
+
+  /* =============================
    * BATCH - LIST
    * GET /api/production/inject/batch/:noProduksi
    * ============================= */

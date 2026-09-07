@@ -26,6 +26,16 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
   // Jika diset, tombol Terminate tetap tampil tapi disabled; pesan muncul saat long-press
   final String? terminateDisabledReason;
   final VoidCallback? onComplete;
+  // Label + ikon tombol aksi "selesai" (default: "Selesai" / centang). Beberapa
+  // modul memakai istilah berbeda, mis. mixer pakai "Kunci" / gembok.
+  final String completeLabel;
+  final IconData completeIcon;
+  // Jika diset (dan tidak ada completeDisabledReason/approve/pending), tombol
+  // di slot "Selesai" berubah jadi tombol amber pemanggil callback ini —
+  // dipakai saat produksi sudah complete untuk membalik statusnya.
+  final VoidCallback? onUncomplete;
+  final String uncompleteLabel;
+  final IconData uncompleteIcon;
   // Jika diset, tombol Selesai tetap tampil tapi disabled; pesan muncul saat long-press
   final String? completeDisabledReason;
   // Jika diset, tombol Selesai tampil amber (menunggu) dengan ikon jam; tooltip dari sini
@@ -60,6 +70,11 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
     this.onTerminate,
     this.terminateDisabledReason,
     this.onComplete,
+    this.completeLabel = 'Kunci',
+    this.completeIcon = Icons.lock_outline,
+    this.onUncomplete,
+    this.uncompleteLabel = 'Buka Kunci',
+    this.uncompleteIcon = Icons.lock_open_outlined,
     this.completeDisabledReason,
     this.completePendingReason,
     this.onApprove,
@@ -452,7 +467,8 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
               if (onComplete != null ||
                   completeDisabledReason != null ||
                   completePendingReason != null ||
-                  onApprove != null) ...[
+                  onApprove != null ||
+                  onUncomplete != null) ...[
                 const SizedBox(width: 6),
                 if (completeDisabledReason != null)
                   Tooltip(
@@ -462,16 +478,16 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
                     child: Material(
                       color: const Color(0xFFD1D5DB),
                       borderRadius: BorderRadius.circular(6),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check_circle_outline, size: 13, color: Color(0xFF9CA3AF)),
-                            SizedBox(width: 4),
+                            Icon(completeIcon, size: 13, color: const Color(0xFF9CA3AF)),
+                            const SizedBox(width: 4),
                             Text(
-                              'Selesai',
-                              style: TextStyle(
+                              completeLabel,
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF9CA3AF),
@@ -567,6 +583,33 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
                       ),
                     ),
                   )
+                else if (onUncomplete != null)
+                  Material(
+                    color: const Color(0xFFD97706),
+                    borderRadius: BorderRadius.circular(6),
+                    child: InkWell(
+                      onTap: onUncomplete,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(uncompleteIcon, size: 13, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                              uncompleteLabel,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
                 else
                   Material(
                     color: const Color(0xFF059669),
@@ -574,16 +617,16 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
                     child: InkWell(
                       onTap: onComplete,
                       borderRadius: BorderRadius.circular(6),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check_circle_outline, size: 13, color: Colors.white),
-                            SizedBox(width: 4),
+                            Icon(completeIcon, size: 13, color: Colors.white),
+                            const SizedBox(width: 4),
                             Text(
-                              'Selesai',
-                              style: TextStyle(
+                              completeLabel,
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,

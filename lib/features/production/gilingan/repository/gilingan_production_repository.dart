@@ -532,6 +532,36 @@ class GilinganProductionRepository {
     }
   }
 
+  /// Buka kunci produksi (IsComplete -> 0) supaya bisa diubah lagi.
+  Future<void> uncompleteProduksi(String noProduksi) async {
+    final token = await TokenStorage.getToken();
+    final url = Uri.parse(
+      '$_base/api/production/gilingan/$noProduksi/uncomplete',
+    );
+
+    late http.Response res;
+    try {
+      res = await http.patch(url, headers: _headers(token)).timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout membuka kunci produksi gilingan');
+    } catch (e) {
+      rethrow;
+    }
+
+    if (res.statusCode != 200) {
+      final bodyText = utf8.decode(res.bodyBytes);
+      String msg;
+      try {
+        final decoded = json.decode(bodyText);
+        msg = (decoded is Map ? decoded['message'] : null)?.toString() ??
+            'Gagal membuka kunci produksi (${res.statusCode})';
+      } catch (_) {
+        msg = 'Gagal membuka kunci produksi (${res.statusCode})';
+      }
+      throw Exception(msg);
+    }
+  }
+
   // =========================
   //  RIWAYAT PER MESIN/TANGGAL/SHIFT
   //  GET /api/production/gilingan?idMesin=&tanggal=&shift=

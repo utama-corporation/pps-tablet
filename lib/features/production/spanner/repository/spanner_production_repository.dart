@@ -256,6 +256,32 @@ class SpannerProductionRepository {
     }
   }
 
+  /// Buka kunci produksi (IsComplete -> 0) supaya bisa diubah lagi.
+  Future<void> uncompleteProduksi(String noProduksi) async {
+    print('🔓 Uncompleting spanner production: $noProduksi');
+    try {
+      await api.patchJson('/api/production/spanner/$noProduksi/uncomplete');
+    } catch (e) {
+      print('❌ Uncomplete spanner production error: $e');
+      if (e is ApiException) {
+        if (e.responseBody != null && e.responseBody!.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(e.responseBody!);
+            final msg = decoded['message'] ??
+                decoded['error'] ??
+                decoded['msg'] ??
+                'Gagal membuka kunci spanner produksi';
+            throw Exception(msg);
+          } catch (_) {
+            throw Exception(e.responseBody);
+          }
+        }
+        throw Exception('Gagal membuka kunci spanner produksi (${e.statusCode})');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> deleteProduksi(String noProduksi) async {
     print('🗑️ Deleting spanner production: $noProduksi');
 

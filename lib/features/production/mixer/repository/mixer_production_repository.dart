@@ -699,4 +699,36 @@ class MixerProductionRepository {
       throw Exception(msg);
     }
   }
+
+  // =========================
+  //  BATALKAN COMPLETE PRODUKSI
+  //  PATCH /api/production/mixer/:noProduksi/uncomplete
+  //  IsComplete 1 -> 0 supaya produksi bisa diedit lagi.
+  // =========================
+  Future<void> uncompleteProduksi(String noProduksi) async {
+    final token = await TokenStorage.getToken();
+    final url = Uri.parse('$_base/api/production/mixer/$noProduksi/uncomplete');
+
+    late http.Response res;
+    try {
+      res = await http.patch(url, headers: _headers(token)).timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout membatalkan complete produksi mixer');
+    } catch (e) {
+      rethrow;
+    }
+
+    if (res.statusCode != 200) {
+      final bodyText = utf8.decode(res.bodyBytes);
+      String msg;
+      try {
+        final decoded = json.decode(bodyText);
+        msg = (decoded is Map ? decoded['message'] : null)?.toString() ??
+            'Gagal membatalkan complete produksi (${res.statusCode})';
+      } catch (_) {
+        msg = 'Gagal membatalkan complete produksi (${res.statusCode})';
+      }
+      throw Exception(msg);
+    }
+  }
 }

@@ -18,6 +18,7 @@ class WashingWorkspaceToolbar extends StatelessWidget {
   final VoidCallback? onRiwayat;
   final bool showGantiRiwayat;
   final VoidCallback? onComplete;
+  final VoidCallback? onUncomplete;
   final String? completeDisabledReason;
   final String? produksiStatus;
 
@@ -36,6 +37,7 @@ class WashingWorkspaceToolbar extends StatelessWidget {
     this.onRiwayat,
     this.showGantiRiwayat = true,
     this.onComplete,
+    this.onUncomplete,
     this.completeDisabledReason,
     this.produksiStatus,
   });
@@ -57,6 +59,7 @@ class WashingWorkspaceToolbar extends StatelessWidget {
       onRefresh: onRefresh,
       showGantiRiwayat: showGantiRiwayat,
       onComplete: onComplete,
+      onUncomplete: onUncomplete,
       completeDisabledReason: completeDisabledReason,
       produksiStatus: produksiStatus,
     );

@@ -18,6 +18,7 @@ class BrokerWorkspaceToolbar extends StatelessWidget {
   final VoidCallback? onRefresh;
   final bool showGantiRiwayat;
   final VoidCallback? onComplete;
+  final VoidCallback? onUncomplete;
   final String? completeDisabledReason;
   final String? produksiStatus;
 
@@ -36,6 +37,7 @@ class BrokerWorkspaceToolbar extends StatelessWidget {
     this.onRefresh,
     this.showGantiRiwayat = true,
     this.onComplete,
+    this.onUncomplete,
     this.completeDisabledReason,
     this.produksiStatus,
   });
@@ -57,6 +59,7 @@ class BrokerWorkspaceToolbar extends StatelessWidget {
       onRefresh: onRefresh,
       showGantiRiwayat: showGantiRiwayat,
       onComplete: onComplete,
+      onUncomplete: onUncomplete,
       completeDisabledReason: completeDisabledReason,
       produksiStatus: produksiStatus,
     );

@@ -856,4 +856,31 @@ class BrokerProductionRepository {
       }
     }
   }
+
+  /// Buka kunci produksi (IsComplete -> 0) supaya bisa diubah lagi.
+  Future<void> uncompleteProduksi(String noProduksi) async {
+    final token = await TokenStorage.getToken();
+    final url = Uri.parse('$_base/api/production/broker/$noProduksi/uncomplete');
+
+    late http.Response res;
+    try {
+      res = await http.patch(url, headers: _headers(token)).timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout membuka kunci produksi broker');
+    } catch (e) {
+      rethrow;
+    }
+
+    if (res.statusCode != 200) {
+      final bodyText = utf8.decode(res.bodyBytes);
+      try {
+        final decoded = json.decode(bodyText);
+        final msg = (decoded is Map ? decoded['message'] : null) ??
+            'Gagal membuka kunci produksi (${res.statusCode})';
+        throw Exception(msg);
+      } catch (_) {
+        throw Exception('Gagal membuka kunci produksi (${res.statusCode})');
+      }
+    }
+  }
 }

@@ -293,6 +293,32 @@ class PackingProductionRepository {
     }
   }
 
+  /// Buka kunci produksi (IsComplete -> 0) supaya bisa diubah lagi.
+  Future<void> uncompleteProduksi(String noPacking) async {
+    print('🔓 Uncompleting packing production: $noPacking');
+    try {
+      await api.patchJson('/api/production/packing/$noPacking/uncomplete');
+    } catch (e) {
+      print('❌ Uncomplete packing production error: $e');
+      if (e is ApiException) {
+        if (e.responseBody != null && e.responseBody!.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(e.responseBody!);
+            final msg = decoded['message'] ??
+                decoded['error'] ??
+                decoded['msg'] ??
+                'Gagal membuka kunci packing produksi';
+            throw Exception(msg);
+          } catch (_) {
+            throw Exception(e.responseBody);
+          }
+        }
+        throw Exception('Gagal membuka kunci packing produksi (${e.statusCode})');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> deleteProduksi(String noPacking) async {
     print('🗑️ Deleting packing production: $noPacking');
 

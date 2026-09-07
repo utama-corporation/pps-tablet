@@ -53,8 +53,7 @@ class MixerProductionInputScreen extends StatefulWidget {
       _MixerProductionInputScreenState();
 }
 
-class _MixerProductionInputScreenState
-    extends State<MixerProductionInputScreen>
+class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     with
         ProductionOutputMultiSelectMixin<MixerProductionInputScreen>,
         ProductionInputMultiSelectMixin<MixerProductionInputScreen> {
@@ -74,6 +73,14 @@ class _MixerProductionInputScreenState
 
   List<BreadcrumbSegment> _prevBreadcrumb = [];
   bool _isReplacing = false;
+
+  // Permission flags — dihitung ulang tiap build() dari PermissionViewModel.
+  // Input produksi mixer → `produksi_mixer:*`. Output panel membuat/menghapus
+  // label mixer lewat /api/labels/mixer → `label_mixer:*` (sama seperti yang
+  // di-enforce backend). Semua flag sudah termasuk cek "tidak locked".
+  bool _canModifyInput = false; // produksi_mixer:update
+  bool _canCreateOutput = false; // label_mixer:create
+  bool _canDeleteOutput = false; // label_mixer:delete
 
   MixerProduction? _header;
   late String _cachedBreadcrumbLabel;
@@ -610,12 +617,12 @@ class _MixerProductionInputScreenState
       context: context,
       barrierDismissible: false,
       builder: (_) => ConfirmDialog(
-        title: 'Selesaikan Produksi?',
+        title: 'Kunci Produksi?',
         message:
-            'Yakin ingin menyelesaikan produksi ${widget.noProduksi}?\n'
-            'Setelah selesai, produksi akan dikunci dan tidak dapat diubah.',
-        confirmLabel: 'Selesaikan',
-        confirmIcon: Icons.check_circle_outline,
+            'Yakin ingin mengunci produksi ${widget.noProduksi}?\n'
+            'Setelah dikunci, produksi tidak dapat diubah sampai dibuka lagi.',
+        confirmLabel: 'Kunci',
+        confirmIcon: Icons.lock_outline,
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -624,7 +631,7 @@ class _MixerProductionInputScreenState
       await _prodRepo.completeProduksi(widget.noProduksi);
       if (!mounted) return;
       _showSnack(
-        '✅ Produksi berhasil diselesaikan',
+        '✅ Produksi berhasil dikunci',
         backgroundColor: Colors.green,
       );
       await _loadHeader();
@@ -633,7 +640,44 @@ class _MixerProductionInputScreenState
       await showDialog<void>(
         context: context,
         builder: (_) => ErrorStatusDialog(
-          title: 'Gagal Menyelesaikan',
+          title: 'Gagal Mengunci',
+          message: e.toString().replaceFirst('Exception: ', ''),
+        ),
+      );
+    }
+  }
+
+  /// Buka kunci produksi (IsComplete → 0) sehingga produksi bisa diubah lagi.
+  /// Butuh permission `produksi_mixer:update`.
+  Future<void> _handleUncomplete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ConfirmDialog(
+        title: 'Buka Kunci Produksi?',
+        message:
+            'Produksi ${widget.noProduksi} akan dibuka kembali dan bisa '
+            'diubah lagi. Lanjutkan?',
+        confirmLabel: 'Buka Kunci',
+        confirmIcon: Icons.lock_open_outlined,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _prodRepo.uncompleteProduksi(widget.noProduksi);
+      if (!mounted) return;
+      _showSnack(
+        '✅ Produksi berhasil dibuka — bisa diubah lagi',
+        backgroundColor: Colors.green,
+      );
+      await _loadHeader();
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Membuka Kunci',
           message: e.toString().replaceFirst('Exception: ', ''),
         ),
       );
@@ -719,7 +763,7 @@ class _MixerProductionInputScreenState
           ? clearOutputSelection
           : () => selectAllOutputs(currentOutputs, _outputCode),
       onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
-      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+      onDelete: _canDeleteOutput ? _deleteSelectedOutputs : null,
     );
   }
 
@@ -793,102 +837,98 @@ class _MixerProductionInputScreenState
                               children: [
                                 Expanded(
                                   child: LayoutBuilder(
-                                    builder: (ctx, c) =>
-                                        ProductionOutputCategoryContent(
-                                          footer: const SizedBox.shrink(),
-                                          child: outputs.isEmpty
-                                              ? const Center(
-                                                  child: Text(
-                                                    'Belum ada output mixer',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Color(0xFF9CA3AF),
-                                                    ),
-                                                  ),
-                                                )
-                                              : GridView(
-                                                  padding: const EdgeInsets.all(
-                                                    6,
-                                                  ),
-                                                  gridDelegate:
-                                                      SliverGridDelegateWithFixedCrossAxisCount(
-                                                        crossAxisCount:
-                                                            c.maxWidth < 380
-                                                            ? 2
-                                                            : 3,
-                                                        crossAxisSpacing: 6,
-                                                        mainAxisSpacing: 6,
-                                                        mainAxisExtent: 78,
-                                                      ),
-                                                  children: outputs
-                                                      .map(
-                                                        (o) => wrapOutputTile(
-                                                          code: o.noMixer.trim(),
-                                                          item: o,
-                                                          accentColor:
-                                                              _kMixerOutputColor,
-                                                          builder:
-                                                              (overrideTap) =>
-                                                                  MixerOutputTile(
-                                                                    output: o,
-                                                                    onTap:
-                                                                        overrideTap,
-                                                                    canPrint:
-                                                                        !_isLockedOrComplete,
-                                                                  ),
-                                                        ),
-                                                      )
-                                                      .toList(),
+                                    builder: (ctx, c) => ProductionOutputCategoryContent(
+                                      footer: const SizedBox.shrink(),
+                                      child: outputs.isEmpty
+                                          ? const Center(
+                                              child: Text(
+                                                'Belum ada output mixer',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Color(0xFF9CA3AF),
                                                 ),
-                                        ),
+                                              ),
+                                            )
+                                          : GridView(
+                                              padding: const EdgeInsets.all(6),
+                                              gridDelegate:
+                                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                                    crossAxisCount:
+                                                        c.maxWidth < 380
+                                                        ? 2
+                                                        : 3,
+                                                    crossAxisSpacing: 6,
+                                                    mainAxisSpacing: 6,
+                                                    mainAxisExtent: 78,
+                                                  ),
+                                              children: outputs
+                                                  .map(
+                                                    (o) => wrapOutputTile(
+                                                      code: o.noMixer.trim(),
+                                                      item: o,
+                                                      accentColor:
+                                                          _kMixerOutputColor,
+                                                      builder: (overrideTap) =>
+                                                          MixerOutputTile(
+                                                            output: o,
+                                                            onTap: overrideTap,
+                                                            canPrint:
+                                                                !_isLockedOrComplete,
+                                                          ),
+                                                    ),
+                                                  )
+                                                  .toList(),
+                                            ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 10),
                                 if (isSelectingOutput)
                                   _outputSelectionBar(outputs)
                                 else
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          MixerOutputSummaryTile(
-                                            totalLabel: outputs.length,
-                                            totalSak: totalSak,
-                                            totalBerat: totalBerat,
-                                          ),
-                                          const SizedBox(height: 6),
-                                          MixerOutputGrandTotalBar(
-                                            totalLabel: outputs.length,
-                                            totalSak: totalSak,
-                                            totalBerat: totalBerat,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    FloatingActionButton(
-                                      heroTag: 'fab_add_mixer_output',
-                                      mini: true,
-                                      backgroundColor:
-                                          (_header == null ||
-                                              _isLockedOrComplete)
-                                          ? Colors.grey.shade300
-                                          : _kMixerOutputColor,
-                                      foregroundColor: Colors.white,
-                                      onPressed:
-                                          (_header == null ||
-                                              _isLockedOrComplete)
-                                          ? null
-                                          : () => _openAddOutputDialog(
-                                              grandInputBerat,
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            MixerOutputSummaryTile(
+                                              totalLabel: outputs.length,
+                                              totalSak: totalSak,
+                                              totalBerat: totalBerat,
                                             ),
-                                      child: const Icon(Icons.add),
-                                    ),
-                                  ],
-                                ),
+                                            const SizedBox(height: 6),
+                                            MixerOutputGrandTotalBar(
+                                              totalLabel: outputs.length,
+                                              totalSak: totalSak,
+                                              totalBerat: totalBerat,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      FloatingActionButton(
+                                        heroTag: 'fab_add_mixer_output',
+                                        mini: true,
+                                        backgroundColor:
+                                            (_header == null ||
+                                                !_canCreateOutput)
+                                            ? Colors.grey.shade300
+                                            : _kMixerOutputColor,
+                                        foregroundColor: Colors.white,
+                                        onPressed:
+                                            (_header == null ||
+                                                !_canCreateOutput)
+                                            ? null
+                                            : () => _openAddOutputDialog(
+                                                grandInputBerat,
+                                              ),
+                                        child: const Icon(Icons.add),
+                                      ),
+                                    ],
+                                  ),
                               ],
                             ),
                           ),
@@ -935,7 +975,7 @@ class _MixerProductionInputScreenState
       onToggleAll: allSelected
           ? clearInputSelection
           : () => selectAllInputGroups(groups),
-      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+      onRelease: _canModifyInput ? () => _releaseSelectedInput(vm) : null,
     );
   }
 
@@ -966,7 +1006,7 @@ class _MixerProductionInputScreenState
     required MixerProductionInputViewModel vm,
     required bool locked,
     required bool loading,
-    required bool canDelete,
+    required bool canModify, // produksi_mixer:update (+ tidak locked)
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<WashingItem>> washingGroups,
@@ -1108,7 +1148,7 @@ class _MixerProductionInputScreenState
                                 width: c.maxWidth,
                                 child: _buildTabContent(
                                   vm: vm,
-                                  canDelete: canDelete,
+                                  canModify: canModify,
                                   bbGroups: bbGroups,
                                   brokerGroups: brokerGroups,
                                   washingGroups: washingGroups,
@@ -1131,51 +1171,51 @@ class _MixerProductionInputScreenState
                               ),
                             )
                           else
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ProductionCategorySummaryTile(
-                                      summary: selSummary,
-                                      accentColor: _kMixerPrimary,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    ProductionInputGrandTotalBar(
-                                      totalLabel: totalLabel,
-                                      totalSak: grandSak,
-                                      totalBerat: grandBerat,
-                                      color: _kMixerPrimary,
-                                    ),
-                                  ],
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ProductionCategorySummaryTile(
+                                        summary: selSummary,
+                                        accentColor: _kMixerPrimary,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      ProductionInputGrandTotalBar(
+                                        totalLabel: totalLabel,
+                                        totalSak: grandSak,
+                                        totalBerat: grandBerat,
+                                        color: _kMixerPrimary,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              FloatingActionButton(
-                                heroTag: 'fab_scan_mixer_input',
-                                mini: true,
-                                backgroundColor: locked
-                                    ? Colors.grey.shade300
-                                    : _kMixerPrimary,
-                                foregroundColor: Colors.white,
-                                onPressed: locked || vm.isLookupLoading
-                                    ? null
-                                    : _openScanDialog,
-                                child: vm.isLookupLoading
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(Icons.qr_code_scanner),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 10),
+                                FloatingActionButton(
+                                  heroTag: 'fab_scan_mixer_input',
+                                  mini: true,
+                                  backgroundColor: !canModify
+                                      ? Colors.grey.shade300
+                                      : _kMixerPrimary,
+                                  foregroundColor: Colors.white,
+                                  onPressed: !canModify || vm.isLookupLoading
+                                      ? null
+                                      : _openScanDialog,
+                                  child: vm.isLookupLoading
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.qr_code_scanner),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
                     ),
@@ -1193,7 +1233,7 @@ class _MixerProductionInputScreenState
 
   Widget _buildTabContent({
     required MixerProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<WashingItem>> washingGroups,
@@ -1202,29 +1242,29 @@ class _MixerProductionInputScreenState
   }) {
     switch (_selectedTab) {
       case 'bb':
-        return _buildBbTab(vm: vm, canDelete: canDelete, bbGroups: bbGroups);
+        return _buildBbTab(vm: vm, canModify: canModify, bbGroups: bbGroups);
       case 'broker':
         return _buildBrokerTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           brokerGroups: brokerGroups,
         );
       case 'washing':
         return _buildWashingTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           washingGroups: washingGroups,
         );
       case 'gilingan':
         return _buildGilinganTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           gilinganGroups: gilinganGroups,
         );
       default:
         return _buildMixerTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           mixerGroups: mixerGroups,
         );
     }
@@ -1234,7 +1274,7 @@ class _MixerProductionInputScreenState
 
   Widget _buildBbTab({
     required MixerProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BbItem>> bbGroups,
   }) {
     return ProductionOutputCategoryContent(
@@ -1333,7 +1373,7 @@ class _MixerProductionInputScreenState
 
   Widget _buildBrokerTab({
     required MixerProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BrokerItem>> brokerGroups,
   }) {
     return ProductionOutputCategoryContent(
@@ -1436,7 +1476,7 @@ class _MixerProductionInputScreenState
 
   Widget _buildWashingTab({
     required MixerProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<WashingItem>> washingGroups,
   }) {
     return ProductionOutputCategoryContent(
@@ -1516,7 +1556,7 @@ class _MixerProductionInputScreenState
 
   Widget _buildGilinganTab({
     required MixerProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<GilinganItem>> gilinganGroups,
   }) {
     return ProductionOutputCategoryContent(
@@ -1610,7 +1650,7 @@ class _MixerProductionInputScreenState
                           },
                           isTempRow: isTemp,
                           isHighlighted: isTemp,
-                          isDisabled: !isTemp && !canDelete,
+                          isDisabled: !isTemp && !canModify,
                           itemData: item,
                         );
                       }).toList();
@@ -1626,7 +1666,7 @@ class _MixerProductionInputScreenState
 
   Widget _buildMixerTab({
     required MixerProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<MixerItem>> mixerGroups,
   }) {
     return ProductionOutputCategoryContent(
@@ -1857,7 +1897,13 @@ class _MixerProductionInputScreenState
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
         final locked = _isLockedOrComplete;
-        final canDelete = perm.can('label_washing:delete') && !locked;
+        _canModifyInput = perm.can('produksi_mixer:update') && !locked;
+        _canCreateOutput = perm.can('label_mixer:create') && !locked;
+        _canDeleteOutput = perm.can('label_mixer:delete') && !locked;
+        // Batalkan complete: hanya saat produksi sudah complete & user punya
+        // izin update (di sini justru butuh bertindak walau produksi terkunci).
+        final canUncomplete =
+            _header?.isComplete == true && perm.can('produksi_mixer:update');
 
         return PopScope(
           canPop: false,
@@ -1885,7 +1931,7 @@ class _MixerProductionInputScreenState
                     hourStart: _header?.hourStart,
                     hourEnd: _header?.hourEnd,
                     primaryColor: _kMixerPrimary,
-                    onGanti: locked ? null : _openSplitDialog,
+                    onGanti: _canModifyInput ? _openSplitDialog : null,
                     onRiwayat: _openTimelineDialog,
                     onRefresh: () {
                       vm.loadInputs(widget.noProduksi, force: true);
@@ -1893,12 +1939,22 @@ class _MixerProductionInputScreenState
                       _showSnack('Data di-refresh');
                     },
                     produksiStatus: _header?.produksiStatus,
-                    onComplete: (_header?.isComplete == true)
+                    // Slot tombol ini jadi toggle: "Kunci" saat produksi masih
+                    // terbuka → "Buka Kunci" saat sudah complete (butuh izin
+                    // produksi_mixer:update). Tanpa izin → tombol grey disabled.
+                    onComplete:
+                        (_header?.isComplete == true || !_canModifyInput)
                         ? null
                         : _handleComplete,
+                    completeLabel: 'Kunci',
+                    completeIcon: Icons.lock_outline,
+                    onUncomplete: canUncomplete ? _handleUncomplete : null,
+                    uncompleteLabel: 'Buka Kunci',
                     completeDisabledReason: (_header?.isComplete == true)
-                        ? 'Produksi sudah selesai'
-                        : null,
+                        ? (canUncomplete ? null : 'Produksi terkunci')
+                        : (!locked && !perm.can('produksi_mixer:update')
+                              ? 'Tidak ada izin mengubah produksi'
+                              : null),
                   ),
                 Expanded(
                   child: Builder(
@@ -1986,7 +2042,7 @@ class _MixerProductionInputScreenState
                                 vm: vm,
                                 locked: locked,
                                 loading: loading,
-                                canDelete: canDelete,
+                                canModify: _canModifyInput,
                                 bbGroups: bbGroups,
                                 brokerGroups: brokerGroups,
                                 washingGroups: washingGroups,

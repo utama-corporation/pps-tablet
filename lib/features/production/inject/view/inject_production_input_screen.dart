@@ -355,6 +355,42 @@ class _InjectProductionInputScreenState
     }
   }
 
+  /// Buka kunci produksi (IsComplete → 0) supaya bisa diubah lagi.
+  Future<void> _handleUncomplete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ConfirmDialog(
+        title: 'Buka Kunci Produksi?',
+        message:
+            'Produksi ${widget.noProduksi} akan dibuka kembali dan bisa '
+            'diubah lagi. Lanjutkan?',
+        confirmLabel: 'Buka Kunci',
+        confirmIcon: Icons.lock_open_outlined,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _prodRepo.uncompleteProduksi(widget.noProduksi);
+      if (!mounted) return;
+      _showSnack(
+        '✅ Produksi berhasil dibuka — bisa diubah lagi',
+        backgroundColor: Colors.green,
+      );
+      await _loadHeader();
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Membuka Kunci',
+          message: e.toString().replaceFirst('Exception: ', ''),
+        ),
+      );
+    }
+  }
+
   // ── Scan / Lookup ──────────────────────────────────────────────────────────
 
   Future<void> _openScanDialog() async {
@@ -2832,8 +2868,8 @@ class _InjectProductionInputScreenState
                     onComplete: (_header?.isComplete == true)
                         ? null
                         : _handleComplete,
-                    completeDisabledReason: (_header?.isComplete == true)
-                        ? 'Produksi sudah selesai'
+                    onUncomplete: (_header?.isComplete == true)
+                        ? _handleUncomplete
                         : null,
                     onGanti: _openSplitTimeDialog,
                   ),
