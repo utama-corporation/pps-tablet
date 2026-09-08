@@ -19,10 +19,14 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         child: Center(
-          child: FutureBuilder<String>(
-            future: UserSessionStorage.getUsername(fallback: '-'),
+          child: FutureBuilder<List<String?>>(
+            future: Future.wait([
+              UserSessionStorage.getUsername(fallback: '-'),
+              UserSessionStorage.getUGroupName(),
+            ]),
             builder: (context, snapshot) {
-              final username = snapshot.data ?? '-';
+              final username = snapshot.data?[0] ?? '-';
+              final ugroupName = snapshot.data?[1];
 
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -36,6 +40,27 @@ class HomeScreen extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  if ((ugroupName ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _primaryColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        ugroupName!,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: _primaryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   const Text(
                     'PPS Tablet',

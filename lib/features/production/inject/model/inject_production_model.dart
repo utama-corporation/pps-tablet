@@ -55,16 +55,6 @@ class InjectProduction {
   final bool isLocked;
   final bool isComplete;
 
-  /// Approval flow for manual complete request
-  final String? completeRequestStatus; // 'PENDING' | 'APPROVED' | 'REJECTED' | null
-  final int? completeRequestedBy;
-  final String? completeRequestedByUsername;
-  final DateTime? completeRequestedAt;
-  final int? completeDecisionBy;
-  final String? completeDecisionByUsername;
-  final DateTime? completeDecisionAt;
-  final String? completeRejectReason;
-
   final bool isRealtime;
   final String? produksiStatus;
 
@@ -112,14 +102,6 @@ class InjectProduction {
     this.lastClosedDate,
     required this.isLocked,
     this.isComplete = false,
-    this.completeRequestStatus,
-    this.completeRequestedBy,
-    this.completeRequestedByUsername,
-    this.completeRequestedAt,
-    this.completeDecisionBy,
-    this.completeDecisionByUsername,
-    this.completeDecisionAt,
-    this.completeRejectReason,
     this.isRealtime = false,
     this.produksiStatus,
     this.inputMode,
@@ -275,14 +257,6 @@ class InjectProduction {
       isLocked: _asBool(j['IsLocked'], fallback: false),
       isComplete: _asBool(j['IsComplete'], fallback: false) ||
           j['status']?.toString() == 'complete',
-      completeRequestStatus: j['CompleteRequestStatus']?.toString(),
-      completeRequestedBy: (j['CompleteRequestedBy'] as num?)?.toInt(),
-      completeRequestedByUsername: j['CompleteRequestedByUsername']?.toString(),
-      completeRequestedAt: _asDateTime(j['CompleteRequestedAt']),
-      completeDecisionBy: (j['CompleteDecisionBy'] as num?)?.toInt(),
-      completeDecisionByUsername: j['CompleteDecisionByUsername']?.toString(),
-      completeDecisionAt: _asDateTime(j['CompleteDecisionAt']),
-      completeRejectReason: j['CompleteRejectReason']?.toString(),
       isRealtime: j['status']?.toString() == 'current' ||
           j['status']?.toString() == 'pending' ||
           _asBool(j['IsRealtime'], fallback: false),
@@ -431,8 +405,6 @@ class InjectProduksiItem {
   final List<InjectOutputJenis> outputs;
   final bool isLocked;
   final bool isRealtime;
-  final String? completeRequestStatus;
-  final String? completeRejectReason;
 
   const InjectProduksiItem({
     required this.noProduksi,
@@ -454,8 +426,6 @@ class InjectProduksiItem {
     this.outputs = const [],
     this.isLocked = false,
     this.isRealtime = false,
-    this.completeRequestStatus,
-    this.completeRejectReason,
   });
 
   int? get idOperator => idOperators.isNotEmpty ? idOperators.first : null;
@@ -510,8 +480,6 @@ class InjectProduksiItem {
       isRealtime: j['status']?.toString() == 'current' ||
           j['IsRealtime'] == true ||
           j['IsRealtime'] == 1,
-      completeRequestStatus: j['CompleteRequestStatus']?.toString(),
-      completeRejectReason: j['CompleteRejectReason']?.toString(),
     );
   }
 }

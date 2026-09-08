@@ -25,7 +25,6 @@ class ProduksiRowData {
 
   final String? noProduksi;
   final String? produksiStatus;
-  final String? completeRequestStatus;
 
   /// Label kolom "Mesin" (default). Modul non-produksi (mis. penerimaan)
   /// bisa menggantinya jadi "Tim Penerima", dll.
@@ -53,7 +52,6 @@ class ProduksiRowData {
     this.namaFurnitureMaterial,
     this.noProduksi,
     this.produksiStatus,
-    this.completeRequestStatus,
     this.mesinLabel = 'Mesin',
     this.hideTimeRow = false,
     this.metaOverride,
@@ -71,8 +69,6 @@ class ProductionProduksiList<T> extends StatefulWidget {
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
-    this.onApprove,
-    this.onReject,
     this.showMesin = true,
   });
 
@@ -84,8 +80,6 @@ class ProductionProduksiList<T> extends StatefulWidget {
   final Future<void> Function(T) onTap;
   final Future<void> Function(T) onEdit;
   final Future<void> Function(T) onDelete;
-  final Future<void> Function(T)? onApprove;
-  final Future<void> Function(T)? onReject;
   final bool showMesin;
 
   @override
@@ -164,7 +158,6 @@ class _ProductionProduksiListState<T>
               final cardOffset = cardBox.localToGlobal(Offset.zero);
               final cardSize = cardBox.size;
 
-              final isPending = data.completeRequestStatus == 'PENDING';
               final value = await showMenu<String>(
                 context: context,
                 color: Colors.transparent,
@@ -187,12 +180,6 @@ class _ProductionProduksiListState<T>
                     child: _ContextMenu(
                       onEdit: () => Navigator.of(context).pop('edit'),
                       onDelete: () => Navigator.of(context).pop('hapus'),
-                      onApprove: isPending && widget.onApprove != null
-                          ? () => Navigator.of(context).pop('approve')
-                          : null,
-                      onReject: isPending && widget.onReject != null
-                          ? () => Navigator.of(context).pop('reject')
-                          : null,
                     ),
                   ),
                 ],
@@ -201,8 +188,6 @@ class _ProductionProduksiListState<T>
               if (mounted) setState(() => _activeIndex = null);
               if (value == 'edit') widget.onEdit(item);
               if (value == 'hapus') widget.onDelete(item);
-              if (value == 'approve') widget.onApprove?.call(item);
-              if (value == 'reject') widget.onReject?.call(item);
             },
             onEdit: () => widget.onEdit(item),
             onDelete: () => widget.onDelete(item),
@@ -402,24 +387,6 @@ class _ProduksiRowState extends State<_ProduksiRow> {
                                           foreground: _kLocked,
                                           background: Color(0xFFFFF7ED)),
                                     ),
-                                  if (data.completeRequestStatus == 'PENDING')
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 6),
-                                      child: _StatusChip(
-                                        label: 'Approval',
-                                        foreground: _kYellow,
-                                        background: Color(0xFFFFFBEB),
-                                      ),
-                                    ),
-                                  if (data.completeRequestStatus == 'REJECTED')
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 6),
-                                      child: _StatusChip(
-                                        label: 'Ditolak',
-                                        foreground: _kRed,
-                                        background: Color(0xFFFEF2F2),
-                                      ),
-                                    ),
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -459,18 +426,13 @@ class _ContextMenu extends StatelessWidget {
   const _ContextMenu({
     required this.onEdit,
     required this.onDelete,
-    this.onApprove,
-    this.onReject,
   });
 
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final VoidCallback? onApprove;
-  final VoidCallback? onReject;
 
   @override
   Widget build(BuildContext context) {
-    final hasApproval = onApprove != null || onReject != null;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -493,35 +455,6 @@ class _ContextMenu extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (hasApproval) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (onApprove != null)
-                    _MenuBtn(
-                      icon: Icons.check_circle_outline,
-                      label: 'Setujui',
-                      color: _kGreen,
-                      isFirst: true,
-                      isLast: onReject == null,
-                      onTap: onApprove!,
-                    ),
-                  if (onApprove != null && onReject != null)
-                    Container(width: 1, height: 60, color: const Color(0xFFE5E7EB)),
-                  if (onReject != null)
-                    _MenuBtn(
-                      icon: Icons.cancel_outlined,
-                      label: 'Tolak',
-                      color: _kRed,
-                      isFirst: onApprove == null,
-                      isLast: true,
-                      onTap: onReject!,
-                    ),
-                ],
-              ),
-              if (hasApproval)
-                Container(height: 1, color: const Color(0xFFE5E7EB)),
-            ],
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -529,7 +462,7 @@ class _ContextMenu extends StatelessWidget {
                   icon: Icons.edit_outlined,
                   label: 'Edit',
                   color: _kBlue,
-                  isFirst: !hasApproval,
+                  isFirst: true,
                   isLast: false,
                   onTap: onEdit,
                 ),

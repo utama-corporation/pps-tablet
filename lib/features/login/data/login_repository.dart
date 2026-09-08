@@ -108,12 +108,22 @@ class LoginRepository {
             ? (userData['username'] ?? userData['name'] ?? user.username)
                   .toString()
             : user.username;
-        final savedFullName = (userData is Map<String, dynamic>)
-            ? userData['fullName']?.toString()
-            : null;
+        final userMap =
+            userData is Map<String, dynamic> ? userData : const <String, dynamic>{};
+        final savedFullName = userMap['fullName']?.toString();
+        final savedGroupId = (userMap['idUGroup'] as num?)?.toInt();
+        final savedGroupName = userMap['uGroupName']?.toString();
+        final savedIdUsername = (userMap['idUsername'] as num?)?.toInt();
+        final savedNik = userMap['nik']?.toString();
+        final savedCompanyId = userMap['companyId']?.toString();
         await UserSessionStorage.saveUser(
           username: savedUsername,
           fullName: savedFullName,
+          idUsername: savedIdUsername,
+          nik: savedNik,
+          companyId: savedCompanyId,
+          idUGroup: savedGroupId,
+          uGroupName: savedGroupName,
         );
         await PermissionStorage.savePermissions(permissions);
 

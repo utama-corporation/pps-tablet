@@ -54,6 +54,12 @@ class _GilinganProductionInputScreenState
   final _prodRepo = GilinganProductionRepository();
   bool _isReplacing = false;
 
+  // Permission flags — dihitung ulang tiap build() dari PermissionViewModel.
+  // Seluruh modul produksi gilingan memakai `produksi_gilingan:*`. Flag di
+  // bawah sudah termasuk cek "tidak locked".
+  bool _canModifyInput = false; // produksi_gilingan:update
+  bool _canDeleteOutput = false; // produksi_gilingan:delete
+
   /// Produksi sudah selesai / terkunci → tidak boleh diubah maupun dicetak.
   bool get _isLockedOrComplete =>
       _header?.isLocked == true || _header?.isComplete == true;
@@ -522,7 +528,7 @@ class _GilinganProductionInputScreenState
       onToggleAll: allSelected
           ? clearInputSelection
           : () => selectAllInputGroups(groups),
-      onRelease: _isLockedOrComplete ? null : () => _releaseSelectedInput(vm),
+      onRelease: _canModifyInput ? () => _releaseSelectedInput(vm) : null,
     );
   }
 
@@ -548,7 +554,7 @@ class _GilinganProductionInputScreenState
     required GilinganProductionInputViewModel vm,
     required bool locked,
     required bool loading,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
     required Map<String, List<CrusherItem>> crusherGroups,
@@ -674,7 +680,7 @@ class _GilinganProductionInputScreenState
                                 width: constraints.maxWidth,
                                 child: _buildSelectedTabContent(
                                   vm: vm,
-                                  canDelete: canDelete,
+                                  canModify: canModify,
                                   brokerGroups: brokerGroups,
                                   bonggolGroups: bonggolGroups,
                                   crusherGroups: crusherGroups,
@@ -722,11 +728,11 @@ class _GilinganProductionInputScreenState
                               FloatingActionButton(
                                 heroTag: 'fab_scan_gilingan',
                                 mini: true,
-                                backgroundColor: locked
+                                backgroundColor: !_canModifyInput
                                     ? Colors.grey.shade300
                                     : _kGilinganPrimary,
                                 foregroundColor: Colors.white,
-                                onPressed: locked || vm.isLookupLoading
+                                onPressed: !_canModifyInput || vm.isLookupLoading
                                     ? null
                                     : _openScanDialog,
                                 child: vm.isLookupLoading
@@ -757,7 +763,7 @@ class _GilinganProductionInputScreenState
 
   Widget _buildSelectedTabContent({
     required GilinganProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
     required Map<String, List<CrusherItem>> crusherGroups,
@@ -770,7 +776,7 @@ class _GilinganProductionInputScreenState
       case 'broker':
         return _buildBrokerTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           groups: brokerGroups,
           inputs: inputs,
           crossAxisCount: crossAxisCount,
@@ -778,7 +784,7 @@ class _GilinganProductionInputScreenState
       case 'bonggolan':
         return _buildBonggolTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           groups: bonggolGroups,
           inputs: inputs,
           crossAxisCount: crossAxisCount,
@@ -786,7 +792,7 @@ class _GilinganProductionInputScreenState
       case 'crusher':
         return _buildCrusherTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           groups: crusherGroups,
           inputs: inputs,
           crossAxisCount: crossAxisCount,
@@ -794,7 +800,7 @@ class _GilinganProductionInputScreenState
       default:
         return _buildRejectTab(
           vm: vm,
-          canDelete: canDelete,
+          canModify: canModify,
           groups: rejectGroups,
           inputs: inputs,
           crossAxisCount: crossAxisCount,
@@ -806,7 +812,7 @@ class _GilinganProductionInputScreenState
 
   Widget _buildBrokerTab({
     required GilinganProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BrokerItem>> groups,
     required GilinganInputs? inputs,
     required int crossAxisCount,
@@ -901,7 +907,7 @@ class _GilinganProductionInputScreenState
 
   Widget _buildBonggolTab({
     required GilinganProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<BonggolanItem>> groups,
     required GilinganInputs? inputs,
     required int crossAxisCount,
@@ -975,7 +981,7 @@ class _GilinganProductionInputScreenState
 
   Widget _buildCrusherTab({
     required GilinganProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<CrusherItem>> groups,
     required GilinganInputs? inputs,
     required int crossAxisCount,
@@ -1053,7 +1059,7 @@ class _GilinganProductionInputScreenState
 
   Widget _buildRejectTab({
     required GilinganProductionInputViewModel vm,
-    required bool canDelete,
+    required bool canModify,
     required Map<String, List<RejectItem>> groups,
     required GilinganInputs? inputs,
     required int crossAxisCount,
@@ -1452,7 +1458,7 @@ class _GilinganProductionInputScreenState
           ? clearOutputSelection
           : () => selectAllOutputs(currentOutputs, _outputCode),
       onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
-      onDelete: _isLockedOrComplete ? null : _deleteSelectedOutputs,
+      onDelete: _canDeleteOutput ? _deleteSelectedOutputs : null,
     );
   }
 
@@ -1606,14 +1612,12 @@ class _GilinganProductionInputScreenState
                                       heroTag: 'fab_add_gilingan_output',
                                       mini: true,
                                       backgroundColor:
-                                          (_header == null ||
-                                              _isLockedOrComplete)
+                                          (_header == null || !_canModifyInput)
                                           ? Colors.grey.shade300
                                           : _kGilinganOutputColor,
                                       foregroundColor: Colors.white,
                                       onPressed:
-                                          (_header == null ||
-                                              _isLockedOrComplete)
+                                          (_header == null || !_canModifyInput)
                                           ? null
                                           : () => _openAddOutputDialog(
                                               outputJenisId,
@@ -1694,7 +1698,12 @@ class _GilinganProductionInputScreenState
         final perm = context.watch<PermissionViewModel>();
         final locked = _isLockedOrComplete;
 
-        final canDelete = perm.can('label_washing:delete') && !locked;
+        _canModifyInput = perm.can('produksi_gilingan:update') && !locked;
+        _canDeleteOutput = perm.can('produksi_gilingan:delete') && !locked;
+        // Buka Kunci: hanya saat produksi sudah complete & user boleh update
+        // (justru butuh bertindak walau produksi terkunci).
+        final canUncomplete = _header?.isComplete == true &&
+            perm.can('produksi_gilingan:update');
 
         final outputs = vm.outputsOf(widget.noProduksi) ?? [];
         final outputLoading = vm.isOutputsLoading(widget.noProduksi);
@@ -1763,7 +1772,7 @@ class _GilinganProductionInputScreenState
                       vm.loadInputs(widget.noProduksi, force: true);
                       _showSnack('Data di-refresh');
                     },
-                    onGanti: locked ? null : _openSplitDialog,
+                    onGanti: _canModifyInput ? _openSplitDialog : null,
                     onRiwayat: _openTimelineDialog,
                     showGantiRiwayat:
                         _header?.tglProduksi != null &&
@@ -1771,12 +1780,15 @@ class _GilinganProductionInputScreenState
                         _header!.tglProduksi!.month == DateTime.now().month &&
                         _header!.tglProduksi!.day == DateTime.now().day,
                     produksiStatus: _header?.produksiStatus,
-                    onComplete: (_header?.isComplete == true)
+                    onComplete: (_header?.isComplete == true || !_canModifyInput)
                         ? null
                         : _handleComplete,
-                    onUncomplete: (_header?.isComplete == true)
-                        ? _handleUncomplete
-                        : null,
+                    onUncomplete: canUncomplete ? _handleUncomplete : null,
+                    completeDisabledReason: (_header?.isComplete == true)
+                        ? (canUncomplete ? null : 'Produksi terkunci')
+                        : (!locked && !perm.can('produksi_gilingan:update')
+                              ? 'Tidak ada izin mengubah produksi'
+                              : null),
                   ),
                 Expanded(
                   child: Builder(
@@ -1796,7 +1808,7 @@ class _GilinganProductionInputScreenState
                                 vm: vm,
                                 locked: locked,
                                 loading: loading,
-                                canDelete: canDelete,
+                                canModify: _canModifyInput,
                                 brokerGroups: brokerGroups,
                                 bonggolGroups: bonggolGroups,
                                 crusherGroups: crusherGroups,

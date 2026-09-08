@@ -9,6 +9,7 @@ import 'package:pps_tablet/features/bahan_pendukung/penerimaan/view/penerimaan_b
 import 'package:pps_tablet/features/bj_jual/view/bj_jual_screen.dart';
 import 'package:pps_tablet/features/bongkar_susun_v2/view/bs_v2_list_screen.dart';
 import 'package:pps_tablet/features/home/view/home_screen.dart';
+import 'package:pps_tablet/features/home/view/widgets/account_info_dialog.dart';
 import 'package:pps_tablet/features/home/view/widgets/home_sidebar.dart';
 import 'package:pps_tablet/features/home/view/widgets/user_profile_dialog.dart';
 import 'package:pps_tablet/features/label/bahan_baku/view/bahan_baku_screen.dart';
@@ -78,6 +79,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   bool _sidebarCollapsed = false;
   String? _username;
+  String? _ugroupName;
 
   @override
   void initState() {
@@ -88,7 +90,13 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> _loadUserInfo() async {
     final username = await UserSessionStorage.getUsername(fallback: '-');
-    if (mounted) setState(() => _username = username);
+    final ugroupName = await UserSessionStorage.getUGroupName();
+    if (mounted) {
+      setState(() {
+        _username = username;
+        _ugroupName = ugroupName;
+      });
+    }
   }
 
   void _onBreadcrumbChanged() {
@@ -126,9 +134,8 @@ class _AppShellState extends State<AppShell> {
                   HomeSidebar(
                     navigatorKey: AppShell.shellNavigatorKey,
                     isCollapsed: _sidebarCollapsed,
-                    onToggleCollapse: () => setState(
-                      () => _sidebarCollapsed = !_sidebarCollapsed,
-                    ),
+                    onToggleCollapse: () =>
+                        setState(() => _sidebarCollapsed = !_sidebarCollapsed),
                     onNavigate: (title, {String? parentTitle}) {
                       if (parentTitle != null) {
                         AppShell.breadcrumb.value = [
@@ -243,6 +250,9 @@ class _AppShellState extends State<AppShell> {
           case _UserMenuAction.account:
             _showAccountDialog();
             break;
+          case _UserMenuAction.changePassword:
+            _showChangePasswordDialog();
+            break;
           case _UserMenuAction.logout:
             _handleLogout(context);
             break;
@@ -290,6 +300,19 @@ class _AppShellState extends State<AppShell> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if ((_ugroupName ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _ugroupName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -317,7 +340,37 @@ class _AppShellState extends State<AppShell> {
               ),
               const SizedBox(width: 10),
               const Text(
-                'Akun',
+                'Profile',
+                style: TextStyle(
+                  color: Color(0xFF334155),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<_UserMenuAction>(
+          value: _UserMenuAction.changePassword,
+          height: 44,
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.lock_reset_outlined,
+                  color: Color(0xFF0D47A1),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Ubah Password',
                 style: TextStyle(
                   color: Color(0xFF334155),
                   fontSize: 14,
@@ -386,9 +439,14 @@ class _AppShellState extends State<AppShell> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const Text(
-                'Employee',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 10.5),
+              Text(
+                (_ugroupName ?? '').isNotEmpty ? _ugroupName! : '-',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 10.5,
+                ),
               ),
             ],
           ),
@@ -404,6 +462,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _showAccountDialog() {
+    showDialog(context: context, builder: (_) => const AccountInfoDialog());
+  }
+
+  void _showChangePasswordDialog() {
     showDialog(context: context, builder: (_) => const UserProfileDialog());
   }
 
@@ -588,7 +650,7 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-enum _UserMenuAction { account, logout }
+enum _UserMenuAction { account, changePassword, logout }
 
 class _BreadcrumbRow extends StatelessWidget {
   final List<BreadcrumbSegment> segments;

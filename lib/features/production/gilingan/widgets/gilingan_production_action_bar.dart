@@ -77,9 +77,8 @@ class _GilinganProductionActionBarState
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    // Ganti permission key sesuai modul yang kamu pakai
     final perm = context.watch<PermissionViewModel>();
-    final canCreate = perm.can('label_crusher:create');
+    final canCreate = perm.can('produksi_gilingan:create');
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),

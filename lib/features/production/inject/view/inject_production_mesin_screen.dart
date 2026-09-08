@@ -309,7 +309,6 @@ class _InjectProductionMesinScreenState
       namaFurnitureMaterial: row.namaFurnitureMaterial,
       noProduksi: row.noProduksi,
       produksiStatus: row.produksiStatus,
-      completeRequestStatus: row.completeRequestStatus,
     );
   }
 
