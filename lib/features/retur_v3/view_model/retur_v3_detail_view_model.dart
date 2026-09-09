@@ -7,6 +7,74 @@ import '../model/retur_v3_output.dart';
 import '../model/retur_v3_turnover.dart';
 import '../repository/retur_v3_repository.dart';
 
+/// Info rekomendasi partial dikirim backend saat pcs label melebihi sisa
+/// target — belum ada data yang diubah, murni informasi untuk ditanyakan
+/// ke user lewat dialog konfirmasi. Sejajar `PenjualanPartialSuggestion`.
+class ReturV3PartialSuggestion {
+  final String labelCode;
+  final int availablePcs;
+  final int pcsNeeded;
+  final String message;
+
+  const ReturV3PartialSuggestion({
+    required this.labelCode,
+    required this.availablePcs,
+    required this.pcsNeeded,
+    required this.message,
+  });
+
+  factory ReturV3PartialSuggestion.fromJson(Map<String, dynamic> j) {
+    return ReturV3PartialSuggestion(
+      labelCode: (j['labelCode'] ?? j['LabelCode'] ?? '').toString(),
+      availablePcs: (j['availablePcs'] as num?)?.toInt() ?? 0,
+      pcsNeeded: (j['pcsNeeded'] as num?)?.toInt() ?? 0,
+      message: (j['message'] ?? '').toString(),
+    );
+  }
+}
+
+class ReturV3ScanResult {
+  final bool success;
+  final ReturV3PartialSuggestion? suggestion;
+  final String? error;
+
+  const ReturV3ScanResult.success()
+    : success = true,
+      suggestion = null,
+      error = null;
+
+  const ReturV3ScanResult.needsConfirmation(this.suggestion)
+    : success = false,
+      error = null;
+
+  const ReturV3ScanResult.error(this.error)
+    : success = false,
+      suggestion = null;
+
+  bool get needsConfirmation => suggestion != null;
+}
+
+/// Hasil eksekusi partial (setelah user konfirmasi) — kalau berhasil, bawa
+/// kode label partial baru (BC./BL.) + kategori supaya UI bisa menawarkan
+/// cetak ulang label induk. Sejajar `PenjualanConfirmPartialResult`.
+class ReturV3ConfirmPartialResult {
+  final bool success;
+  final String? error;
+  final String? partialCode;
+  final String? kodeKategori;
+
+  const ReturV3ConfirmPartialResult.success({
+    required this.partialCode,
+    required this.kodeKategori,
+  }) : success = true,
+       error = null;
+
+  const ReturV3ConfirmPartialResult.error(this.error)
+    : success = false,
+      partialCode = null,
+      kodeKategori = null;
+}
+
 class ReturV3DetailViewModel extends ChangeNotifier {
   final String noRetur;
   final ReturV3Repository repository;
@@ -54,18 +122,6 @@ class ReturV3DetailViewModel extends ChangeNotifier {
       items.every((it) => it.hasGeneratedLabel) &&
       outputs.isNotEmpty &&
       outputs.every((o) => o.hasBeenPrinted);
-
-  /// Setiap item retur harus punya minimal 1 target pengganti sebelum scan
-  /// bisa dimulai — target bukan lagi otomatis diturunkan dari item itu
-  /// sendiri (barang pengganti bisa beda kategori/jenis dari yang kembali).
-  bool get allTargetsDefined {
-    if (items.isEmpty) return false;
-    for (final item in items) {
-      final t = turnoverFor(item.idItem);
-      if (t == null || !t.hasTargets) return false;
-    }
-    return true;
-  }
 
   bool get allItemsFulfilled {
     if (items.isEmpty) return false;
@@ -291,62 +347,48 @@ class ReturV3DetailViewModel extends ChangeNotifier {
     }
   }
 
-  // ── Turnover targets (DIGANTI) ──────────────────────────────────────
-
-  bool isSavingTarget = false;
-  String? targetError;
-
-  Future<bool> addTurnoverTarget(
-    int idItem, {
-    required String kodeKategori,
-    required int idJenis,
-    required int pcs,
-  }) async {
-    isSavingTarget = true;
-    targetError = null;
-    notifyListeners();
-    try {
-      await repository.addTurnoverTargets(noRetur, idItem, [
-        {'kodeKategori': kodeKategori, 'idJenis': idJenis, 'pcs': pcs},
-      ]);
-      await _loadTurnover();
-      return true;
-    } catch (e) {
-      targetError = apiErrorMessage(e);
-      return false;
-    } finally {
-      isSavingTarget = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> removeTurnoverTarget(int idTarget) async {
-    targetError = null;
-    try {
-      await repository.deleteTurnoverTarget(noRetur, idTarget);
-      await _loadTurnover();
-      notifyListeners();
-      return true;
-    } catch (e) {
-      targetError = apiErrorMessage(e);
-      notifyListeners();
-      return false;
-    }
-  }
-
   // ── Scan / turnover (DIGANTI) ───────────────────────────────────────
 
-  /// Scan auto-detect — satu tombol scan untuk semua target: backend yang
-  /// menentukan target mana yang cocok berdasarkan kategori+jenis label.
-  /// `null` = sukses, String = pesan error untuk ditampilkan inline.
-  Future<String?> scanAuto(String labelCode) async {
+  /// Percobaan scan pertama — kalau pcs label melebihi sisa target, backend
+  /// mengembalikan rekomendasi partial (tanpa mengubah data apapun) alih-alih
+  /// langsung menolak. Sejajar `PenjualanDetailViewModel.attemptScan`.
+  Future<ReturV3ScanResult> attemptScan(String labelCode) async {
     try {
-      await repository.scanAuto(noRetur, labelCode);
+      final body = await repository.scanAuto(noRetur, labelCode);
+      if (body['needsConfirmation'] == true) {
+        final data = body['data'] as Map<String, dynamic>? ?? {};
+        return ReturV3ScanResult.needsConfirmation(
+          ReturV3PartialSuggestion.fromJson(data),
+        );
+      }
       await _loadTurnover();
       notifyListeners();
-      return null;
+      return const ReturV3ScanResult.success();
     } catch (e) {
-      return apiErrorMessage(e);
+      return ReturV3ScanResult.error(apiErrorMessage(e));
+    }
+  }
+
+  /// Dipanggil setelah user menyetujui rekomendasi partial — benar-benar
+  /// memecah label jadi partial sejumlah sisa target dan mencatatnya. Bawa
+  /// balik kode partial baru + kategori supaya UI bisa menawarkan cetak
+  /// ulang label induk. Sejajar `PenjualanDetailViewModel.confirmPartialScan`.
+  Future<ReturV3ConfirmPartialResult> confirmPartialScan(String labelCode) async {
+    try {
+      final body = await repository.scanAuto(
+        noRetur,
+        labelCode,
+        confirmPartial: true,
+      );
+      final data = body['data'] as Map<String, dynamic>? ?? {};
+      await _loadTurnover();
+      notifyListeners();
+      return ReturV3ConfirmPartialResult.success(
+        partialCode: data['partialCode']?.toString(),
+        kodeKategori: data['kodeKategori']?.toString(),
+      );
+    } catch (e) {
+      return ReturV3ConfirmPartialResult.error(apiErrorMessage(e));
     }
   }
 

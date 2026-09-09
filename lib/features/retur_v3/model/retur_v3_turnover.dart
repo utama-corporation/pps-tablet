@@ -1,15 +1,24 @@
 class ReturV3ScanEntry {
   final int idTurnover;
   final String labelCode;
+
+  /// Kode partial (`BL.`/`BC.`) yang dipecah oleh scan ini; `null` berarti
+  /// konsumsi 1x-penuh atas label yang belum pernah dipecah. `labelCode`
+  /// tetap kode label fisik yang discan operator.
+  final String? noPartial;
   final int pcs;
   final DateTime? dateTimeScan;
 
   const ReturV3ScanEntry({
     required this.idTurnover,
     required this.labelCode,
+    this.noPartial,
     required this.pcs,
     this.dateTimeScan,
   });
+
+  bool get isPartialSplit =>
+      noPartial != null && noPartial!.trim().isNotEmpty;
 
   static String _s(dynamic v) => v?.toString() ?? '';
   static dynamic _pick(Map<String, dynamic> j, List<String> keys) {
@@ -31,6 +40,11 @@ class ReturV3ScanEntry {
     return ReturV3ScanEntry(
       idTurnover: _i(_pick(j, ['idTurnover', 'IdTurnover'])),
       labelCode: _s(_pick(j, ['labelCode', 'LabelCode'])),
+      noPartial: (() {
+        final v = _pick(j, ['noPartial', 'NoPartial']);
+        final s = v?.toString().trim() ?? '';
+        return s.isEmpty ? null : s;
+      })(),
       pcs: _i(_pick(j, ['pcs', 'Pcs'])),
       dateTimeScan: (_pick(j, ['dateTimeScan', 'DateTimeScan']) != null)
           ? DateTime.tryParse(
@@ -41,83 +55,18 @@ class ReturV3ScanEntry {
   }
 }
 
-/// Satu target pengganti (barang yang akan dikirim) untuk sebuah item retur
-/// — 1 item retur bisa punya beberapa target (kombinasi jenis pengganti).
-/// targetPcs adalah pcs yang harus dipenuhi lewat scan label existing,
-/// scannedPcs adalah total pcs yang sudah discan untuk target ini.
-class ReturV3TurnoverTarget {
-  final int idTarget;
-  final String kodeKategori;
-  final int idJenis;
-  final String? namaJenis;
-  final int targetPcs;
-  final int scannedPcs;
-  final List<ReturV3ScanEntry> scans;
-
-  const ReturV3TurnoverTarget({
-    required this.idTarget,
-    required this.kodeKategori,
-    required this.idJenis,
-    this.namaJenis,
-    required this.targetPcs,
-    required this.scannedPcs,
-    this.scans = const [],
-  });
-
-  bool get isFulfilled => scannedPcs >= targetPcs && targetPcs > 0;
-  int get remainingPcs => (targetPcs - scannedPcs).clamp(0, targetPcs);
-
-  static String _s(dynamic v) => v?.toString() ?? '';
-  static dynamic _pick(Map<String, dynamic> j, List<String> keys) {
-    for (final k in keys) {
-      if (j.containsKey(k) && j[k] != null) return j[k];
-    }
-    return null;
-  }
-
-  static int _i(dynamic v) {
-    if (v == null) return 0;
-    if (v is int) return v;
-    if (v is double) return v.toInt();
-    if (v is String) return int.tryParse(v) ?? 0;
-    return 0;
-  }
-
-  static List<dynamic> _listFrom(dynamic value) {
-    if (value == null) return const [];
-    if (value is List) return value;
-    return const [];
-  }
-
-  factory ReturV3TurnoverTarget.fromJson(Map<String, dynamic> j) {
-    final scansRaw = _listFrom(_pick(j, ['scans', 'Scans']));
-    return ReturV3TurnoverTarget(
-      idTarget: _i(_pick(j, ['idTarget', 'IdTarget'])),
-      kodeKategori: _s(
-        _pick(j, ['kodeKategori', 'KodeKategori']),
-      ).toLowerCase(),
-      idJenis: _i(_pick(j, ['idJenis', 'IdJenis'])),
-      namaJenis: _pick(j, ['namaJenis', 'NamaJenis'])?.toString(),
-      targetPcs: _i(_pick(j, ['targetPcs', 'TargetPcs'])),
-      scannedPcs: _i(_pick(j, ['scannedPcs', 'ScannedPcs'])),
-      scans: scansRaw
-          .whereType<Map>()
-          .map((e) => ReturV3ScanEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList(),
-    );
-  }
-}
-
 /// Progress turnover per item retur (dipakai saat statusRetur == DIGANTI):
-/// mengelompokkan target-target pengganti (bisa lebih dari satu, dengan
-/// kategori/jenis berbeda dari item asalnya) di bawah item retur asalnya.
+/// satu baris per item retur yang dipilih (like-for-like) — `pcsAsal` adalah
+/// target yang harus dipenuhi lewat scan label, `scannedPcs` total pcs yang
+/// sudah discan untuk item ini.
 class ReturV3Turnover {
   final int idItem;
   final String kodeKategoriAsal;
   final int idJenisAsal;
   final String? namaJenisAsal;
   final int pcsAsal;
-  final List<ReturV3TurnoverTarget> targets;
+  final int scannedPcs;
+  final List<ReturV3ScanEntry> scans;
 
   const ReturV3Turnover({
     required this.idItem,
@@ -125,11 +74,12 @@ class ReturV3Turnover {
     required this.idJenisAsal,
     this.namaJenisAsal,
     required this.pcsAsal,
-    this.targets = const [],
+    this.scannedPcs = 0,
+    this.scans = const [],
   });
 
-  bool get hasTargets => targets.isNotEmpty;
-  bool get isFulfilled => hasTargets && targets.every((t) => t.isFulfilled);
+  bool get isFulfilled => scannedPcs >= pcsAsal && pcsAsal > 0;
+  int get remainingPcs => (pcsAsal - scannedPcs).clamp(0, pcsAsal);
 
   static String _s(dynamic v) => v?.toString() ?? '';
   static dynamic _pick(Map<String, dynamic> j, List<String> keys) {
@@ -154,7 +104,7 @@ class ReturV3Turnover {
   }
 
   factory ReturV3Turnover.fromJson(Map<String, dynamic> j) {
-    final targetsRaw = _listFrom(_pick(j, ['targets', 'Targets']));
+    final scansRaw = _listFrom(_pick(j, ['scans', 'Scans']));
     return ReturV3Turnover(
       idItem: _i(_pick(j, ['idItem', 'IdItem'])),
       kodeKategoriAsal: _s(
@@ -167,12 +117,10 @@ class ReturV3Turnover {
         'namaJenis',
       ])?.toString(),
       pcsAsal: _i(_pick(j, ['pcsAsal', 'PcsAsal', 'pcs'])),
-      targets: targetsRaw
+      scannedPcs: _i(_pick(j, ['scannedPcs', 'ScannedPcs'])),
+      scans: scansRaw
           .whereType<Map>()
-          .map(
-            (e) =>
-                ReturV3TurnoverTarget.fromJson(Map<String, dynamic>.from(e)),
-          )
+          .map((e) => ReturV3ScanEntry.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
     );
   }

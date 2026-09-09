@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../common/widgets/scan_label_dialog.dart';
-import '../../../common/widgets/success_status_dialog.dart' show StatusAction;
+import '../../../common/widgets/success_status_dialog.dart'
+    show StatusAction, SuccessStatusDialog;
 import '../../../common/widgets/warning_status_dialog.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/endpoints.dart';
@@ -340,17 +341,180 @@ class _ReturV3DetailScreenState extends State<ReturV3DetailScreen> {
   // ── Scan (DIGANTI) ───────────────────────────────────────────────────
 
   /// Satu dialog scan untuk semua item pada retur ini — backend yang
-  /// otomatis mendeteksi item mana yang cocok berdasarkan kategori+jenis
-  /// label yang discan (lihat `ReturV3DetailViewModel.scanAuto`).
+  /// otomatis mendeteksi target mana yang cocok berdasarkan kategori+jenis
+  /// label yang discan (lihat `ReturV3DetailViewModel.attemptScan`).
   void _openScanDialogAuto() {
     showDialog<void>(
       context: context,
       builder: (_) => ScanLabelDialog(
         headerSubtitle: 'Scan label untuk memenuhi turnover',
         manualHint: 'Scan atau ketik kode label',
-        onLookup: _vm.scanAuto,
+        onLookup: _handleScan,
       ),
     );
+  }
+
+  /// Percobaan scan pertama; kalau backend merekomendasikan partial (pcs
+  /// label melebihi sisa target), tanya user dulu lewat dialog konfirmasi
+  /// bersarang di atas `ScanLabelDialog` sebelum benar-benar memecah
+  /// labelnya. Kontrak `onLookup`: null = sukses (dialog auto tutup),
+  /// String = pesan error ditampilkan inline. Sejajar
+  /// `PenjualanDetailScreen._handleScan`.
+  Future<String?> _handleScan(String code) async {
+    final result = await _vm.attemptScan(code);
+    if (result.success) return null;
+
+    if (result.needsConfirmation) {
+      if (!mounted) return null;
+      final suggestion = result.suggestion!;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => WarningStatusDialog(
+          title: 'Pcs Label Melebihi Kebutuhan',
+          message: suggestion.message,
+          actions: [
+            StatusAction(
+              label: 'Batal',
+              isPrimary: false,
+              onPressed: () => Navigator.pop(dialogContext, false),
+            ),
+            StatusAction(
+              label: 'Ya, Pecah ${suggestion.pcsNeeded} pcs',
+              onPressed: () => Navigator.pop(dialogContext, true),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) {
+        return 'Scan dibatalkan — pcs label melebihi sisa target';
+      }
+      final partialResult = await _vm.confirmPartialScan(code);
+      if (!partialResult.success) return partialResult.error;
+
+      if (mounted && partialResult.kodeKategori != null) {
+        await _offerPrintParentLabel(code, partialResult.kodeKategori!);
+      }
+      return null;
+    }
+    return result.error;
+  }
+
+  /// Partial berhasil dibuat — tawarkan cetak ulang label ASAL (parent),
+  /// bukan kode partial internal (BC./BL.): pcs pada label fisiknya sekarang
+  /// berkurang, jadi kalau tidak dicetak ulang, label yang beredar masih
+  /// menunjukkan angka lama. Sejajar `PenjualanDetailScreen._offerPrintParentLabel`.
+  Future<void> _offerPrintParentLabel(
+    String noLabel,
+    String kodeKategori,
+  ) async {
+    if (!mounted) return;
+    final shouldPrint = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => SuccessStatusDialog(
+        title: 'Partial Berhasil Dibuat',
+        message:
+            'Label $noLabel berhasil dipecah (partial) untuk memenuhi turnover '
+            'retur ini. Pcs pada label fisiknya sekarang berkurang, jadi '
+            'label perlu dicetak ulang supaya pcs yang tertera sesuai. '
+            'Cetak sekarang?',
+        actions: [
+          StatusAction(
+            label: 'Nanti',
+            isPrimary: false,
+            onPressed: () => Navigator.pop(dialogContext, false),
+          ),
+          StatusAction(
+            label: 'Cetak Sekarang',
+            onPressed: () => Navigator.pop(dialogContext, true),
+          ),
+        ],
+      ),
+    );
+    if (shouldPrint != true || !mounted) return;
+    await _printParentLabel(noLabel, kodeKategori);
+  }
+
+  /// Cetak ulang label asal (furniturewip/barangjadi) — pola sama dengan
+  /// `_printEntries`: acquire print-lock → preview+print PDF → markAsPrinted
+  /// & release lock (fallback ke `LabelPrintSyncQueue`). Pakai endpoint &
+  /// repository label yang SUDAH ADA untuk label induk.
+  Future<void> _printParentLabel(String noLabel, String kodeKategori) async {
+    final rootCtx = Navigator.of(context, rootNavigator: true).context;
+    final lockApi = LabelPrintLockApi();
+    final lockVm = context.read<LabelPrintLockSocketManager>();
+    final queue = context.read<LabelPrintSyncQueue>();
+    final isFurnitureWip = kodeKategori == 'furniturewip';
+    final feature = isFurnitureWip ? 'furniture_wip' : 'packing';
+    final pdfUrl = isFurnitureWip
+        ? ApiConstants.furnitureWipLabelPdf(noLabel)
+        : ApiConstants.packingLabelPdf(noLabel);
+    final furnitureWipRepo = FurnitureWipRepository();
+    final packingRepo = PackingRepository(api: ApiClient());
+
+    var isLockAcquired = false;
+    var isPrinted = false;
+
+    try {
+      await lockApi.acquire(noLabel);
+      isLockAcquired = true;
+
+      await PdfPrintService(defaultSystem: 'pps').previewFromUrl(
+        context: rootCtx,
+        pdfUrl: Uri.parse(pdfUrl),
+        title: noLabel,
+        onPrinted: () {
+          isPrinted = true;
+          () async {
+            var needsIncrement = false;
+            var needsRelease = false;
+
+            try {
+              final count = isFurnitureWip
+                  ? await furnitureWipRepo.markAsPrinted(noLabel)
+                  : await packingRepo.markAsPrinted(noLabel);
+              if (count != null) lockVm.setPrintCount(noLabel, count);
+            } catch (_) {
+              needsIncrement = true;
+            }
+
+            try {
+              await lockApi.release(noLabel);
+            } catch (_) {
+              needsRelease = true;
+            }
+
+            if (needsIncrement || needsRelease) {
+              await queue.enqueue(
+                feature: feature,
+                noLabel: noLabel,
+                needsIncrement: needsIncrement,
+                needsReleaseLock: needsRelease,
+              );
+            }
+          }().ignore();
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (isLockAcquired && !isPrinted) {
+        () async {
+          try {
+            await lockApi.release(noLabel);
+          } catch (_) {
+            await queue.enqueue(
+              feature: feature,
+              noLabel: noLabel,
+              needsReleaseLock: true,
+            );
+          }
+        }().ignore();
+      }
+    }
   }
 
   Future<void> _undoScan(int idTurnover) async {
@@ -434,17 +598,13 @@ class _ReturV3DetailScreenState extends State<ReturV3DetailScreen> {
               !alreadyComplete &&
               vm.canComplete &&
               canFlag;
-          // Scan turnover juga wewenang Admin (retur:update) — sebelumnya
-          // FAB ini tidak digate sama sekali, cuma "aman" karena endpoint
-          // backend-nya sendiri sudah cek permission; sekarang digate juga
-          // di UI supaya konsisten dengan FAB Kirim. Tambahan:
-          // vm.allTargetsDefined — setiap item harus sudah ditentukan target
-          // penggantinya dulu sebelum scan bisa mulai (target bukan lagi
-          // otomatis diturunkan dari item aslinya).
+          // Scan turnover juga wewenang Admin (retur:update) — digate di UI
+          // supaya konsisten dengan FAB Kirim. Muncul begitu langkah 1
+          // (generate + cetak label) selesai; turnover dicocokkan langsung
+          // ke item retur, tidak ada langkah "tentukan target" lagi.
           final showScanFab =
               isDiganti &&
               vm.step1Complete &&
-              vm.allTargetsDefined &&
               !alreadyComplete &&
               !vm.canComplete &&
               canFlag;
@@ -1230,8 +1390,8 @@ class _DigantiSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isComplete = vm.header?.isComplete == true;
-    // Target pengganti dibuat otomatis oleh backend (like-for-like dari item
-    // retur) — tidak ada aksi tambah/hapus manual di sini.
+    // Turnover dicocokkan langsung ke item retur (like-for-like): satu baris
+    // progress per item, target pcs = pcs item retur itu sendiri.
 
     return Container(
       decoration: BoxDecoration(
@@ -1266,38 +1426,21 @@ class _DigantiSection extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: _kBorder),
-          Builder(
-            builder: (context) {
-              // Nomor urut jalan terus lintas item (1, 2, 3, ...) mengikuti
-              // urutan kartu target yang tampil, bukan index item retur —
-              // satu item bisa punya lebih dari satu target pengganti, jadi
-              // kalau dipatok ke index item, semua targetnya akan menampilkan
-              // nomor yang sama.
-              var nextNumber = 1;
-              final startNumbers = <int>[];
-              for (final item in vm.items) {
-                startNumbers.add(nextNumber);
-                nextNumber += vm.turnoverFor(item.idItem)?.targets.length ?? 0;
-              }
-
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                itemCount: vm.items.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: _kBorder),
-                itemBuilder: (context, i) {
-                  final item = vm.items[i];
-                  final t = vm.turnoverFor(item.idItem);
-                  return _TurnoverItemBlock(
-                    startNumber: startNumbers[i],
-                    item: item,
-                    turnover: t,
-                    isComplete: isComplete,
-                    onUndoScan: screen._undoScan,
-                  );
-                },
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: vm.items.length,
+            separatorBuilder: (_, __) =>
+                const Divider(height: 1, color: _kBorder),
+            itemBuilder: (context, i) {
+              final item = vm.items[i];
+              return _TurnoverItemBlock(
+                number: i + 1,
+                item: item,
+                turnover: vm.turnoverFor(item.idItem),
+                isComplete: isComplete,
+                onUndoScan: screen._undoScan,
               );
             },
           ),
@@ -1385,18 +1528,18 @@ class _KirimSection extends StatelessWidget {
   }
 }
 
-/// Blok per item retur: info barang yang KEMBALI (asal), lalu daftar target
-/// pengganti yang akan DIKIRIM — dibuat otomatis like-for-like dari item
-/// retur oleh backend, masing-masing dengan progress scan-nya sendiri.
+/// Satu tile progress per item retur yang dipickup (like-for-like): target
+/// pcs = pcs item retur, dipenuhi lewat scan label existing dengan
+/// kategori/jenis yang sama.
 class _TurnoverItemBlock extends StatelessWidget {
-  final int startNumber;
+  final int number;
   final ReturV3Item item;
   final ReturV3Turnover? turnover;
   final bool isComplete;
   final ValueChanged<int> onUndoScan;
 
   const _TurnoverItemBlock({
-    required this.startNumber,
+    required this.number,
     required this.item,
     required this.turnover,
     required this.isComplete,
@@ -1405,140 +1548,100 @@ class _TurnoverItemBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final targets = turnover?.targets ?? const [];
+    final scanned = turnover?.scannedPcs ?? 0;
+    final targetPcs = turnover?.pcsAsal ?? item.pcs;
+    final fulfilled = scanned >= targetPcs && targetPcs > 0;
+    final namaJenis =
+        turnover?.namaJenisAsal ??
+        item.namaJenis ??
+        'Jenis #${turnover?.idJenisAsal ?? item.idJenis}';
+    final scans = turnover?.scans ?? const [];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (targets.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Text(
-                'Target pengganti belum dibuat',
-                style: TextStyle(fontSize: 12, color: _kMuted),
-              ),
-            )
-          else
-            ...targets.asMap().entries.map(
-              (entry) => Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: _TurnoverTargetTile(
-                  number: startNumber + entry.key,
-                  target: entry.value,
-                  isComplete: isComplete,
-                  onUndoScan: onUndoScan,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TurnoverTargetTile extends StatelessWidget {
-  final int number;
-  final ReturV3TurnoverTarget target;
-  final bool isComplete;
-  final ValueChanged<int> onUndoScan;
-
-  const _TurnoverTargetTile({
-    required this.number,
-    required this.target,
-    required this.isComplete,
-    required this.onUndoScan,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scanned = target.scannedPcs;
-    final targetPcs = target.targetPcs;
-    final fulfilled = target.isFulfilled;
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: _kSurface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Badge nomor urut — jadi centang hijau saat target terpenuhi.
-              Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  color: fulfilled
-                      ? _kSuccess
-                      : _kPrimary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: fulfilled
-                    ? const Icon(
-                        Icons.check_rounded,
-                        size: 14,
-                        color: Colors.white,
-                      )
-                    : Text(
-                        '$number',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: _kPrimary,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: _kSurface,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Badge nomor urut — jadi centang hijau saat item terpenuhi.
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: fulfilled
+                        ? _kSuccess
+                        : _kPrimary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: fulfilled
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        )
+                      : Text(
+                          '$number',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: _kPrimary,
+                          ),
                         ),
-                      ),
-              ),
-              Expanded(
-                child: Text(
-                  target.namaJenis ?? 'Jenis #${target.idJenis}',
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: _kText,
+                ),
+                Expanded(
+                  child: Text(
+                    namaJenis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: _kText,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                '$scanned/$targetPcs pcs',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: fulfilled ? _kSuccess : _kMuted,
+                Text(
+                  '$scanned/$targetPcs pcs',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: fulfilled ? _kSuccess : _kMuted,
+                  ),
                 ),
+              ],
+            ),
+            if (scans.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: scans
+                    .map(
+                      (s) => Chip(
+                        label: Text(
+                          '${s.labelCode} (${s.pcs})',
+                          style: const TextStyle(fontSize: 10.5),
+                        ),
+                        onDeleted: isComplete
+                            ? null
+                            : () => onUndoScan(s.idTurnover),
+                        deleteIconColor: Colors.red.shade400,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    )
+                    .toList(),
               ),
             ],
-          ),
-          if (target.scans.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: target.scans
-                  .map(
-                    (s) => Chip(
-                      label: Text(
-                        '${s.labelCode} (${s.pcs})',
-                        style: const TextStyle(fontSize: 10.5),
-                      ),
-                      onDeleted: isComplete
-                          ? null
-                          : () => onUndoScan(s.idTurnover),
-                      deleteIconColor: Colors.red.shade400,
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  )
-                  .toList(),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }

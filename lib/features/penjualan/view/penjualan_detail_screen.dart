@@ -338,7 +338,10 @@ class _PenjualanDetailScreenState extends State<PenjualanDetailScreen> {
           ),
           const SizedBox(height: 12),
           Center(
-            child: Text(vm.error!, style: TextStyle(color: Colors.red.shade700)),
+            child: Text(
+              vm.error!,
+              style: TextStyle(color: Colors.red.shade700),
+            ),
           ),
         ],
       );
@@ -357,7 +360,11 @@ class _PenjualanDetailScreenState extends State<PenjualanDetailScreen> {
           padding: EdgeInsets.only(bottom: 12),
           child: Text(
             'Detail Penjualan',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _kText),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: _kText,
+            ),
           ),
         ),
         _TurnoverSection(vm: vm),
@@ -539,16 +546,22 @@ class _StatusBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: complete ? _kSuccess.withValues(alpha: 0.08) : Colors.orange.shade50,
+        color: complete
+            ? _kSuccess.withValues(alpha: 0.08)
+            : Colors.orange.shade50,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: complete ? _kSuccess.withValues(alpha: 0.3) : Colors.orange.shade200,
+          color: complete
+              ? _kSuccess.withValues(alpha: 0.3)
+              : Colors.orange.shade200,
         ),
       ),
       child: Row(
         children: [
           Icon(
-            complete ? Icons.check_circle_rounded : Icons.qr_code_scanner_rounded,
+            complete
+                ? Icons.check_circle_rounded
+                : Icons.qr_code_scanner_rounded,
             size: 18,
             color: complete ? _kSuccess : Colors.orange.shade700,
           ),

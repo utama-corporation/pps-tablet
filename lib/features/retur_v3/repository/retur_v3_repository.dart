@@ -229,68 +229,27 @@ class ReturV3Repository {
         .toList();
   }
 
-  // ── Turnover targets (DIGANTI) ──────────────────────────────────────
-
-  /// Target pengganti (kategori/jenis/pcs) yang akan dikirim untuk sebuah
-  /// item retur — 1 item retur bisa punya beberapa target sekaligus.
-  Future<List<ReturV3TurnoverTarget>> addTurnoverTargets(
-    String noRetur,
-    int idItem,
-    List<Map<String, dynamic>> targets,
-  ) async {
-    final body = await _api.postJson(
-      '$_base/${Uri.encodeComponent(noRetur)}/items/$idItem/targets',
-      body: {'targets': targets},
-    );
-    final data = body['data'] as Map<String, dynamic>?;
-    final rawTargets = (data?['targets'] ?? []) as List? ?? const [];
-    return rawTargets
-        .whereType<Map>()
-        .map(
-          (e) =>
-              ReturV3TurnoverTarget.fromJson(Map<String, dynamic>.from(e)),
-        )
-        .toList();
-  }
-
-  Future<ReturV3TurnoverTarget> updateTurnoverTarget(
-    String noRetur,
-    int idTarget, {
-    String? kodeKategori,
-    int? idJenis,
-    int? pcs,
-  }) async {
-    final body = await _api.putJson(
-      '$_base/${Uri.encodeComponent(noRetur)}/targets/$idTarget',
-      body: {
-        if (kodeKategori != null) 'kodeKategori': kodeKategori,
-        if (idJenis != null) 'idJenis': idJenis,
-        if (pcs != null) 'pcs': pcs,
-      },
-    );
-    final data = body['data'] as Map<String, dynamic>?;
-    if (data == null) throw Exception('Response tidak mengandung data');
-    return ReturV3TurnoverTarget.fromJson(data);
-  }
-
-  Future<void> deleteTurnoverTarget(String noRetur, int idTarget) async {
-    await _api.deleteJson(
-      '$_base/${Uri.encodeComponent(noRetur)}/targets/$idTarget',
-    );
-  }
-
   // ── Turnover / scan (DIGANTI) ───────────────────────────────────────
 
-  /// Scan auto-detect: server yang menentukan target mana yang cocok
-  /// berdasarkan kategori+jenis label yang discan, jadi tidak perlu kirim
-  /// idTarget — satu tombol scan untuk semua target pada retur ini.
-  Future<Map<String, dynamic>> scanAuto(String noRetur, String labelCode) async {
-    final body = await _api.postJson(
+  /// Scan auto-detect: server mencocokkan label yang discan langsung ke item
+  /// retur (BJReturV3Item_d) berdasarkan kategori+jenis — satu tombol scan
+  /// untuk semua item pada retur ini.
+  ///
+  /// Kalau pcs label melebihi sisa kebutuhan item, backend TIDAK langsung menolak —
+  /// mengembalikan `needsConfirmation: true` (tanpa mengubah data apapun)
+  /// supaya UI bisa menawarkan pemecahan (partial). Panggil ulang dengan
+  /// [confirmPartial]=true untuk benar-benar mengeksekusi partial. Return
+  /// body mentah (bukan cuma `data`) supaya caller bisa cek
+  /// `needsConfirmation` di level root — pola sama dengan `PenjualanRepository.scan`.
+  Future<Map<String, dynamic>> scanAuto(
+    String noRetur,
+    String labelCode, {
+    bool confirmPartial = false,
+  }) async {
+    return _api.postJson(
       '$_base/${Uri.encodeComponent(noRetur)}/scan',
-      body: {'labelCode': labelCode},
+      body: {'labelCode': labelCode, 'confirmPartial': confirmPartial},
     );
-    final data = body['data'] as Map<String, dynamic>?;
-    return data ?? const {};
   }
 
   Future<void> undoScan(String noRetur, int idTurnover) async {
