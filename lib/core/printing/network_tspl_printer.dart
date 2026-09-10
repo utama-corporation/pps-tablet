@@ -109,6 +109,11 @@ class NetworkTsplPrinter implements LabelPrinter {
         'SIZE $widthMm mm,$heightMm mm\r\n'
         'GAP ${target.gapMm.toStringAsFixed(0)} mm,0 mm\r\n'
         'DIRECTION 1\r\n'
+        // Tear mode ON: setelah PRINT printer memajukan label sampai gap sejajar
+        // tear bar, lalu back-feed sebelum job berikutnya. Tanpa ini label
+        // berhenti dengan tepi belakang di print head (kelihatan setengah label)
+        // dan operator harus tekan FEED manual untuk bisa menyobek.
+        'SET TEAR ON\r\n'
         'CLS\r\n'
         'BITMAP 0,0,$widthBytes,${mono.height},0,';
 
