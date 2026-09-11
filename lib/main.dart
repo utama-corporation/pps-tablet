@@ -178,10 +178,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Env by mode: development (default) | production
-  const appEnv = String.fromEnvironment(
-    'APP_ENV',
-    defaultValue: 'development',
-  );
+  const appEnv = String.fromEnvironment('APP_ENV', defaultValue: 'development');
   final envFile = appEnv == 'production'
       ? '.env.production'
       : '.env.development';
@@ -222,9 +219,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => LabelPrintLockSocketManager()..connect(),
         ),
-        ChangeNotifierProvider(
-          create: (_) => SoV2SocketManager()..connect(),
-        ),
+        ChangeNotifierProvider(create: (_) => SoV2SocketManager()..connect()),
         ChangeNotifierProvider(create: (_) => LabelPrintSyncQueue()..start()),
         ChangeNotifierProvider(create: (_) => LabelDetailViewModel()),
         ChangeNotifierProvider(
@@ -580,7 +575,8 @@ class MyApp extends StatelessWidget {
           '/production/crusher': (context) => CrusherProductionScreen(),
           '/label/packing': (context) => PackingScreen(),
           '/label/reject': (context) => RejectScreen(),
-          '/production/gilingan': (context) => const GilinganProductionMesinScreen(),
+          '/production/gilingan': (context) =>
+              const GilinganProductionMesinScreen(),
           '/production/mixer': (context) => MixerProductionScreen(),
           '/shell/hot-stamp': (context) => HotStampProductionScreen(),
           '/production/hot-stamp': (context) => HotStampProductionScreen(),
