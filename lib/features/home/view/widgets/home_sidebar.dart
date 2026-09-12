@@ -236,12 +236,6 @@ class _HomeSidebarState extends State<HomeSidebar> {
       icon: Icons.fact_check_outlined,
       route: '/stockopname',
     ),
-    _MenuItem(
-      title: 'Warehouse',
-      subtitle: 'Kelompokkan warehouse satu site',
-      icon: Icons.workspaces_outline,
-      route: '/shell/warehouse-group',
-    ),
   ];
 
   static List<_MenuItem> get _laporanItems => <_MenuItem>[
