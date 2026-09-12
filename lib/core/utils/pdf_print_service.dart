@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -288,11 +289,17 @@ class PdfPrintService {
     if (pdfUrls.isEmpty) return;
 
     Uint8List mergedBytes;
+    final progressMessage = ValueNotifier<String>(
+      'Menyiapkan 0 dari ${pdfUrls.length} label',
+    );
+    final progressValue = ValueNotifier<double>(0);
     try {
       mergedBytes = await _withLoading<Uint8List>(
         context: context,
         enabled: true,
         message: 'Menyiapkan ${pdfUrls.length} label…',
+        messageListenable: progressMessage,
+        progressListenable: progressValue,
         run: () async {
           final token = await TokenStorage.getToken();
           final client = httpClient ?? http.Client();
@@ -300,7 +307,7 @@ class PdfPrintService {
             if (token != null && token.isNotEmpty)
               'Authorization': 'Bearer $token',
           };
-          final futures = pdfUrls.map((url) async {
+          Future<Uint8List> fetchOne(Uri url) async {
             debugPrint('📥 Mengunduh PDF label: $url');
             final resp = await client
                 .get(url, headers: headers)
@@ -312,9 +319,28 @@ class PdfPrintService {
               throw _PdfFetchException(statusCode: resp.statusCode, url: url);
             }
             return resp.bodyBytes;
-          });
-          final allBytes = await Future.wait(futures);
-          return _mergePdfs(allBytes);
+          }
+
+          // Batasi unduhan paralel — kalau semua label ditembak sekaligus
+          // (mis. 10+ label), server (Puppeteer PDF generator, single
+          // browser instance) kebanjiran page render bersamaan sampai
+          // navigation timeout. Unduh berkelompok kecil, urutan tetap terjaga.
+          const maxConcurrent = 3;
+          final allBytes = List<Uint8List?>.filled(pdfUrls.length, null);
+          for (var start = 0; start < pdfUrls.length; start += maxConcurrent) {
+            final end = (start + maxConcurrent < pdfUrls.length)
+                ? start + maxConcurrent
+                : pdfUrls.length;
+            final results = await Future.wait([
+              for (var i = start; i < end; i++) fetchOne(pdfUrls[i]),
+            ]);
+            for (var i = start; i < end; i++) {
+              allBytes[i] = results[i - start];
+            }
+            progressMessage.value = 'Menyiapkan $end dari ${pdfUrls.length} label';
+            progressValue.value = end / pdfUrls.length;
+          }
+          return _mergePdfs(allBytes.cast<Uint8List>());
         },
       );
     } catch (e, st) {
@@ -339,6 +365,9 @@ class PdfPrintService {
       }
       await DialogService.instance.showError(title: title, message: message);
       return;
+    } finally {
+      progressMessage.dispose();
+      progressValue.dispose();
     }
 
     if (!context.mounted) return;
@@ -805,6 +834,8 @@ class PdfPrintService {
     required Future<T> Function() run,
     bool enabled = true,
     String message = 'Memproses...',
+    ValueListenable<String>? messageListenable,
+    ValueListenable<double>? progressListenable,
   }) async {
     if (!enabled) return await run();
 
@@ -817,7 +848,11 @@ class PdfPrintService {
       showDialog(
         context: nav.context,
         barrierDismissible: false,
-        builder: (_) => LoadingDialog(message: message),
+        builder: (_) => LoadingDialog(
+          message: message,
+          messageListenable: messageListenable,
+          progressListenable: progressListenable,
+        ),
       );
 
       final result = await run();

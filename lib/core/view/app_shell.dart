@@ -90,13 +90,21 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> _loadUserInfo() async {
     final username = await UserSessionStorage.getUsername(fallback: '-');
+    final fullName = await UserSessionStorage.getFullName();
     final ugroupName = await UserSessionStorage.getUGroupName();
     if (mounted) {
       setState(() {
-        _username = username;
+        _username = _firstName(fullName) ?? username;
         _ugroupName = ugroupName;
       });
     }
+  }
+
+  /// Ambil nama depan saja dari fullname (kata pertama sebelum spasi).
+  static String? _firstName(String? fullName) {
+    final trimmed = fullName?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed.split(RegExp(r'\s+')).first;
   }
 
   void _onBreadcrumbChanged() {

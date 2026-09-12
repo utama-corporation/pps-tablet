@@ -267,8 +267,10 @@ class _PackingProductionInputScreenState
     try {
       await _prodRepo.completeProduksi(widget.noProduksi);
       if (!mounted) return;
-      _showSnack('✅ Produksi berhasil diselesaikan',
-          backgroundColor: Colors.green);
+      _showSnack(
+        '✅ Produksi berhasil diselesaikan',
+        backgroundColor: Colors.green,
+      );
       await _loadHeader();
     } catch (e) {
       if (!mounted) return;
@@ -301,8 +303,10 @@ class _PackingProductionInputScreenState
     try {
       await _prodRepo.uncompleteProduksi(widget.noProduksi);
       if (!mounted) return;
-      _showSnack('✅ Produksi berhasil dibuka — bisa diubah lagi',
-          backgroundColor: Colors.green);
+      _showSnack(
+        '✅ Produksi berhasil dibuka — bisa diubah lagi',
+        backgroundColor: Colors.green,
+      );
       await _loadHeader();
     } catch (e) {
       if (!mounted) return;
@@ -702,84 +706,84 @@ class _PackingProductionInputScreenState
                           if (isSelectingInput && _selectedInputTab == 'fwip')
                             _inputSelectionBar(vm, fwipGroups)
                           else
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              if (_selectedInputTab == 'fwip') ...[
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _PackingInputSummaryBar(
-                                        totalLabel: fwipLabelCount,
-                                        totalPcs: fwipPcs,
-                                        color: _kPrimary,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      _PackingGrandTotalBar(
-                                        totalItem: totalInputLabel,
-                                        totalPcs: totalInputPcs,
-                                        color: _kPrimary,
-                                      ),
-                                    ],
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                if (_selectedInputTab == 'fwip') ...[
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _PackingInputSummaryBar(
+                                          totalLabel: fwipLabelCount,
+                                          totalPcs: fwipPcs,
+                                          color: _kPrimary,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        _PackingGrandTotalBar(
+                                          totalItem: totalInputLabel,
+                                          totalPcs: totalInputPcs,
+                                          color: _kPrimary,
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                FloatingActionButton(
-                                  heroTag: 'fab_scan_packing_input',
-                                  mini: true,
-                                  backgroundColor: locked
-                                      ? Colors.grey.shade300
-                                      : _kPrimary,
-                                  foregroundColor: Colors.white,
-                                  onPressed: locked || vm.isLookupLoading
-                                      ? null
-                                      : _openScanDialog,
-                                  child: vm.isLookupLoading
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(Icons.qr_code_scanner),
-                                ),
-                              ] else ...[
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _PackingMaterialSummaryBar(
-                                        items: materialAll,
-                                        color: _kPrimary,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      _PackingGrandTotalBar(
-                                        totalItem: totalInputLabel,
-                                        totalPcs: totalInputPcs,
-                                        color: _kPrimary,
-                                      ),
-                                    ],
+                                  const SizedBox(width: 10),
+                                  FloatingActionButton(
+                                    heroTag: 'fab_scan_packing_input',
+                                    mini: true,
+                                    backgroundColor: locked
+                                        ? Colors.grey.shade300
+                                        : _kPrimary,
+                                    foregroundColor: Colors.white,
+                                    onPressed: locked || vm.isLookupLoading
+                                        ? null
+                                        : _openScanDialog,
+                                    child: vm.isLookupLoading
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.qr_code_scanner),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                FloatingActionButton(
-                                  heroTag: 'fab_add_material_packing',
-                                  mini: true,
-                                  backgroundColor: locked
-                                      ? Colors.grey.shade300
-                                      : _kPrimary,
-                                  foregroundColor: Colors.white,
-                                  onPressed: locked
-                                      ? null
-                                      : () => _openAddMaterialDialog(vm),
-                                  child: const Icon(Icons.add),
-                                ),
+                                ] else ...[
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _PackingMaterialSummaryBar(
+                                          items: materialAll,
+                                          color: _kPrimary,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        _PackingGrandTotalBar(
+                                          totalItem: totalInputLabel,
+                                          totalPcs: totalInputPcs,
+                                          color: _kPrimary,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  FloatingActionButton(
+                                    heroTag: 'fab_add_material_packing',
+                                    mini: true,
+                                    backgroundColor: locked
+                                        ? Colors.grey.shade300
+                                        : _kPrimary,
+                                    foregroundColor: Colors.white,
+                                    onPressed: locked
+                                        ? null
+                                        : () => _openAddMaterialDialog(vm),
+                                    child: const Icon(Icons.add),
+                                  ),
+                                ],
                               ],
-                            ],
-                          ),
+                            ),
                         ],
                       ),
                     ),
@@ -1036,7 +1040,9 @@ class _PackingProductionInputScreenState
           ? clearOutputSelection
           : () => selectAllOutputs(currentOutputs, _outputCode),
       onPrint: _isLockedOrComplete ? null : _printSelectedOutputs,
-      onDelete: _isLockedOrComplete ? null : () => _deleteSelectedOutputs(onRefresh),
+      onDelete: _isLockedOrComplete
+          ? null
+          : () => _deleteSelectedOutputs(onRefresh),
     );
   }
 
@@ -1144,13 +1150,15 @@ class _PackingProductionInputScreenState
                                                 children: outputs
                                                     .map(
                                                       (o) => wrapOutputTile(
-                                                        code: o.labelCode.trim(),
+                                                        code: o.labelCode
+                                                            .trim(),
                                                         item: o,
                                                         accentColor: _kOutput,
                                                         builder: (overrideTap) =>
                                                             _PackingOutputTile(
                                                               output: o,
-                                                              onTap: overrideTap,
+                                                              onTap:
+                                                                  overrideTap,
                                                             ),
                                                       ),
                                                     )
@@ -1177,42 +1185,44 @@ class _PackingProductionInputScreenState
                                 if (isSelectingOutput)
                                   _outputSelectionBar(outputs, onRefresh)
                                 else
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          _PackingOutputSummaryBar(
-                                            totalLabel: outputs.length,
-                                            totalPcs: totalPcs,
-                                            totalJenis: totalJenis,
-                                          ),
-                                          const SizedBox(height: 10),
-                                          _PackingOutputOverallBar(
-                                            totalLabel: outputs.length,
-                                            totalPcs: totalPcs,
-                                          ),
-                                        ],
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _PackingOutputSummaryBar(
+                                              totalLabel: outputs.length,
+                                              totalPcs: totalPcs,
+                                              totalJenis: totalJenis,
+                                            ),
+                                            const SizedBox(height: 10),
+                                            _PackingOutputOverallBar(
+                                              totalLabel: outputs.length,
+                                              totalPcs: totalPcs,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    FloatingActionButton(
-                                      heroTag: 'fab_add_packing_output',
-                                      mini: true,
-                                      backgroundColor: locked
-                                          ? Colors.grey.shade300
-                                          : _kOutput,
-                                      foregroundColor: Colors.white,
-                                      onPressed: locked
-                                          ? null
-                                          : () =>
-                                                _openAddOutputDialog(onRefresh),
-                                      child: const Icon(Icons.add),
-                                    ),
-                                  ],
-                                ),
+                                      const SizedBox(width: 10),
+                                      FloatingActionButton(
+                                        heroTag: 'fab_add_packing_output',
+                                        mini: true,
+                                        backgroundColor: locked
+                                            ? Colors.grey.shade300
+                                            : _kOutput,
+                                        foregroundColor: Colors.white,
+                                        onPressed: locked
+                                            ? null
+                                            : () => _openAddOutputDialog(
+                                                onRefresh,
+                                              ),
+                                        child: const Icon(Icons.add),
+                                      ),
+                                    ],
+                                  ),
                               ],
                             ),
                           ),
@@ -1264,12 +1274,12 @@ class _PackingProductionInputScreenState
                     hourEnd: _header?.hourEnd,
                     namaJenis: _header?.outputJenisNama,
                     onGanti: locked ? null : _openSplitDialog,
-                  onComplete: (_header == null || _isLockedOrComplete)
-                      ? null
-                      : _handleComplete,
-                  onUncomplete: (_header?.isComplete == true)
-                      ? _handleUncomplete
-                      : null,
+                    onComplete: (_header == null || _isLockedOrComplete)
+                        ? null
+                        : _handleComplete,
+                    onUncomplete: (_header?.isComplete == true)
+                        ? _handleUncomplete
+                        : null,
                     onRefresh: () {
                       _loadHeader();
                       vm.loadInputs(widget.noProduksi, force: true);

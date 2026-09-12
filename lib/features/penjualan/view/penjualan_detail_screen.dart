@@ -396,7 +396,7 @@ class _TurnoverSection extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Text(
-              'Item Turnover',
+              'Item yang Dipickup',
               style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
@@ -423,7 +423,8 @@ class _TurnoverSection extends StatelessWidget {
               itemCount: vm.lines.length,
               separatorBuilder: (_, __) =>
                   const Divider(height: 1, color: _kBorder),
-              itemBuilder: (context, i) => _TurnoverTile(line: vm.lines[i]),
+              itemBuilder: (context, i) =>
+                  _TurnoverTile(number: i + 1, line: vm.lines[i]),
             ),
         ],
       ),
@@ -431,104 +432,104 @@ class _TurnoverSection extends StatelessWidget {
   }
 }
 
+/// Satu tile progress per item — meniru `_TurnoverItemBlock` di
+/// `retur_v3_detail_screen.dart` (badge nomor jadi centang hijau saat
+/// terpenuhi, dibungkus card abu-abu, chip per label yang sudah discan).
 class _TurnoverTile extends StatelessWidget {
+  final int number;
   final PenjualanLine line;
-  const _TurnoverTile({required this.line});
+  const _TurnoverTile({required this.number, required this.line});
 
   @override
   Widget build(BuildContext context) {
     final scanned = line.pcsScanned;
     final target = line.pcsRequired;
     final fulfilled = line.isComplete;
-    final progress = target > 0 ? (scanned / target).clamp(0.0, 1.0) : 0.0;
+    final namaJenis = (line.namaJenis ?? '').isNotEmpty
+        ? line.namaJenis!
+        : '${line.kategoriLabel} #${line.idJenis}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _kPrimary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Text(
-                  line.kodeKategori == 'furniturewip' ? 'BB' : 'BA',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: _kPrimary,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: _kSurface,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Badge nomor urut — jadi centang hijau saat item terpenuhi.
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: fulfilled
+                        ? _kSuccess
+                        : _kPrimary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
                   ),
+                  child: fulfilled
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        )
+                      : Text(
+                          '$number',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: _kPrimary,
+                          ),
+                        ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  (line.namaJenis ?? '').isNotEmpty
-                      ? line.namaJenis!
-                      : '${line.kategoriLabel} #${line.idJenis}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _kText,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(
-                '$scanned/$target pcs',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: fulfilled ? _kSuccess : _kMuted,
-                ),
-              ),
-              if (fulfilled) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.check_circle_rounded, size: 16, color: _kSuccess),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 5,
-              backgroundColor: const Color(0xFFE5E7EB),
-              color: fulfilled ? _kSuccess : _kPrimary,
-            ),
-          ),
-          if (line.scans.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: line.scans
-                  .map(
-                    (s) => Chip(
-                      label: Text(
-                        '${s.noLabel} (${s.pcs})',
-                        style: const TextStyle(fontSize: 10.5),
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                Expanded(
+                  child: Text(
+                    namaJenis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: _kText,
                     ),
-                  )
-                  .toList(),
+                  ),
+                ),
+                Text(
+                  '$scanned/$target pcs',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: fulfilled ? _kSuccess : _kMuted,
+                  ),
+                ),
+              ],
             ),
+            if (line.scans.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: line.scans
+                    .map(
+                      (s) => Chip(
+                        label: Text(
+                          '${s.noLabel} (${s.pcs})',
+                          style: const TextStyle(fontSize: 10.5),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
