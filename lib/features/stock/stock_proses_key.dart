@@ -13,4 +13,15 @@ enum StockProsesKey {
   barangJadi,
   reject,
   bahanBaku,
+
+  bahanBakuProses,
+  bahanBakuPakai,
+  wipInject,
+  wipStamping,
+  wipSpanner,
+  bahanPendukung,
+  barangJadiGrande,
+  barangJadiHana,
+  barangJadiKursi,
+  barangJadiEnamel,
 }

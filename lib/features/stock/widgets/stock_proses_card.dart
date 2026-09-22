@@ -26,10 +26,16 @@ class StockProsesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 0,
+    // return Material(
+    //   color: Colors.white,
+    //   borderRadius: BorderRadius.circular(12),
+    //   elevation: 0,
+    return Container(
+      width: 100.0,
+      //height: 120.0,
+      constraints: const BoxConstraints(
+        minHeight: 120.0,
+      ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -63,6 +69,7 @@ class StockProsesCard extends StatelessWidget {
           ),
         ),
       ),
+    //);
     );
   }
 

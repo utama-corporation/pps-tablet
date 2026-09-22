@@ -143,6 +143,8 @@ class _MappingView extends StatelessWidget {
     final map = <String, List<dynamic>>{};
     for (final blok in blokList) {
       map.putIfAbsent(blok.namaWarehouse, () => []).add(blok);
+
+      //print(map);
     }
     return map;
   }

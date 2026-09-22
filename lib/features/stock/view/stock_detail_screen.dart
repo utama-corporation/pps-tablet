@@ -15,12 +15,18 @@ import '../../production/shared/models/gilingan_stok_item.dart';
 import '../../production/shared/models/gilingan_stok_label.dart';
 import '../../production/shared/models/mixer_stok_item.dart';
 import '../../production/shared/models/mixer_stok_label.dart';
+import '../../production/shared/models/bahan_pendukung_stok_item.dart';
+import '../../production/shared/models/bahan_pendukung_stok_label.dart';
+import '../../production/shared/models/packing_stok_item.dart';
+import '../../production/shared/models/packing_stok_label.dart';
 import '../../production/shared/models/reject_stok_item.dart';
 import '../../production/shared/models/reject_stok_label.dart';
 import '../../production/shared/models/stok_bahan_baku_item.dart';
 import '../../production/shared/models/stok_item_data.dart';
 import '../../production/shared/models/washing_stok_item.dart';
 import '../../production/shared/models/washing_stok_label.dart';
+import '../../production/shared/models/inject_stok_item.dart';
+import '../../production/shared/models/inject_stok_label.dart';
 import '../../production/shared/repository/barang_jadi_stok_repository.dart';
 import '../../production/shared/repository/bonggolan_stok_repository.dart';
 import '../../production/shared/repository/broker_stok_repository.dart';
@@ -28,13 +34,20 @@ import '../../production/shared/repository/crusher_stok_repository.dart';
 import '../../production/shared/repository/furniture_wip_stok_repository.dart';
 import '../../production/shared/repository/gilingan_stok_repository.dart';
 import '../../production/shared/repository/mixer_stok_repository.dart';
+import '../../production/shared/repository/bahan_pendukung_stok_repository.dart';
+import '../../production/shared/repository/packing_produksi_repository.dart';
 import '../../production/shared/repository/reject_stok_repository.dart';
 import '../../production/shared/repository/stok_bahan_baku_pakai_repository.dart';
 import '../../production/shared/repository/stok_bahan_baku_repository.dart';
 import '../../production/shared/repository/washing_stok_repository.dart';
+import '../../production/shared/repository/inject_stok_repository.dart';
+import '../../production/shared/repository/stamping_stock_repository.dart';
+import '../../production/shared/repository/spanner_stock_repository.dart';
+
 import '../../production/shared/widgets/production_filter_chip.dart';
 import '../../production/shared/widgets/stok_item_label_dialog.dart';
 import '../../production/shared/widgets/stok_item_panel.dart';
+
 import '../stock_proses_key.dart';
 
 /// Satu sumber data stok (endpoint stok + endpoint label) untuk
@@ -573,6 +586,128 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             showSakColumn: false,
             oldestDateOf: (item) => item.dateCreateTertua,
           ),
+        ];
+
+
+      case StockProsesKey.bahanBakuProses:
+        final repo = StokBahanBakuRepository();
+        return [
+          _TypedStockSource<StokBahanBakuItem, BahanBakuProsesLabel>(
+            label: 'Bahan Baku Proses',
+            fetchStok: repo.fetchStok,
+            fetchLabel: (item) => repo.fetchLabel(item.idBB) ,
+            labelSisaOf: (StokBahanBakuItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.bahanBakuPakai:
+        final repo = StokBahanBakuPakaiRepository();
+        return [
+          _TypedStockSource<StokBahanBakuItem, BahanBakuProsesLabel>(
+            label: 'Bahan Baku Pakai',
+            fetchStok: repo.fetchStok,
+            fetchLabel: (item) => repo.fetchLabel(item.idBB) ,
+            labelSisaOf: (StokBahanBakuItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.wipInject:
+        final repo = InjectStokRepository();
+        return [
+          _TypedStockSource<InjectStokItem, InjectStokLabel>(
+            label: 'Inject',
+            fetchStok: repo.fetchStok,
+            fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
+            labelSisaOf: (InjectStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.wipStamping:
+        final repo = StampingStokRepository();
+        return [
+          _TypedStockSource<InjectStokItem, InjectStokLabel>(
+            label: 'Stamping',
+            fetchStok: repo.fetchStok,
+            fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
+            labelSisaOf: (InjectStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.wipSpanner:
+        final repo = SpannerStokRepository();
+        return [
+          _TypedStockSource<InjectStokItem, InjectStokLabel>(
+            label: 'Packing Spanner',
+            fetchStok: repo.fetchStok,
+            fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
+            labelSisaOf: (InjectStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.bahanPendukung:
+        final repo = BahanPendukungStokRepository();
+        return [
+          _TypedStockSource<BahanPendukungStokItem, BahanPendukungStokLabel>(
+            label: 'Bahan Pendukung',
+            fetchStok: repo.fetchStok,
+            fetchLabel: (item) => repo.fetchLabel(item.idCabinetMaterial),
+            labelSisaOf: (BahanPendukungStokItem item) => item.labelSisa,
+            sakColumnLabel: 'PCS',
+            showBeratColumn: false,
+          )
+        ];
+      case StockProsesKey.barangJadiGrande:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Grande',
+            fetchStok: () => repo.fetchStok(type: 'GRANDE'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'GRANDE'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiHana:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Hana',
+            fetchStok: () => repo.fetchStok(type: 'HANA'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'HANA'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiKursi:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Kursi',
+            fetchStok: () => repo.fetchStok(type: 'PART KURSI'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'PART KURSI'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiEnamel:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Enamel',
+            fetchStok: () => repo.fetchStok(type: 'ENAMEL'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'ENAMEL'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            showSakColumn: false,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
         ];
     }
   }

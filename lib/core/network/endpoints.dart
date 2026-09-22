@@ -332,4 +332,62 @@ class ApiConstants {
     final host = Uri.parse(baseUrl).host;
     return 'http://$host:7500/api/mst-barang-jadi/$idBJ/label';
   }
+
+  static String get wipInjectStok {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/inject/stok';
+  }
+
+  static String wipInjectStokLabel(int idFurnitureWip) {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/inject/$idFurnitureWip/label';
+  }
+
+  static String get wipStampingStok {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/hot-stamp/stok';
+  }
+
+  static String wipStampingStokLabel(int idFurnitureWip) {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/hot-stamp/$idFurnitureWip/label';
+  }
+
+  static String get wipSpannerStok {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/spanner/stok';
+  }
+
+  static String wipSpannerStokLabel(int idSpanner) {
+    final host = Uri
+        .parse(baseUrl)
+        .host;
+    return 'http://$host:7500/api/production/spanner/$idSpanner/label';
+  }
+
+  static String packingStok(String type) {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/packing/stok?type=$type';
+  }
+
+  static String packingStokLabel(int idPacking, String type) {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/production/packing/$idPacking/label?type=$type';
+  }
+
+  static String get mstBahanPendukungStok {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/labels/bahan-pendukung/stok';
+  }
+
+  static String mstBahanPendukungStokLabel(int idBahanPendukung) {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/labels/bahan-pendukung/$idBahanPendukung/label';
+  }
 }
+
+
+
+
+
+

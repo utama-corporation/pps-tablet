@@ -182,6 +182,94 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
     }
   }
 
+
+  Future <void> _onDoubleTapKategori(SoV2Kategori kategori) async{
+    if (kategori.status != SoV2Status.completed){
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stock opname belum selesai!')
+        )
+      );
+
+      return;
+    }
+
+    //if (kategori.status == SoV2Status.notStarted) {
+      if (_vm.isRiwayatMode) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tidak ada data stock opname pada periode ini'),
+          ),
+        );
+        return;
+      }
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const LoadingDialog(message: 'Memuat preview...'),
+      );
+      final preview = await _vm.previewGenerate(
+        categoryId: kategori.categoryId,
+      );
+      if (!mounted) return;
+      // showDialog default-nya push ke root Navigator (useRootNavigator:
+      // true), sementara layar ini sendiri hidup di nested shell Navigator
+      // milik AppShell — Navigator.pop(context) polos bakal salah sasaran
+      // (nge-pop shell Navigator, bukan dialog loading-nya).
+      Navigator.of(context, rootNavigator: true).pop(); // close loading
+      if (preview.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(preview.errorMessage!),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+        return;
+      }
+
+      final confirmed = await showSoV2GeneratePreviewDialog(
+        context,
+        preview: preview.preview!,
+      );
+      if (confirmed != true) return;
+
+      final res = await _vm.generate(categoryId: kategori.categoryId);
+      if (!mounted) return;
+      if (res.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.errorMessage!),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+        return;
+      }
+      final result = res.result!;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SoV2DetailScreen(
+            stockOpnameNo: result['stockOpnameNo'].toString(),
+            categoryCode:
+                result['categoryCode']?.toString() ?? kategori.categoryCode,
+            categoryName: kategori.categoryName,
+          ),
+        ),
+      );
+      if (mounted) _vm.load();
+//     } else {
+//       await Navigator.of(context).push(
+//         MaterialPageRoute(
+//           builder: (_) => SoV2DetailScreen(
+//             stockOpnameNo: kategori.stockOpnameNo!,
+//             categoryCode: kategori.categoryCode,
+//             categoryName: kategori.categoryName,
+//           ),
+//         ),
+//       );
+//       if (mounted) _vm.load();
+//     }
+  }
+
   Future<void> _onDeleteKategori(SoV2Kategori kategori) async {
     final stockOpnameNo = kategori.stockOpnameNo;
     if (stockOpnameNo == null) return;
@@ -309,6 +397,8 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
             return _KategoriTile(
               kategori: kategori,
               onTap: () => _onTapKategori(kategori),
+              onDoubleTap: () => _onDoubleTapKategori(kategori),
+              //onDoubleTap: () =>  _onDoubleTapKategori(kategori),
               dimmed: vm.isRiwayatMode && kategori.stockOpnameNo == null,
               onDelete: (vm.isRiwayatMode || kategori.stockOpnameNo == null)
                   ? null
@@ -324,12 +414,14 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
 class _KategoriTile extends StatelessWidget {
   final SoV2Kategori kategori;
   final VoidCallback onTap;
+  final VoidCallback onDoubleTap;
   final VoidCallback? onDelete;
   final bool dimmed;
 
   const _KategoriTile({
     required this.kategori,
     required this.onTap,
+    required this.onDoubleTap,
     this.onDelete,
     this.dimmed = false,
   });
@@ -356,6 +448,7 @@ class _KategoriTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onTap,
+          onDoubleTap: onDoubleTap,
           onLongPress: onDelete,
           borderRadius: BorderRadius.circular(10),
           child: Container(
