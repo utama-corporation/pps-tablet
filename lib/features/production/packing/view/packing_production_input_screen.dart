@@ -1246,7 +1246,7 @@ class _PackingProductionInputScreenState
         final inputs = vm.inputsOf(widget.noProduksi);
         final perm = context.watch<PermissionViewModel>();
         final locked = _isLockedOrComplete;
-        final canDelete = perm.can('label_packing:delete') && !locked;
+        final canDelete = perm.can('packing:delete') && !locked;
 
         return PopScope(
           canPop: false,
