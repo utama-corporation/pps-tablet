@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
+import '../utils/format.dart';
 
 /// ✅ Model untuk summary total
 class SectionSummary {
   final int totalData;  // ✅ Renamed dari totalSak
-  final int totalSak;
+
+  /// num karena bisa berisi qty cabinet material (bahan pendukung) desimal.
+  final num totalSak;
   final double totalBerat;
 
   const SectionSummary({
@@ -113,7 +116,7 @@ class SectionCard extends StatelessWidget {
                     _buildSummaryRow(
                       icon: Icons.inventory_2_outlined,
                       label: 'Total Sak',
-                      value: '${summary.totalSak} sak',
+                      value: '${fmtNum(summary.totalSak)} sak',
                       color: color,
                     ),
                     const SizedBox(height: 10),

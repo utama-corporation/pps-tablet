@@ -6,11 +6,11 @@ import '../../../../common/widgets/confirm_dialog.dart';
 import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../common/widgets/scan_label_dialog.dart';
 import '../../../../core/view_model/permission_view_model.dart';
-import '../../shared/widgets/add_cabinet_material_dialog.dart';
 import '../../shared/widgets/confirm_save_temp_dialog.dart';
 import '../../shared/widgets/save_button_with_badge.dart';
 import '../../shared/widgets/unsaved_temp_warning_dialog.dart';
 import '../../shared/models/production_label_lookup_result.dart';
+import '../../shared/models/bahan_pendukung_item.dart';
 import '../model/packing_output_model.dart';
 import '../view_model/packing_production_input_view_model.dart';
 import '../model/packing_production_inputs_model.dart';
@@ -406,8 +406,11 @@ class _PackingProductionInputScreenState
     await showDialog<void>(
       context: context,
       builder: (_) => ScanLabelDialog(
-        manualHint: 'F.XXXXXXXXXX',
-        acceptedLabels: const [(prefix: 'F', label: 'Furniture WIP')],
+        manualHint: 'F.XXXXXXXXXX / BP.XXXXXXXXX',
+        acceptedLabels: const [
+          (prefix: 'F', label: 'Furniture WIP'),
+          (prefix: 'BP.', label: 'Bahan Pendukung'),
+        ],
         onLookup: _onCodeReady,
       ),
     );
@@ -421,8 +424,42 @@ class _PackingProductionInputScreenState
     if (res == null || res.found == false || res.data.isEmpty) {
       return 'Label "$code" tidak memiliki data yang tersedia.';
     }
+
+    // Bahan Pendukung (BP.): langsung ambil semua quantity ke material temp,
+    // tanpa dialog pilih.
+    final normalized = code.trim().toUpperCase();
+    if (normalized.startsWith('BP.')) {
+      await _handleBahanPendukungScan(vm, res);
+      return null;
+    }
+
     await _handlePcsInputFlow(vm, res);
     return null;
+  }
+
+  Future<void> _handleBahanPendukungScan(
+    PackingProductionInputViewModel vm,
+    ProductionLabelLookupResult res,
+  ) async {
+    final items = res.data
+        .map((row) => BahanPendukungItem.fromJson(row))
+        .where((it) => (it.idCabinetMaterial ?? 0) > 0)
+        .toList();
+    if (items.isEmpty) {
+      _showSnack(
+        'Label ini tidak memiliki data bahan pendukung',
+        backgroundColor: Colors.orange,
+      );
+      return;
+    }
+    final added = vm.addScannedBahanPendukung(items);
+    if (!mounted) return;
+    _showSnack(
+      added > 0
+          ? '✅ $added Bahan Pendukung ditambahkan (semua quantity)'
+          : 'Bahan pendukung sudah ditambahkan sebelumnya',
+      backgroundColor: added > 0 ? Colors.green : Colors.orange,
+    );
   }
 
   Future<void> _handlePcsInputFlow(
@@ -492,25 +529,6 @@ class _PackingProductionInputScreenState
   }
 
   // ── Cabinet Material helpers ───────────────────────────────────────────────
-
-  Future<void> _openAddMaterialDialog(
-    PackingProductionInputViewModel vm,
-  ) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AddCabinetMaterialDialog(
-        idWarehouse: 5,
-        loadMaterials: ({required idWarehouse, bool force = false}) => vm
-            .loadMasterCabinetMaterials(idWarehouse: idWarehouse, force: force),
-        isAlreadyInTemp: (id) => vm.hasCabinetMaterialInTemp(id),
-        onAddTemp: ({required masterItem, required jumlah}) =>
-            vm.addTempCabinetMaterialFromMaster(
-              masterItem: masterItem,
-              Jumlah: jumlah,
-            ),
-      ),
-    );
-  }
 
   Future<void> _deleteExistingMaterial(
     PackingProductionInputViewModel vm,
@@ -770,16 +788,25 @@ class _PackingProductionInputScreenState
                                   ),
                                   const SizedBox(width: 10),
                                   FloatingActionButton(
-                                    heroTag: 'fab_add_material_packing',
+                                    heroTag: 'fab_scan_material_packing_input',
                                     mini: true,
                                     backgroundColor: locked
                                         ? Colors.grey.shade300
                                         : _kPrimary,
                                     foregroundColor: Colors.white,
-                                    onPressed: locked
+                                    onPressed: locked || vm.isLookupLoading
                                         ? null
-                                        : () => _openAddMaterialDialog(vm),
-                                    child: const Icon(Icons.add),
+                                        : _openScanDialog,
+                                    child: vm.isLookupLoading
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.qr_code_scanner),
                                   ),
                                 ],
                               ],

@@ -11,6 +11,7 @@ import '../../../../common/widgets/confirm_dialog.dart';
 import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../core/view_model/permission_view_model.dart';
 import '../../shared/models/production_label_lookup_result.dart';
+import '../../shared/models/bahan_pendukung_item.dart';
 import '../../shared/widgets/add_cabinet_material_dialog.dart';
 import '../../shared/widgets/confirm_save_temp_dialog.dart';
 import '../../shared/widgets/save_button_with_badge.dart';
@@ -1052,7 +1053,7 @@ class _InjectProductionInputScreenState
     await showDialog<void>(
       context: context,
       builder: (_) => ProductionScanLabelDialog(
-        manualHint: 'BB. / D. / H. / V.',
+        manualHint: 'BB. / D. / H. / V. / BP.',
         headerSubtitle: _modeLabel(_selectedMode),
         primaryColor: _kInjectPrimary,
         formulaOutputs: formulaOutputs,
@@ -1073,7 +1074,8 @@ class _InjectProductionInputScreenState
   }
 
   // Prefix label yang valid untuk proses Inject (sesuai validasi server).
-  static const List<String> _validInjectPrefixes = ['BB.', 'D.', 'H.', 'V.'];
+  static const List<String> _validInjectPrefixes =
+      ['BB.', 'D.', 'H.', 'V.', 'BP.'];
 
   Future<String?> _onCodeReady(String code) async {
     // Validasi prefix di sisi klien agar pesan jelas (server balas 500 untuk
@@ -1084,7 +1086,8 @@ class _InjectProductionInputScreenState
           ? normalized.substring(0, normalized.indexOf('.') + 1)
           : normalized;
       return 'Prefix "$prefix" tidak diizinkan. '
-          'Label valid: BB. (Furniture WIP), D. (Broker), H. (Mixer), V. (Gilingan).';
+          'Label valid: BB. (Furniture WIP), D. (Broker), H. (Mixer), '
+          'V. (Gilingan), BP. (Bahan Pendukung).';
     }
 
     final vm = context.read<InjectProductionInputViewModel>();
@@ -1093,6 +1096,13 @@ class _InjectProductionInputScreenState
     if (vm.lookupError != null) return 'Gagal ambil data: ${vm.lookupError}';
     if (res == null || res.found == false || res.data.isEmpty) {
       return 'Label "$code" tidak memiliki data yang tersedia.';
+    }
+
+    // Bahan Pendukung (BP.): langsung ambil semua quantity ke material temp,
+    // tanpa dialog pilih sak maupun validasi formula.
+    if (normalized.startsWith('BP.')) {
+      await _handleBahanPendukungScan(vm, res);
+      return null;
     }
 
     // Validasi kategori + jenis terhadap formula hasil fetch API (jika sudah dimuat)
@@ -1193,6 +1203,32 @@ class _InjectProductionInputScreenState
     if (item is GilinganItem) return _gilinganTitleKey(item);
     if (item is FurnitureWipItem) return _fwipTitleKey(item);
     return null;
+  }
+
+  /// Bahan Pendukung: tambah langsung semua quantity label ke material temp.
+  Future<void> _handleBahanPendukungScan(
+    InjectProductionInputViewModel vm,
+    ProductionLabelLookupResult res,
+  ) async {
+    final items = res.data
+        .map((row) => BahanPendukungItem.fromJson(row))
+        .where((it) => (it.idCabinetMaterial ?? 0) > 0)
+        .toList();
+    if (items.isEmpty) {
+      _showSnack(
+        'Label ini tidak memiliki data bahan pendukung',
+        backgroundColor: Colors.orange,
+      );
+      return;
+    }
+    final added = vm.addScannedBahanPendukung(items);
+    if (!mounted) return;
+    _showSnack(
+      added > 0
+          ? '✅ $added Bahan Pendukung ditambahkan (semua quantity)'
+          : 'Bahan pendukung sudah ditambahkan sebelumnya',
+      backgroundColor: added > 0 ? Colors.green : Colors.orange,
+    );
   }
 
   Future<void> _handleFwipPcsFlow(
@@ -1549,6 +1585,8 @@ class _InjectProductionInputScreenState
       }
     }
     final materialCount = materialAll.length;
+    final materialQty =
+        materialAll.fold<num>(0, (sum, it) => sum + (it.Jumlah ?? 0));
 
     // ── grand total ────────────────────────────────────────────────
     final grandLabel =
@@ -1557,7 +1595,7 @@ class _InjectProductionInputScreenState
         mixerGroups.length +
         gilinganGroups.length +
         materialCount;
-    final grandSak = brokerSak + mixerSak;
+    final grandSak = brokerSak + mixerSak + materialQty;
     final grandBerat = fwipBerat + brokerBerat + mixerBerat + gilinganBerat;
 
     // ── active-tab summary ─────────────────────────────────────────
@@ -1590,7 +1628,7 @@ class _InjectProductionInputScreenState
         case 'material':
           return SectionSummary(
             totalData: materialCount,
-            totalSak: materialCount,
+            totalSak: materialQty,
             totalBerat: 0,
           );
         default:
@@ -1751,8 +1789,7 @@ class _InjectProductionInputScreenState
                                         showBerat:
                                             _selectedInputTab != 'fwip' &&
                                             _selectedInputTab != 'material',
-                                        showLabel:
-                                            _selectedInputTab != 'material',
+                                        showLabel: true,
                                       ),
                                       const SizedBox(height: 6),
                                       ProductionInputGrandTotalBar(

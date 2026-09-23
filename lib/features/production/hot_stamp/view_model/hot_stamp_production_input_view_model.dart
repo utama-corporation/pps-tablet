@@ -10,6 +10,7 @@ import '../model/hot_stamping_inputs_model.dart';
 
 // ⬇️ shared lookup result model (masih dipakai untuk lookup FWIP)
 import 'package:pps_tablet/features/production/shared/models/production_label_lookup_result.dart';
+import 'package:pps_tablet/features/production/shared/models/bahan_pendukung_item.dart';
 
 // -----------------------------------------------------------------------------
 // Small value objects
@@ -508,6 +509,73 @@ class HotStampingProductionInputViewModel extends ChangeNotifier {
   final List<FurnitureWipItem> tempFurnitureWipPartial = [];
   final List<CabinetMaterialItem> tempCabinetMaterial = [];
 
+  /// Label Bahan Pendukung (BP.) yang sudah discan per material temp.
+  /// IdCabinetMaterial -> kumpulan NoBahanPendukung (dikirim pada submit agar
+  /// backend menandai DateUsage sehingga label tidak terpanggil lagi).
+  final Map<int, Set<String>> _scannedBahanPendukungByMaterial = {};
+
+  bool hasScannedBahanPendukungLabel(String labelCode) {
+    final c = labelCode.trim();
+    if (c.isEmpty) return false;
+    for (final labels in _scannedBahanPendukungByMaterial.values) {
+      if (labels.contains(c)) return true;
+    }
+    return false;
+  }
+
+  /// Tambahkan bahan pendukung dari hasil scan — langsung mengambil SEMUA
+  /// quantity label menjadi material temp, tanpa dialog pilih. Label yang
+  /// sudah pernah discan di-skip agar jumlahnya tidak dobel.
+  /// Mengembalikan jumlah material yang baru ditambahkan.
+  int addScannedBahanPendukung(List<BahanPendukungItem> items) {
+    final seenInScan = <String>{};
+    final groups =
+        <int, ({BahanPendukungItem item, num qty, List<String> labels})>{};
+    for (final it in items) {
+      final id = it.idCabinetMaterial ?? 0;
+      if (id <= 0) continue;
+      final label = (it.noBahanPendukung ?? '').trim();
+      final isDup = label.isNotEmpty &&
+          (seenInScan.contains(label) ||
+              hasScannedBahanPendukungLabel(label));
+      seenInScan.add(label);
+
+      final prev = groups[id]?.labels ?? const <String>[];
+      final prevQty = groups[id]?.qty ?? 0;
+      groups[id] = (
+        item: it,
+        qty: prevQty + (isDup ? 0 : it.quantity),
+        labels: [if (label.isNotEmpty) ...prev, if (label.isNotEmpty) label],
+      );
+    }
+
+    int added = 0;
+    groups.forEach((id, g) {
+      final idx = tempCabinetMaterial
+          .indexWhere((x) => (x.IdCabinetMaterial ?? 0) == id);
+      if (idx >= 0) {
+        final old = tempCabinetMaterial[idx];
+        tempCabinetMaterial[idx] =
+            old.copyWith(Jumlah: (old.Jumlah ?? 0) + g.qty);
+      } else {
+        tempCabinetMaterial.add(
+          CabinetMaterialItem(
+            IdCabinetMaterial: id,
+            Nama: g.item.namaJenis,
+            NamaUOM: g.item.namaUom,
+            ItemCode: g.item.itemCode,
+            Jumlah: g.qty,
+          ),
+        );
+        _tempKeys.add(_keyFromCabinetMaterialItem(tempCabinetMaterial.last));
+      }
+      (_scannedBahanPendukungByMaterial[id] ??= <String>{}).addAll(g.labels);
+      if (g.qty > 0) added++;
+    });
+    if (added > 0) notifyListeners();
+    return added;
+  }
+
   final Set<String> _pickedKeys = <String>{};
   final List<Map<String, dynamic>> _pickedRows = <Map<String, dynamic>>[];
   final Map<String, int> _keyToRowIndex = {};
@@ -777,6 +845,7 @@ class HotStampingProductionInputViewModel extends ChangeNotifier {
   void deleteTempCabinetMaterialItem(CabinetMaterialItem item) {
     tempCabinetMaterial.remove(item);
     _tempKeys.remove(_keyFromCabinetMaterialItem(item));
+    _scannedBahanPendukungByMaterial.remove(item.IdCabinetMaterial);
     debugDumpTempLists(tag: 'after deleteTempCabinetMaterialItem');
     notifyListeners();
   }
@@ -792,6 +861,7 @@ class HotStampingProductionInputViewModel extends ChangeNotifier {
 
     _tempKeys.clear();
     _tempItemsByLabel.clear();
+    _scannedBahanPendukungByMaterial.clear();
     clearPicks();
     _tempPartialSeq = 0;
 
@@ -812,7 +882,10 @@ class HotStampingProductionInputViewModel extends ChangeNotifier {
       if (ok) _tempKeys.remove(_keyFromFurnitureWipItem(item));
     } else if (item is CabinetMaterialItem) {
       ok = tempCabinetMaterial.remove(item);
-      if (ok) _tempKeys.remove(_keyFromCabinetMaterialItem(item));
+      if (ok) {
+        _tempKeys.remove(_keyFromCabinetMaterialItem(item));
+        _scannedBahanPendukungByMaterial.remove(item.IdCabinetMaterial);
+      }
     }
     if (ok) debugDumpTempLists(tag: 'after deleteIfTemp');
     return ok;
@@ -896,9 +969,17 @@ class HotStampingProductionInputViewModel extends ChangeNotifier {
     if (tempCabinetMaterial.isNotEmpty) {
       payload['cabinetMaterial'] = tempCabinetMaterial
           .map(
-            (e) => {
-              'idCabinetMaterial': e.IdCabinetMaterial,
-              'jumlah': e.Jumlah,
+            (e) {
+              final labels =
+                  _scannedBahanPendukungByMaterial[e.IdCabinetMaterial ?? 0];
+              return {
+                'idCabinetMaterial': e.IdCabinetMaterial,
+                'jumlah': e.Jumlah,
+                // label Bahan Pendukung (BP.) yang dipakai → backend tandai
+                // DateUsage = tanggal produksi agar tidak terpanggil lagi
+                if (labels != null && labels.isNotEmpty)
+                  'noBahanPendukung': labels.toList(),
+              };
             },
           )
           .toList();

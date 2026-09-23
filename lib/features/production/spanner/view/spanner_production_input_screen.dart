@@ -15,7 +15,7 @@ import '../../../furniture_wip_type/repository/furniture_wip_type_repository.dar
 import '../../../furniture_wip_type/view_model/furniture_wip_type_view_model.dart';
 import '../../../furniture_wip_type/widgets/furniture_wip_type_dropdown.dart';
 import '../../shared/models/production_label_lookup_result.dart';
-import '../../shared/widgets/add_cabinet_material_dialog.dart';
+import '../../shared/models/bahan_pendukung_item.dart';
 import '../../shared/widgets/confirm_save_temp_dialog.dart';
 import '../../shared/widgets/save_button_with_badge.dart';
 import '../../shared/widgets/unsaved_temp_warning_dialog.dart';
@@ -416,8 +416,11 @@ class _SpannerProductionInputScreenState
     await showDialog<void>(
       context: context,
       builder: (_) => ScanLabelDialog(
-        manualHint: 'F.XXXXXXXXXX',
-        acceptedLabels: const [(prefix: 'F', label: 'Furniture WIP')],
+        manualHint: 'F.XXXXXXXXXX / BP.XXXXXXXXX',
+        acceptedLabels: const [
+          (prefix: 'F', label: 'Furniture WIP'),
+          (prefix: 'BP.', label: 'Bahan Pendukung'),
+        ],
         onLookup: _onCodeReady,
       ),
     );
@@ -431,8 +434,41 @@ class _SpannerProductionInputScreenState
     if (res == null || res.found == false || res.data.isEmpty) {
       return 'Label "$code" tidak memiliki data yang tersedia.';
     }
+
+    // Bahan Pendukung (BP.): langsung ambil semua quantity ke material temp,
+    // tanpa dialog pilih.
+    if (code.trim().toUpperCase().startsWith('BP.')) {
+      await _handleBahanPendukungScan(vm, res);
+      return null;
+    }
+
     await _handlePcsInputFlow(vm, res);
     return null;
+  }
+
+  Future<void> _handleBahanPendukungScan(
+    SpannerProductionInputViewModel vm,
+    ProductionLabelLookupResult res,
+  ) async {
+    final items = res.data
+        .map((row) => BahanPendukungItem.fromJson(row))
+        .where((it) => (it.idCabinetMaterial ?? 0) > 0)
+        .toList();
+    if (items.isEmpty) {
+      _showSnack(
+        'Label ini tidak memiliki data bahan pendukung',
+        backgroundColor: Colors.orange,
+      );
+      return;
+    }
+    final added = vm.addScannedBahanPendukung(items);
+    if (!mounted) return;
+    _showSnack(
+      added > 0
+          ? '✅ $added Bahan Pendukung ditambahkan (semua quantity)'
+          : 'Bahan pendukung sudah ditambahkan sebelumnya',
+      backgroundColor: added > 0 ? Colors.green : Colors.orange,
+    );
   }
 
   Future<void> _handlePcsInputFlow(
@@ -503,25 +539,6 @@ class _SpannerProductionInputScreenState
   }
 
   // ── Cabinet Material helpers ───────────────────────────────────────────────
-
-  Future<void> _openAddMaterialDialog(
-    SpannerProductionInputViewModel vm,
-  ) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AddCabinetMaterialDialog(
-        idWarehouse: 5,
-        loadMaterials: ({required idWarehouse, bool force = false}) => vm
-            .loadMasterCabinetMaterials(idWarehouse: idWarehouse, force: force),
-        isAlreadyInTemp: (id) => vm.hasCabinetMaterialInTemp(id),
-        onAddTemp: ({required masterItem, required jumlah}) =>
-            vm.addTempCabinetMaterialFromMaster(
-              masterItem: masterItem,
-              Jumlah: jumlah,
-            ),
-      ),
-    );
-  }
 
   Future<void> _deleteExistingMaterial(
     SpannerProductionInputViewModel vm,
@@ -781,18 +798,27 @@ class _SpannerProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(width: 10),
-                                FloatingActionButton(
-                                  heroTag: 'fab_add_material_spanner',
-                                  mini: true,
-                                  backgroundColor: locked
-                                      ? Colors.grey.shade300
-                                      : _kSpannerPrimary,
-                                  foregroundColor: Colors.white,
-                                  onPressed: locked
-                                      ? null
-                                      : () => _openAddMaterialDialog(vm),
-                                  child: const Icon(Icons.add),
-                                ),
+FloatingActionButton(
+                                    heroTag: 'fab_scan_material_spanner_input',
+                                    mini: true,
+                                    backgroundColor: locked
+                                        ? Colors.grey.shade300
+                                        : _kSpannerPrimary,
+                                    foregroundColor: Colors.white,
+                                    onPressed: locked || vm.isLookupLoading
+                                        ? null
+                                        : _openScanDialog,
+                                    child: vm.isLookupLoading
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.qr_code_scanner),
+                                  ),
                               ],
                             ],
                           ),

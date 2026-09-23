@@ -10,7 +10,10 @@ import 'production_panel_decoration.dart';
 
 class ProductionInputGrandTotalBar extends StatelessWidget {
   final int totalLabel;
-  final int totalSak;
+
+  /// Qty (Sak) — num karena bisa berisi penjumlahan qty cabinet material
+  /// (bahan pendukung) yang nilainya bisa desimal.
+  final num totalSak;
   final double totalBerat;
   final Color color;
   final String sakLabel;
@@ -53,7 +56,7 @@ class ProductionInputGrandTotalBar extends StatelessWidget {
               const SizedBox(width: 10),
               ProductionInlineStat(
                 label: sakLabel,
-                value: '$totalSak',
+                value: fmtNum(totalSak),
                 color: color,
               ),
               const SizedBox(width: 10),
