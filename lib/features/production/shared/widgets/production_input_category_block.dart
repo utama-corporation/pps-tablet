@@ -116,7 +116,7 @@ class ProductionCategorySummaryTile extends StatelessWidget {
             if (showLabel) const SizedBox(width: 10),
             ProductionInlineStat(
               label: sakLabel,
-              value: '${summary.totalSak}',
+              value: fmtNum(summary.totalSak),
               color: accentColor,
             ),
           ],

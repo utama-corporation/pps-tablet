@@ -101,13 +101,13 @@ class HotStampingProductionInputRepository {
    * VALIDATE / LOOKUP FURNITURE WIP LABEL (optional - keep if still used)
    * ============================= */
 
-  /// GET /api/production/hot-stamp/validate-fwip/:labelCode
+  /// GET /api/production/lookup-label/:labelCode
   Future<ProductionLabelLookupResult> lookupFwipLabel(String labelCode) async {
     final code = labelCode.trim();
     if (code.isEmpty) throw ArgumentError('labelCode tidak boleh kosong');
 
     final path =
-        '/api/production/hot-stamp/validate-fwip/${Uri.encodeComponent(code)}';
+        '/api/production/lookup-label/${Uri.encodeComponent(code)}';
 
     try {
       final body = await api.getJson(path);
