@@ -13,9 +13,10 @@ import '../../shared/repository/crusher_stok_repository.dart';
 import '../../shared/repository/washing_stok_repository.dart';
 import '../../shared/widgets/mesin_section_header.dart';
 import '../../shared/widgets/production_mesin_card.dart';
-import '../../shared/widgets/production_produksi_list.dart';
 import '../../shared/widgets/production_overlay_drawer.dart';
+import '../../shared/widgets/production_produksi_list.dart';
 import '../../shared/widgets/production_riwayat_header.dart';
+import '../../shared/widgets/qc_downtime_dialog.dart';
 import '../../shared/widgets/sidebar_tab_switcher.dart';
 import '../../shared/widgets/stok_item_section.dart';
 import '../model/broker_production_model.dart';
@@ -142,7 +143,10 @@ class _BrokerProductionMesinScreenState
 
   // ── Card / row data converters ────────────────────────────────────────────
 
-  static MesinCardData _toMesinCardData(BrokerMesinInfo mesin) {
+  static MesinCardData _toMesinCardData(
+    BrokerMesinInfo mesin, {
+    VoidCallback? onQcTap,
+  }) {
     String? shiftTimeText;
     if (mesin.hasProduction) {
       final parts = <String>[];
@@ -159,6 +163,7 @@ class _BrokerProductionMesinScreenState
       outputJenisNama: mesin.produksiList.isNotEmpty
           ? mesin.produksiList.first.outputJenisNama
           : null,
+      onQcTap: onQcTap,
     );
   }
 
@@ -275,6 +280,36 @@ class _BrokerProductionMesinScreenState
     _refreshAll();
   }
 
+  Future<void> _openQcDialog(BrokerMesinInfo mesin) async {
+    if (!mounted || !mesin.hasProduction) return;
+    final item = mesin.produksiList.first;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => QcDowntimeDialog(
+        noProduksi: item.noProduksi,
+        namaMesin: mesin.namaMesin,
+        shift: item.shift,
+        hourStart: item.hourStart,
+        hourEnd: item.hourEnd,
+        tglProduksi: item.tglProduksi,
+        outputJenisList: [
+          if ((item.outputJenisNama ?? '').trim().isNotEmpty)
+            item.outputJenisNama!.trim(),
+        ],
+        fetch: () => _prodRepo.fetchQc(item.noProduksi),
+        create: (hourStart, keterangan) => _prodRepo.createQc(
+          item.noProduksi,
+          hourStart: hourStart,
+          keterangan: keterangan,
+        ),
+        update: (id, keterangan) =>
+            _prodRepo.updateQc(item.noProduksi, id, keterangan),
+        delete: (id) => _prodRepo.deleteQc(item.noProduksi, id),
+      ),
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -355,8 +390,16 @@ class _BrokerProductionMesinScreenState
                               itemBuilder: (context, index) {
                                 final mesin = allMesin[index];
                                 return ProductionMesinCard(
-                                  data: _toMesinCardData(mesin),
+                                  data: _toMesinCardData(
+                                    mesin,
+                                    onQcTap: mesin.hasProduction
+                                        ? () => _openQcDialog(mesin)
+                                        : null,
+                                  ),
                                   onTap: () => _onMesinTap(mesin),
+                                  onLongPress: mesin.hasProduction
+                                      ? () => _openQcDialog(mesin)
+                                      : null,
                                 );
                               },
                             );

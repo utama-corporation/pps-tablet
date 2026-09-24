@@ -18,6 +18,7 @@ import '../../../furniture_wip_type/view_model/furniture_wip_type_view_model.dar
 import '../../../furniture_wip_type/widgets/furniture_wip_type_dropdown.dart';
 import '../../shared/models/production_label_lookup_result.dart';
 import '../../shared/models/bahan_pendukung_item.dart';
+import '../../shared/widgets/bahan_pendukung_qty_dialog.dart';
 import '../../shared/widgets/confirm_save_temp_dialog.dart';
 import '../../shared/widgets/save_button_with_badge.dart';
 import '../../shared/widgets/unsaved_temp_warning_dialog.dart';
@@ -465,11 +466,40 @@ class _HotStampingProductionInputScreenState
       );
       return;
     }
-    final added = vm.addScannedBahanPendukung(items);
+
+    // Tanya jumlah per label (default seluruh sisa). Mendukung PARSIAL:
+    // operator boleh isi qty < sisa label; backend mengurangkan Qty label.
+    int added = 0, skipped = 0;
+    for (final it in items) {
+      final label = (it.noBahanPendukung ?? '').trim();
+      if (label.isEmpty || vm.hasScannedBahanPendukungLabel(label)) {
+        skipped++;
+        continue;
+      }
+      if (!mounted) break;
+      final result = await showDialog<BahanPendukungQtyResult>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => BahanPendukungQtyDialog(
+          item: it,
+          primaryColor: _kStampingPrimary,
+        ),
+      );
+      if (result == null) {
+        skipped++;
+        continue;
+      }
+      if (vm.addScannedBahanPendukungItem(it, qty: result.qty)) {
+        added++;
+      } else {
+        skipped++;
+      }
+    }
+
     if (!mounted) return;
     _showSnack(
       added > 0
-          ? '✅ $added Bahan Pendukung ditambahkan (semua quantity)'
+          ? '✅ $added Bahan Pendukung ditambahkan${skipped > 0 ? ' • $skipped terlewati/batal' : ''}'
           : 'Bahan pendukung sudah ditambahkan sebelumnya',
       backgroundColor: added > 0 ? Colors.green : Colors.orange,
     );

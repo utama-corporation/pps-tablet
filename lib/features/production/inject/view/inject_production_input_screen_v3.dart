@@ -28,6 +28,7 @@ import '../view_model/inject_formula_view_model.dart';
 import '../widgets/inject_shift_timeline_dialog.dart';
 import '../widgets/counter_picker_dialog.dart';
 import '../widgets/inject_lookup_label_dialog.dart';
+import '../../shared/widgets/bahan_pendukung_qty_dialog.dart';
 import '../widgets/inject_lookup_label_partial_dialog.dart';
 import '../widgets/inject_split_time_dialog_v3.dart';
 import '../widgets/inject_terminate_dialog.dart';
@@ -1098,18 +1099,14 @@ class _InjectProductionInputScreenState
       return 'Label "$code" tidak memiliki data yang tersedia.';
     }
 
-    // Bahan Pendukung (BP.): langsung ambil semua quantity ke material temp,
-    // tanpa dialog pilih sak maupun validasi formula.
-    if (normalized.startsWith('BP.')) {
-      await _handleBahanPendukungScan(vm, res);
-      return null;
-    }
-
-    // Validasi kategori + jenis terhadap formula hasil fetch API (jika sudah dimuat)
+    // Validasi kategori + jenis terhadap formula hasil fetch API (jika sudah
+    // dimuat). Bahan Pendukung (BP.) ikut divalidasi ke kategori 'material'.
     final formulaData = context.read<InjectFormulaViewModel>().data;
     if (formulaData != null && formulaData.outputs.isNotEmpty) {
       final allowedTabs = _computeAllowedTabs(formulaData);
-      final tab = _tabForPrefixType(res.prefixType);
+      final tab = normalized.startsWith('BP.')
+          ? 'material'
+          : _tabForPrefixType(res.prefixType);
 
       if (allowedTabs.isNotEmpty && tab != null && !allowedTabs.contains(tab)) {
         return 'Kategori label "${code.trim()}" tidak sesuai dengan formula produksi ini.';
@@ -1134,6 +1131,13 @@ class _InjectProductionInputScreenState
           }
         }
       }
+    }
+
+    // Bahan Pendukung (BP.): langsung ambil semua quantity ke material temp,
+    // tanpa dialog pilih sak. Sudah lolos validasi formula di atas.
+    if (normalized.startsWith('BP.')) {
+      await _handleBahanPendukungScan(vm, res);
+      return null;
     }
 
     if (res.prefixType == PrefixType.furnitureWip) {
@@ -1205,7 +1209,9 @@ class _InjectProductionInputScreenState
     return null;
   }
 
-  /// Bahan Pendukung: tambah langsung semua quantity label ke material temp.
+  /// Bahan Pendukung: tanya jumlah per label (default seluruh sisa). Mendukung
+  /// input PARSIAL: operator boleh isi qty kurang dari sisa label; backend
+  /// mengurangkan Qty label sehingga sisanya tetap bisa dipakai.
   Future<void> _handleBahanPendukungScan(
     InjectProductionInputViewModel vm,
     ProductionLabelLookupResult res,
@@ -1221,11 +1227,38 @@ class _InjectProductionInputScreenState
       );
       return;
     }
-    final added = vm.addScannedBahanPendukung(items);
+
+    int added = 0, skipped = 0;
+    for (final it in items) {
+      final label = (it.noBahanPendukung ?? '').trim();
+      if (label.isEmpty || vm.hasScannedBahanPendukungLabel(label)) {
+        skipped++;
+        continue;
+      }
+      if (!mounted) break;
+      final result = await showDialog<BahanPendukungQtyResult>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => BahanPendukungQtyDialog(
+          item: it,
+          primaryColor: _kInjectPrimary,
+        ),
+      );
+      if (result == null) {
+        skipped++;
+        continue;
+      }
+      if (vm.addScannedBahanPendukungItem(it, qty: result.qty)) {
+        added++;
+      } else {
+        skipped++;
+      }
+    }
+
     if (!mounted) return;
     _showSnack(
       added > 0
-          ? '✅ $added Bahan Pendukung ditambahkan (semua quantity)'
+          ? '✅ $added Bahan Pendukung ditambahkan${skipped > 0 ? ' • $skipped terlewati/batal' : ''}'
           : 'Bahan pendukung sudah ditambahkan sebelumnya',
       backgroundColor: added > 0 ? Colors.green : Colors.orange,
     );
@@ -1485,7 +1518,9 @@ class _InjectProductionInputScreenState
         if (k.contains('gilingan')) tabs.add('gilingan');
         if (k.contains('material') ||
             k.contains('kabinet') ||
-            k.contains('cabinet')) {
+            k.contains('cabinet') ||
+            k.contains('bahanpendukung') ||
+            k.contains('pendukung')) {
           tabs.add('material');
         }
       }
@@ -1512,6 +1547,12 @@ class _InjectProductionInputScreenState
           tab = 'mixer';
         } else if (k.contains('gilingan')) {
           tab = 'gilingan';
+        } else if (k.contains('material') ||
+            k.contains('kabinet') ||
+            k.contains('cabinet') ||
+            k.contains('bahanpendukung') ||
+            k.contains('pendukung')) {
+          tab = 'material';
         }
         if (tab != null) {
           (map[tab] ??= <int>{}).add(f.inputId);

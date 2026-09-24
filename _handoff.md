@@ -137,3 +137,49 @@ Diterapkan di 5 menu: **inject, hot-stamp, pasang kunci long door (key_fitting),
 - Waterfall NoBP: submit payload (sudah ada sejak commit `97557f8`) → backend
   STRING_AGG ke kolom `NoBahanPendukung` → GET inputs mengembalikannya → tile
   menampilkan di baris existing. JANGAN lupa migration sebelum uji.
+
+---
+
+## 7. QC tiap jam washing & broker (2026-09-24) — backend DITAMBAH
+
+User minta QC mesin washing/broker **mengikuti pola QC inject**: input per jam,
+timer ⏳ (1 jam ke depan), pesan "jam ini sudah lewat dan tidak diinput" bila
+terlewat, countdown waktu tersisa.
+
+### Backend (D:\backend\pps_backend) — BELUM DI-COMMIT
+- Baru: `src/core/utils/qc-bucket.js` — `buildQcBuckets` + primitives
+  (salinan verbatim dari inject, termasuk special-case shift===3). Dipakai
+  HANYA oleh service washing/broker; inject & dialignya tidak diubah.
+- Service washing & broker: `getXxxQcByNoProduksi` sekarang mengembalikan
+  `{header, items, buckets}` (bucket dihitung dari tglProduksi + hourStart/
+  hourEnd asli produksi); `createXxxQc(noProduksi, idMesin, hourStart, keterangan)`.
+  DELETE/PUT tak berubah.
+- Controller washing & broker: `createQc` terima `req.body.hourStart`
+  (dibersihkan `normalizeTime`).
+- Migration baru: `V20260925100000__add_hourstart_to_washing_broker_qc.sql`
+  (kolom `HourStart varchar(5) NULL` ke `WashingProduksiQc` & `BrokerProduksiQc`).
+  **SUDAH di-apply ke PPS_TEST6 dan PPS** (via node/mssql, idempotent).
+- Teruji end-to-end via service (WSH=W.0000000001, BRK=E.0000006055);
+  window bucket benar (8 bucket 08:00–16:00, opensAt=akhir jam, closesAt=+1 jam).
+
+### Frontend (D:\frontend\pps_tablet)
+- `shared/models/qc_downtime_item.dart`: + `QcDowntimeItem.hourStart`,
+  `QcDowntimeHeader`, `QcDowntimeBucket`, `QcDowntimeDetail`.
+- Repo washing & broker: `fetchQc` → `Future<QcDowntimeDetail>` (parse
+  `data.header/items/buckets`); `createQc` + param `hourStart`.
+- `shared/widgets/qc_downtime_dialog.dart`: **ditulis ulang gaya inject** — enum
+  `{locked, available, expired, submitted}`, `_kQcInputOpenDelay=Duration.zero`,
+  Timer 1 detik, countdown pill "Terbuka dalam/Tertutup dalam mm:ss", row tersimpan
+  amber (edit bila window masih buka + hapus), expired = pesan merah
+  "Jam ini sudah lewat dan tidak diinput". Fallback bucket lokal bila backend
+  tidak kirim buckets. Tak ada counter/BS/berat (hanya keterangan per jam).
+- Mesin screen washing & broker: closure `create` + param `hourStart`.
+- `flutter analyze` di 6 file tersentuh: 0 error (hanya info `avoid_print`/
+  `unused_element` pre-existing). `gilingan_vm_test.dart` tetap error pre-existing.
+
+### Pending
+- Build APK + validasi visual di device (long-press kartu mesin → dialog; per-jam;
+  cek countdown pada jam berjalan; cek pesan expired pada jam lampau).
+- **Deploy backend baru ke 192.168.11.79** agar NoBP + QC per jam aktif di production
+  (frontend production APP_ENV menunjuk 192.168.11.79:7500).
+- Backend & frontend belum di-commit.

@@ -390,52 +390,54 @@ class PackingProductionInputViewModel extends ChangeNotifier {
   ///
   /// Mengembalikan jumlah material yang baru ditambahkan.
   int addScannedBahanPendukung(List<BahanPendukungItem> items) {
-    final seenInScan = <String>{};
-    final groups =
-        <int, ({BahanPendukungItem item, num qty, List<String> labels})>{};
-    for (final it in items) {
-      final id = it.idCabinetMaterial ?? 0;
-      if (id <= 0) continue;
-      final label = (it.noBahanPendukung ?? '').trim();
-      final isDup = label.isNotEmpty &&
-          (seenInScan.contains(label) ||
-              hasScannedBahanPendukungLabel(label));
-      seenInScan.add(label);
-
-      final prev = groups[id]?.labels ?? const <String>[];
-      final prevQty = groups[id]?.qty ?? 0;
-      groups[id] = (
-        item: it,
-        qty: prevQty + (isDup ? 0 : it.quantity),
-        labels: [if (label.isNotEmpty) ...prev, if (label.isNotEmpty) label],
-      );
-    }
-
     int added = 0;
-    groups.forEach((id, g) {
-      final idx = tempCabinetMaterial
-          .indexWhere((x) => (x.IdCabinetMaterial ?? 0) == id);
-      if (idx >= 0) {
-        final old = tempCabinetMaterial[idx];
-        tempCabinetMaterial[idx] =
-            old.copyWith(Jumlah: (old.Jumlah ?? 0) + g.qty);
-      } else {
-        tempCabinetMaterial.add(
-          CabinetMaterialItem(
-            IdCabinetMaterial: id,
-            Nama: g.item.namaJenis,
-            NamaUOM: g.item.namaUom,
-            ItemCode: g.item.itemCode,
-            Jumlah: g.qty,
-          ),
-        );
-        _tempKeys.add(_keyFromCabinetMaterialItem(tempCabinetMaterial.last));
-      }
-      (_scannedBahanPendukungByMaterial[id] ??= <String>{}).addAll(g.labels);
-      if (g.qty > 0) added++;
-    });
-    if (added > 0) notifyListeners();
+    for (final it in items) {
+      if (addScannedBahanPendukungItem(it, qty: it.quantity)) added++;
+    }
     return added;
+  }
+
+  /// ✅ Tambah SATU label Bahan Pendukung (BP.) ke material temp dengan qty
+  /// yang dipilih. Mendukung PARSIAL: 0 < [qty] <= [it.quantity] (sisa tetap
+  /// dianggap belum dipakai di backend). Label yang sudah pernah discan
+  /// di-skip agar jumlahnya tidak dobel.
+  ///
+  /// Mengembalikan true jika material baru ditambahkan/diupdate.
+  bool addScannedBahanPendukungItem(
+    BahanPendukungItem it, {
+    required num qty,
+  }) {
+    final id = it.idCabinetMaterial ?? 0;
+    if (id <= 0) return false;
+    final label = (it.noBahanPendukung ?? '').trim();
+    if (label.isEmpty) return false;
+    if (hasScannedBahanPendukungLabel(label)) return false;
+
+    final effQty = qty.clamp(0, it.quantity);
+    if (effQty <= 0) return false;
+
+    final idx = tempCabinetMaterial
+        .indexWhere((x) => (x.IdCabinetMaterial ?? 0) == id);
+    if (idx >= 0) {
+      final old = tempCabinetMaterial[idx];
+      tempCabinetMaterial[idx] =
+          old.copyWith(Jumlah: (old.Jumlah ?? 0) + effQty);
+    } else {
+      tempCabinetMaterial.add(
+        CabinetMaterialItem(
+          IdCabinetMaterial: id,
+          Nama: it.namaJenis,
+          NamaUOM: it.namaUom,
+          ItemCode: it.itemCode,
+          Jumlah: effQty,
+        ),
+      );
+      _tempKeys.add(_keyFromCabinetMaterialItem(tempCabinetMaterial.last));
+    }
+    (_scannedBahanPendukungByMaterial[id] ??= <String>{}).add(label);
+    (_bpLabelQtyByMaterial[id] ??= <String, num>{})[label] = effQty;
+    notifyListeners();
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -610,6 +612,10 @@ class PackingProductionInputViewModel extends ChangeNotifier {
   /// IdCabinetMaterial -> kumpulan NoBahanPendukung (dikirim pada submit agar
   /// backend menandai DateUsage sehingga label tidak terpanggil lagi).
   final Map<int, Set<String>> _scannedBahanPendukungByMaterial = {};
+
+  // Rincian konsumsi per label (parsial): IdCabinetMaterial → {no: qty} —
+  // dikirim sebagai `bpPartials` agar sisa Qty label tidak terpakai penuh.
+  final Map<int, Map<String, num>> _bpLabelQtyByMaterial = {};
 
   final Set<String> _pickedKeys = <String>{};
   final List<Map<String, dynamic>> _pickedRows = <Map<String, dynamic>>[];
@@ -877,6 +883,7 @@ class PackingProductionInputViewModel extends ChangeNotifier {
     tempCabinetMaterial.remove(item);
     _tempKeys.remove(_keyFromCabinetMaterialItem(item));
     _scannedBahanPendukungByMaterial.remove(item.IdCabinetMaterial);
+      _bpLabelQtyByMaterial.remove(item.IdCabinetMaterial);
     debugDumpTempLists(tag: 'after deleteTempCabinetMaterialItem');
     notifyListeners();
   }
@@ -902,6 +909,7 @@ class PackingProductionInputViewModel extends ChangeNotifier {
       if (ok) {
         _tempKeys.remove(_keyFromCabinetMaterialItem(item));
         _scannedBahanPendukungByMaterial.remove(item.IdCabinetMaterial);
+      _bpLabelQtyByMaterial.remove(item.IdCabinetMaterial);
       }
     }
     if (ok) debugDumpTempLists(tag: 'after deleteIfTemp');
@@ -916,6 +924,7 @@ class PackingProductionInputViewModel extends ChangeNotifier {
     _tempKeys.clear();
     _tempItemsByLabel.clear();
     _scannedBahanPendukungByMaterial.clear();
+      _bpLabelQtyByMaterial.clear();
     clearPicks();
     _tempPartialSeq = 0;
 
@@ -1004,6 +1013,8 @@ class PackingProductionInputViewModel extends ChangeNotifier {
           .map((e) {
             final labels =
                 _scannedBahanPendukungByMaterial[e.IdCabinetMaterial ?? 0];
+            final qtyMap =
+                _bpLabelQtyByMaterial[e.IdCabinetMaterial ?? 0];
             return {
               'idCabinetMaterial': e.IdCabinetMaterial,
               'jumlah': e.Jumlah,
@@ -1011,6 +1022,12 @@ class PackingProductionInputViewModel extends ChangeNotifier {
               // DateUsage = tanggal produksi agar tidak terpanggil lagi
               if (labels != null && labels.isNotEmpty)
                 'noBahanPendukung': labels.toList(),
+              // rincian konsumsi per label (parsial) → backend kurangi Qty
+              // label; label hanya ditandai penuh saat qty >= sisa
+              if (qtyMap != null && qtyMap.isNotEmpty)
+                'bpPartials': qtyMap.entries
+                    .map((q) => {'no': q.key, 'qty': q.value})
+                    .toList(),
             };
           })
           .toList();

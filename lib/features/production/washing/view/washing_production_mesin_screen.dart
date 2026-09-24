@@ -10,9 +10,10 @@ import '../../shared/models/stok_bahan_baku_item.dart';
 import '../../shared/repository/stok_bahan_baku_repository.dart';
 import '../../shared/widgets/mesin_section_header.dart';
 import '../../shared/widgets/production_mesin_card.dart';
-import '../../shared/widgets/production_produksi_list.dart';
 import '../../shared/widgets/production_overlay_drawer.dart';
+import '../../shared/widgets/production_produksi_list.dart';
 import '../../shared/widgets/production_riwayat_header.dart';
+import '../../shared/widgets/qc_downtime_dialog.dart';
 import '../../shared/widgets/sidebar_tab_switcher.dart';
 import '../../shared/widgets/stok_item_section.dart';
 import '../model/washing_production_model.dart';
@@ -141,7 +142,10 @@ class _WashingProductionMesinScreenState
 
   // ── Card / row data converters ────────────────────────────────────────────
 
-  static MesinCardData _toMesinCardData(WashingMesinInfo mesin) {
+  static MesinCardData _toMesinCardData(
+    WashingMesinInfo mesin, {
+    VoidCallback? onQcTap,
+  }) {
     String? shiftTimeText;
     if (mesin.hasProduction) {
       final parts = <String>[];
@@ -156,6 +160,7 @@ class _WashingProductionMesinScreenState
       shiftTimeText: shiftTimeText,
       namaRegu: mesin.namaRegu,
       outputJenisNama: mesin.outputJenisNama,
+      onQcTap: onQcTap,
     );
   }
 
@@ -267,6 +272,35 @@ class _WashingProductionMesinScreenState
     _refreshAll();
   }
 
+  Future<void> _openQcDialog(WashingMesinInfo mesin) async {
+    if (!mounted || !mesin.hasProduction) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => QcDowntimeDialog(
+        noProduksi: mesin.noProduksi!,
+        namaMesin: mesin.namaMesin,
+        shift: mesin.shift,
+        hourStart: mesin.hourStart,
+        hourEnd: mesin.hourEnd,
+        tglProduksi: mesin.tglProduksi,
+        outputJenisList: [
+          if ((mesin.outputJenisNama ?? '').trim().isNotEmpty)
+            mesin.outputJenisNama!.trim(),
+        ],
+        fetch: () => _repo.fetchQc(mesin.noProduksi!),
+        create: (hourStart, keterangan) => _repo.createQc(
+          mesin.noProduksi!,
+          hourStart: hourStart,
+          keterangan: keterangan,
+        ),
+        update: (id, keterangan) =>
+            _repo.updateQc(mesin.noProduksi!, id, keterangan),
+        delete: (id) => _repo.deleteQc(mesin.noProduksi!, id),
+      ),
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -347,8 +381,16 @@ class _WashingProductionMesinScreenState
                               itemBuilder: (context, index) {
                                 final mesin = allMesin[index];
                                 return ProductionMesinCard(
-                                  data: _toMesinCardData(mesin),
+                                  data: _toMesinCardData(
+                                    mesin,
+                                    onQcTap: mesin.hasProduction
+                                        ? () => _openQcDialog(mesin)
+                                        : null,
+                                  ),
                                   onTap: () => _onMesinTap(mesin),
+                                  onLongPress: mesin.hasProduction
+                                      ? () => _openQcDialog(mesin)
+                                      : null,
                                 );
                               },
                             );

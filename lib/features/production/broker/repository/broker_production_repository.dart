@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../../core/network/endpoints.dart';
 import '../../../../core/services/token_storage.dart';
+import '../../shared/models/qc_downtime_item.dart';
 import '../model/broker_inputs_model.dart';
 import '../model/broker_production_model.dart';
 import 'package:pps_tablet/core/utils/date_formatter.dart';
@@ -880,6 +881,139 @@ class BrokerProductionRepository {
         throw Exception(msg);
       } catch (_) {
         throw Exception('Gagal membuka kunci produksi (${res.statusCode})');
+      }
+    }
+  }
+
+  // =========================
+  //  QC DOWNTIME
+  //  GET/POST  /broker/:noProduksi/qc
+  //  PUT/DELETE /broker/:noProduksi/qc/:id
+  // =========================
+  Future<QcDowntimeDetail> fetchQc(String noProduksi) async {
+    final token = await TokenStorage.getToken();
+    final url = Uri.parse('$_base/api/production/broker/$noProduksi/qc');
+
+    late http.Response res;
+    try {
+      res = await http.get(url, headers: _headers(token)).timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout mengambil catatan downtime broker');
+    }
+
+    if (res.statusCode != 200) {
+      throw Exception('Gagal mengambil catatan downtime broker (${res.statusCode})');
+    }
+
+    final body =
+        json.decode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>? ?? const {};
+    return QcDowntimeDetail.fromJson(data);
+  }
+
+  Future<QcDowntimeItem> createQc(
+    String noProduksi, {
+    String? hourStart,
+    required String keterangan,
+  }) async {
+    final token = await TokenStorage.getToken();
+    final url = Uri.parse('$_base/api/production/broker/$noProduksi/qc');
+
+    final payload = <String, dynamic>{
+      'keterangan': keterangan,
+      if (hourStart != null && hourStart.isNotEmpty) 'hourStart': hourStart,
+    };
+
+    late http.Response res;
+    try {
+      res = await http
+          .post(
+        url,
+        headers: {
+          ..._headers(token),
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(payload),
+      )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout menyimpan catatan downtime broker');
+    }
+
+    final body = json.decode(utf8.decode(res.bodyBytes));
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      if (body is Map && body['message'] != null) {
+        throw Exception(body['message'].toString());
+      }
+      throw Exception('Gagal menyimpan catatan downtime broker (${res.statusCode})');
+    }
+    if (body is! Map || body['data'] == null) {
+      throw Exception('Response simpan downtime broker tidak valid');
+    }
+    return QcDowntimeItem.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<QcDowntimeItem> updateQc(
+    String noProduksi,
+    int id,
+    String keterangan,
+  ) async {
+    final token = await TokenStorage.getToken();
+    final url =
+        Uri.parse('$_base/api/production/broker/$noProduksi/qc/$id');
+
+    late http.Response res;
+    try {
+      res = await http
+          .put(
+        url,
+        headers: {
+          ..._headers(token),
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'keterangan': keterangan}),
+      )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout mengubah catatan downtime broker');
+    }
+
+    final body = json.decode(utf8.decode(res.bodyBytes));
+    if (res.statusCode != 200) {
+      if (body is Map && body['message'] != null) {
+        throw Exception(body['message'].toString());
+      }
+      throw Exception('Gagal mengubah catatan downtime broker (${res.statusCode})');
+    }
+    if (body is! Map || body['data'] == null) {
+      throw Exception('Response ubah downtime broker tidak valid');
+    }
+    return QcDowntimeItem.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<void> deleteQc(String noProduksi, int id) async {
+    final token = await TokenStorage.getToken();
+    final url =
+        Uri.parse('$_base/api/production/broker/$noProduksi/qc/$id');
+
+    late http.Response res;
+    try {
+      res = await http
+          .delete(url, headers: _headers(token))
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw Exception('Timeout menghapus catatan downtime broker');
+    }
+
+    if (res.statusCode != 200) {
+      final bodyText = utf8.decode(res.bodyBytes);
+      try {
+        final decoded = json.decode(bodyText);
+        final msg = (decoded is Map ? decoded['message'] : null) ??
+            'Gagal menghapus catatan downtime broker (${res.statusCode})';
+        throw Exception(msg);
+      } catch (_) {
+        throw Exception('Gagal menghapus catatan downtime broker (${res.statusCode})');
       }
     }
   }
