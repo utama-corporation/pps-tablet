@@ -951,9 +951,12 @@ class _PackingProductionInputScreenState
         final item = materialAll[index];
         final id = item.IdCabinetMaterial ?? 0;
         final isTemp = id == 0 || tempMaterialIds.contains(id);
-        return _MaterialListTile(
+        return CabinetMaterialListTile(
           item: item,
           isTemp: isTemp,
+          bahanPendukungLabels: !isTemp
+              ? item.noBahanPendukung
+              : vm.bahanPendukungLabelsOf(id),
           onDeleteTemp: isTemp
               ? () {
                   vm.deleteTempCabinetMaterialItem(item);
@@ -1860,99 +1863,6 @@ class _PackingOutputOverallBar extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-// ── Material list tile ─────────────────────────────────────────────────────────
-
-class _MaterialListTile extends StatelessWidget {
-  const _MaterialListTile({
-    required this.item,
-    required this.isTemp,
-    this.onDeleteTemp,
-    this.onDeleteExisting,
-  });
-
-  final CabinetMaterialItem item;
-  final bool isTemp;
-  final VoidCallback? onDeleteTemp;
-  final VoidCallback? onDeleteExisting;
-
-  @override
-  Widget build(BuildContext context) {
-    final borderColor = isTemp
-        ? const Color(0xFFF59E0B).withValues(alpha: 0.6)
-        : const Color(0xFFE2E6EA);
-    final bgColor = isTemp ? const Color(0xFFFFFBEB) : Colors.white;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.deepPurple.shade50,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              Icons.category_outlined,
-              size: 16,
-              color: Colors.deepPurple.shade400,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.Nama ?? '-',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${item.Jumlah ?? 0} ${item.namaUom ?? 'unit'}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-          if (onDeleteTemp != null)
-            IconButton(
-              icon: const Icon(Icons.close, size: 16, color: Color(0xFFDC2626)),
-              tooltip: 'Hapus temp',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              onPressed: onDeleteTemp,
-            )
-          else if (onDeleteExisting != null)
-            IconButton(
-              icon: Icon(
-                Icons.delete_outline,
-                size: 16,
-                color: Colors.grey.shade400,
-              ),
-              tooltip: 'Hapus material',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              onPressed: onDeleteExisting,
-            ),
-        ],
-      ),
     );
   }
 }

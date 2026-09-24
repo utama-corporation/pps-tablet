@@ -1,0 +1,25 @@
+﻿
+=== HOT_STAMP — getter publik yg expose scanned labels BP utk UI ===
+  592: Set<String> _dbKeysFor(String noProduksi) {
+  604: Set<String> _allKeysFor(String noProduksi) {
+  854: Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
+
+=== SPANNER — getter publik yg expose scanned labels BP utk UI ===
+  579: Set<String> _dbKeysFor(String noProduksi) {
+  591: Set<String> _allKeysFor(String noProduksi) {
+  838: Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
+
+=== INJECT — getter publik yg expose scanned labels BP utk UI ===
+  826: Set<String> _dbKeysFor(String noProduksi) {
+  838: Set<String> _allKeysFor(String noProduksi) {
+  1201: Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
+
+=== PACKING — getter publik yg expose scanned labels BP utk UI ===
+  626: Set<String> _dbKeysFor(String noPacking) {
+  638: Set<String> _allKeysFor(String noPacking) {
+  885: Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
+
+=== KEY_FITTING — getter publik yg expose scanned labels BP utk UI ===
+  550: Set<String> _dbKeysFor(String noProduksi) {
+  562: Set<String> _allKeysFor(String noProduksi) {
+  806: Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);

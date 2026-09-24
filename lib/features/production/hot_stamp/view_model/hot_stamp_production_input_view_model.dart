@@ -853,6 +853,13 @@ class HotStampingProductionInputViewModel extends ChangeNotifier {
   bool isInTempKeys(String key) => _tempKeys.contains(key);
   Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
 
+  /// Daftar NoBahanPendukung (label BP.) milik material kabinet — untuk baris temp.
+  List<String> bahanPendukungLabelsOf(int? IdCabinetMaterial) {
+    if (IdCabinetMaterial == null) return const <String>[];
+    final s = _scannedBahanPendukungByMaterial[IdCabinetMaterial];
+    return s == null ? const <String>[] : s.toList()..sort();
+  }
+
   /// ✅ Clear all temp items (FWIP + Cabinet Material)
   void clearAllTempItems() {
     tempFurnitureWip.clear();

@@ -2147,9 +2147,12 @@ class _InjectProductionInputScreenState
         final item = materialAll[index];
         final id = item.IdCabinetMaterial ?? 0;
         final isTemp = id == 0 || tempMaterialIds.contains(id);
-        return _MaterialListTile(
+        return CabinetMaterialListTile(
           item: item,
           isTemp: isTemp,
+          bahanPendukungLabels: !isTemp
+              ? item.noBahanPendukung
+              : vm.bahanPendukungLabelsOf(id),
           onDeleteTemp: isTemp
               ? () {
                   vm.deleteTempCabinetMaterialItem(item);
@@ -5534,82 +5537,6 @@ class _JenisPickerForAutoCreate extends StatelessWidget {
             const SizedBox(height: 8),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Material list tile ─────────────────────────────────────────────────────────
-
-class _MaterialListTile extends StatelessWidget {
-  const _MaterialListTile({
-    required this.item,
-    required this.isTemp,
-    this.onDeleteTemp,
-    this.onDeleteExisting,
-  });
-
-  final CabinetMaterialItem item;
-  final bool isTemp;
-  final VoidCallback? onDeleteTemp;
-  final VoidCallback? onDeleteExisting;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isTemp ? const Color(0xFFFFF8E1) : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isTemp ? const Color(0xFFFFD54F) : const Color(0xFFE2E6EA),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.Nama ?? 'Material',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Jumlah: ${item.Jumlah ?? 0} ${item.NamaUOM ?? ''}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (isTemp && onDeleteTemp != null)
-            IconButton(
-              icon: const Icon(Icons.close, size: 16, color: Color(0xFFEF4444)),
-              onPressed: onDeleteTemp,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            )
-          else if (!isTemp && onDeleteExisting != null)
-            IconButton(
-              icon: const Icon(
-                Icons.delete_outline,
-                size: 16,
-                color: Color(0xFF9CA3AF),
-              ),
-              onPressed: onDeleteExisting,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            ),
-        ],
       ),
     );
   }

@@ -12,6 +12,7 @@ export 'utils/title_keys/broker.dart';
 export 'models/input_enums.dart';
 
 // ── Shared UI widgets untuk semua modul production ──────────────────────────
+export 'widgets/cabinet_material_list_tile.dart';
 export 'widgets/production_stat_badge.dart';
 export 'widgets/production_filter_chip.dart';
 export 'widgets/production_status_dot.dart';

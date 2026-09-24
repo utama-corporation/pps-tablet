@@ -1,0 +1,19 @@
+﻿===  VM: public getter utk label BP per material utk UI ===
+  513: /// IdCabinetMaterial -> kumpulan NoBahanPendukung (dikirim pada submit agar
+  537: final label = (it.noBahanPendukung ?? '').trim();
+  981: 'noBahanPendukung': labels.toList(),
+===  VM: public getter utk label BP per material utk UI ===
+  501: /// IdCabinetMaterial -> kumpulan NoBahanPendukung (dikirim pada submit agar
+  525: final label = (it.noBahanPendukung ?? '').trim();
+  960: 'noBahanPendukung': labels.toList(),
+===  VM: public getter utk label BP per material utk UI ===
+  612: final label = (it.noBahanPendukung ?? '').trim();
+  1404: 'noBahanPendukung': labels.toList(),
+===  VM: public getter utk label BP per material utk UI ===
+  399: final label = (it.noBahanPendukung ?? '').trim();
+  610: /// IdCabinetMaterial -> kumpulan NoBahanPendukung (dikirim pada submit agar
+  1006: 'noBahanPendukung': labels.toList(),
+===  VM: public getter utk label BP per material utk UI ===
+  471: /// IdCabinetMaterial -> kumpulan NoBahanPendukung (dikirim pada submit agar
+  495: final label = (it.noBahanPendukung ?? '').trim();
+  920: 'noBahanPendukung': labels.toList(),

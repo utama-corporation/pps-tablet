@@ -10,6 +10,11 @@ class CabinetMaterialItem {
   final int? IdWarehouse;
   final String? NamaWarehouse;
 
+  // ===== LABEL BAHAN PENDUKUNG (hasil scan BP.) =====
+  // Diisi untuk baris existing dari GET inputs (kolom NoBahanPendukung, bisa
+  // string dipisah koma atau array) dan kosong untuk baris temp.
+  final List<String> noBahanPendukung;
+
   final DateTime? TglSaldoAwal;
 
   final num? SaldoAwal;
@@ -36,6 +41,7 @@ class CabinetMaterialItem {
     this.IdWarehouse,
     this.NamaWarehouse,
     this.TglSaldoAwal,
+    this.noBahanPendukung = const <String>[],
     this.SaldoAwal,
     this.PenrmnMaterl,
     this.BJualMaterl,
@@ -70,6 +76,28 @@ class CabinetMaterialItem {
   int get saldoAkhirInt => (SaldoAkhir ?? 0).toInt();
 
   // ---------------------------------------------------------------------------
+  // ✅ PARSE label Bahan Pendukung (BP.) — tahanan variasi dari backend
+  // ---------------------------------------------------------------------------
+  static List<String> _parseNoBahanPendukung(dynamic v) {
+    if (v == null) return const <String>[];
+    if (v is List) {
+      return v
+          .whereType<String>()
+          .where((s) => s.trim().isNotEmpty)
+          .map((s) => s.trim())
+          .toList();
+    }
+    if (v is String) {
+      return v
+          .split(RegExp(r'[,;\n]'))
+          .where((s) => s.trim().isNotEmpty)
+          .map((s) => s.trim())
+          .toList();
+    }
+    return const <String>[];
+  }
+
+  // ---------------------------------------------------------------------------
   // ✅ FROM JSON TOLERANT (MASTER + INPUTS)
   // ---------------------------------------------------------------------------
   factory CabinetMaterialItem.fromJson(Map<String, dynamic> j) {
@@ -97,6 +125,9 @@ class CabinetMaterialItem {
       IdWarehouse: pickI(j, ['IdWarehouse', 'idWarehouse']),
       NamaWarehouse: pickS(j, ['NamaWarehouse', 'namaWarehouse']),
       TglSaldoAwal: pickDT(j, ['TglSaldoAwal', 'tglSaldoAwal']),
+      noBahanPendukung: _parseNoBahanPendukung(
+        j['noBahanPendukung'] ?? j['NoBahanPendukung'],
+      ),
 
       SaldoAwal: pickN(j, ['SaldoAwal', 'saldoAwal']),
       PenrmnMaterl: pickN(j, ['PenrmnMaterl', 'penrmnMaterl']),
@@ -122,6 +153,7 @@ class CabinetMaterialItem {
     int? IdWarehouse,
     String? NamaWarehouse,
     DateTime? TglSaldoAwal,
+    List<String>? noBahanPendukung,
     num? SaldoAwal,
     num? PenrmnMaterl,
     num? BJualMaterl,
@@ -143,6 +175,7 @@ class CabinetMaterialItem {
       IdWarehouse: IdWarehouse ?? this.IdWarehouse,
       NamaWarehouse: NamaWarehouse ?? this.NamaWarehouse,
       TglSaldoAwal: TglSaldoAwal ?? this.TglSaldoAwal,
+      noBahanPendukung: noBahanPendukung ?? this.noBahanPendukung,
       SaldoAwal: SaldoAwal ?? this.SaldoAwal,
       PenrmnMaterl: PenrmnMaterl ?? this.PenrmnMaterl,
       BJualMaterl: BJualMaterl ?? this.BJualMaterl,
