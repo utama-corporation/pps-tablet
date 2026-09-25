@@ -11,12 +11,15 @@ class GilinganStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const GilinganStokLabel({
     required this.noGilingan,
     required this.label,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   @override
@@ -27,5 +30,6 @@ class GilinganStokLabel implements StokLabelData {
     label: pickS(j, ['Label', 'label']) ?? '',
     beratSisa: pickD(j, ['Berat', 'berat']) ?? 0,
     dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

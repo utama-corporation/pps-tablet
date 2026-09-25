@@ -19,6 +19,10 @@ class BahanPendukungStokItem implements StokItemData {
   /// Total Pcs (QtySisa) tersisa.
   final int qtySisa;
 
+  /// Lokasi material (Blok+IdLokasi) pada label yang masih sisa.
+  @override
+  final String lokasi;
+
   const BahanPendukungStokItem({
     required this.idCabinetMaterial,
     required this.nama,
@@ -26,6 +30,7 @@ class BahanPendukungStokItem implements StokItemData {
     required this.namaUom,
     required this.labelSisa,
     required this.qtySisa,
+    this.lokasi = '',
   });
 
   @override
@@ -47,5 +52,6 @@ class BahanPendukungStokItem implements StokItemData {
         namaUom: pickS(j, ['NamaUOM', 'namaUom']) ?? '',
         labelSisa: pickI(j, ['LabelSisa', 'labelSisa']) ?? 0,
         qtySisa: pickI(j, ['QtySisa', 'qtySisa']) ?? 0,
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

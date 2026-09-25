@@ -43,6 +43,7 @@ class StokItemLabelDialog<T extends StokItemData, L extends StokLabelData>
 class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
     extends State<StokItemLabelDialog<T, L>> {
   static const _tanggalColWidth = 88.0;
+  static const _lokasiColWidth = 84.0;
   static const _sakColWidth = 64.0;
   static const _beratColWidth = 96.0;
 
@@ -60,7 +61,7 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 580),
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 580),
         child: FutureBuilder<List<L>>(
           future: _future,
           builder: (context, snapshot) {
@@ -204,6 +205,11 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
             child: Text('TANGGAL', style: style, textAlign: TextAlign.right),
           ),
           const SizedBox(width: 12),
+          const SizedBox(
+            width: _lokasiColWidth,
+            child: Text('LOKASI', style: style, textAlign: TextAlign.right),
+          ),
+          const SizedBox(width: 12),
           if (widget.showSakColumn) ...[
             SizedBox(
               width: _sakColWidth,
@@ -231,6 +237,31 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
       SnackBar(
         content: Text('Label "$label" disalin'),
         duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Widget _buildLokasiBadge(String lokasi) {
+    final hasLokasi = lokasi.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: hasLokasi ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: hasLokasi ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Text(
+        hasLokasi ? lokasi : '-',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+          color: hasLokasi ? const Color(0xFF1D4ED8) : const Color(0xFF94A3B8),
+        ),
       ),
     );
   }
@@ -293,6 +324,14 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
                 ),
               ),
               const SizedBox(width: 12),
+              SizedBox(
+                width: _lokasiColWidth,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildLokasiBadge(label.lokasi),
+                ),
+              ),
+              const SizedBox(width: 12),
               if (widget.showSakColumn) ...[
                 SizedBox(
                   width: _sakColWidth,
@@ -348,6 +387,8 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
           ),
           const Spacer(),
           const SizedBox(width: _tanggalColWidth),
+          const SizedBox(width: 12),
+          const SizedBox(width: _lokasiColWidth),
           const SizedBox(width: 12),
           if (widget.showSakColumn) ...[
             SizedBox(

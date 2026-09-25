@@ -12,6 +12,8 @@ class BahanBakuProsesLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const BahanBakuProsesLabel({
     required this.noBahanBaku,
@@ -20,6 +22,7 @@ class BahanBakuProsesLabel implements StokLabelData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   factory BahanBakuProsesLabel.fromJson(Map<String, dynamic> j) =>
@@ -30,5 +33,6 @@ class BahanBakuProsesLabel implements StokLabelData {
         sakSisa: pickI(j, ['SakSisa', 'sakSisa']) ?? 0,
         beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
         dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

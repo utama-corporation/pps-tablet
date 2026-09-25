@@ -15,12 +15,16 @@ class CrusherStokItem implements StokItemData {
   /// stok kosong.
   final DateTime? dateCreateTertua;
 
+  @override
+  final String lokasi;
+
   const CrusherStokItem({
     required this.idCrusher,
     required this.nama,
     required this.labelSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   /// Stok crusher tidak dihitung per sak, hanya berat.
@@ -33,5 +37,6 @@ class CrusherStokItem implements StokItemData {
     labelSisa: pickI(j, ['LabelSisa', 'labelSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreateTertua: pickDT(j, ['DateCreateTertua', 'dateCreateTertua']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

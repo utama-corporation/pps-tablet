@@ -25,6 +25,9 @@ class BarangJadiStokItem implements StokItemData {
   /// ada stok.
   final DateTime? dateCreateTertua;
 
+  @override
+  final String lokasi;
+
   const BarangJadiStokItem({
     required this.idBJ,
     required this.nama,
@@ -32,6 +35,7 @@ class BarangJadiStokItem implements StokItemData {
     required this.pcsSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   @override
@@ -45,5 +49,6 @@ class BarangJadiStokItem implements StokItemData {
         pcsSisa: pickI(j, ['PcsSisa', 'pcsSisa']) ?? 0,
         beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
         dateCreateTertua: pickDT(j, ['DateCreateTertua', 'dateCreateTertua']),
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

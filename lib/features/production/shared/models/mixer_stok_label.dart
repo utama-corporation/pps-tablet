@@ -11,6 +11,8 @@ class MixerStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const MixerStokLabel({
     required this.noMixer,
@@ -18,6 +20,7 @@ class MixerStokLabel implements StokLabelData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   factory MixerStokLabel.fromJson(Map<String, dynamic> j) => MixerStokLabel(
@@ -26,5 +29,6 @@ class MixerStokLabel implements StokLabelData {
     sakSisa: pickI(j, ['SakSisa', 'sakSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

@@ -21,12 +21,16 @@ class RejectStokItem implements StokItemData {
   /// ada stok.
   final DateTime? dateCreateTertua;
 
+  @override
+  final String lokasi;
+
   const RejectStokItem({
     required this.idReject,
     required this.nama,
     required this.labelSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   @override
@@ -38,5 +42,6 @@ class RejectStokItem implements StokItemData {
     labelSisa: pickI(j, ['LabelSisa', 'labelSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreateTertua: pickDT(j, ['DateCreateTertua', 'dateCreateTertua']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

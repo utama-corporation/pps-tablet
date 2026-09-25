@@ -9,12 +9,15 @@ class BonggolanStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const BonggolanStokLabel({
     required this.noBonggolan,
     required this.label,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   /// Stok bonggolan tidak dihitung per sak, hanya berat.
@@ -27,5 +30,6 @@ class BonggolanStokLabel implements StokLabelData {
         label: pickS(j, ['Label', 'label']) ?? '',
         beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
         dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

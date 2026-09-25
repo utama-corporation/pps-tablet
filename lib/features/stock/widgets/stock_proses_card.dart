@@ -89,7 +89,7 @@ class StockProsesCard extends StatelessWidget {
     }
     final t = totals!;
     final amountText = t.unit == StockAmountUnit.pcs
-        ? '${t.amount.toStringAsFixed(0)} PCS'
+        ? '${t.amount.toStringAsFixed(0)} pcs'
         : '${t.amount.toStringAsFixed(2)} kg';
     return Column(
       mainAxisSize: MainAxisSize.min,

@@ -9,12 +9,15 @@ class CrusherStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const CrusherStokLabel({
     required this.noCrusher,
     required this.label,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   /// Stok crusher tidak dihitung per sak, hanya berat.
@@ -26,5 +29,6 @@ class CrusherStokLabel implements StokLabelData {
     label: pickS(j, ['Label', 'label']) ?? '',
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

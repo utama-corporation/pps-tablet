@@ -12,6 +12,8 @@ class FurnitureWipStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const FurnitureWipStokLabel({
     required this.noFurnitureWip,
@@ -19,6 +21,7 @@ class FurnitureWipStokLabel implements StokLabelData {
     required this.pcs,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   @override
@@ -31,5 +34,6 @@ class FurnitureWipStokLabel implements StokLabelData {
         pcs: pickI(j, ['Pcs', 'pcs']) ?? 0,
         beratSisa: pickD(j, ['Berat', 'berat']) ?? 0,
         dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

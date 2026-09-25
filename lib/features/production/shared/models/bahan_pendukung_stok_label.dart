@@ -11,12 +11,15 @@ class BahanPendukungStokLabel implements StokLabelData {
   final int qtySisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const BahanPendukungStokLabel({
     required this.noBahanPendukung,
     required this.label,
     required this.qtySisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   @override
@@ -41,5 +44,6 @@ class BahanPendukungStokLabel implements StokLabelData {
         label: pickS(j, ['Label', 'label', 'NoLabel', 'noLabel']) ?? '',
         qtySisa: pickI(j, ['QtySisa', 'qtySisa', 'Qty', 'qty']) ?? 0,
         dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

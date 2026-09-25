@@ -17,6 +17,9 @@ class WashingStokItem implements StokItemData {
   /// stok kosong.
   final DateTime? dateCreateTertua;
 
+  @override
+  final String lokasi;
+
   const WashingStokItem({
     required this.idWashing,
     required this.nama,
@@ -24,6 +27,7 @@ class WashingStokItem implements StokItemData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   factory WashingStokItem.fromJson(Map<String, dynamic> j) => WashingStokItem(
@@ -33,5 +37,6 @@ class WashingStokItem implements StokItemData {
     sakSisa: pickI(j, ['SakSisa', 'sakSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreateTertua: pickDT(j, ['DateCreateTertua', 'dateCreateTertua']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

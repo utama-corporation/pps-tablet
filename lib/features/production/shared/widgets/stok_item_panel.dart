@@ -158,6 +158,7 @@ class StokItemList<T extends StokItemData> extends StatelessWidget {
           tanggalText: oldestDate == null
               ? '-'
               : DateFormat('dd MMM yyyy', 'id_ID').format(oldestDate.toLocal()),
+          lokasiText: item.lokasi.trim().isEmpty ? '-' : item.lokasi,
           qtyLabel: qtyLabel,
           qtyValue: qtyValue,
           isEmpty: isEmpty,
@@ -175,6 +176,7 @@ class _StokItemRow extends StatelessWidget {
   const _StokItemRow({
     required this.nama,
     required this.tanggalText,
+    required this.lokasiText,
     required this.qtyLabel,
     required this.qtyValue,
     required this.isEmpty,
@@ -183,6 +185,7 @@ class _StokItemRow extends StatelessWidget {
 
   final String nama;
   final String tanggalText;
+  final String lokasiText;
   final String qtyLabel;
   final String qtyValue;
   final bool isEmpty;
@@ -213,6 +216,7 @@ class _StokItemRow extends StatelessWidget {
                       child: _StokMetaSection(
                         nama: nama,
                         tanggalText: tanggalText,
+                        lokasiText: lokasiText,
                         qtyLabel: qtyLabel,
                         qtyValue: qtyValue,
                         qtyColor: isEmpty
@@ -231,12 +235,13 @@ class _StokItemRow extends StatelessWidget {
   }
 }
 
-/// Tiga section (Jenis / Tanggal / Qty) selaras dengan `_MetaSection` pada
-/// [ProductionProduksiList] di riwayat produksi.
+/// Empat section (Jenis / Tanggal / Lokasi / Qty) selaras dengan
+/// `_MetaSection` pada [ProductionProduksiList] di riwayat produksi.
 class _StokMetaSection extends StatelessWidget {
   const _StokMetaSection({
     required this.nama,
     required this.tanggalText,
+    required this.lokasiText,
     required this.qtyLabel,
     required this.qtyValue,
     required this.qtyColor,
@@ -244,6 +249,7 @@ class _StokMetaSection extends StatelessWidget {
 
   final String nama;
   final String tanggalText;
+  final String lokasiText;
   final String qtyLabel;
   final String qtyValue;
   final Color qtyColor;
@@ -277,6 +283,16 @@ class _StokMetaSection extends StatelessWidget {
             Expanded(
               flex: 2,
               child: _StokMetaColumn(label: 'Tanggal', value: tanggalText),
+            ),
+            Container(
+              width: 1,
+              height: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: const Color(0xFFE5E7EB),
+            ),
+            Expanded(
+              flex: 2,
+              child: _StokMetaLokasi(value: lokasiText),
             ),
             Container(
               width: 1,
@@ -335,6 +351,58 @@ class _StokMetaColumn extends StatelessWidget {
             fontSize: 11,
             fontWeight: FontWeight.w700,
             color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Kolom Lokasi pada [_StokMetaSection] — badge biru (label "Lokasi" + chip)
+/// konsisten dengan tampilan blok/lokasi pada tabel label.
+class _StokMetaLokasi extends StatelessWidget {
+  const _StokMetaLokasi({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPlaceholder = value == '-';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Lokasi',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF9CA3AF),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: isPlaceholder ? const Color(0xFFF1F5F9) : const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isPlaceholder
+                  ? const Color(0xFFE2E8F0)
+                  : const Color(0xFFBFDBFE),
+            ),
+          ),
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: isPlaceholder
+                  ? const Color(0xFF94A3B8)
+                  : const Color(0xFF1D4ED8),
+            ),
           ),
         ),
       ],

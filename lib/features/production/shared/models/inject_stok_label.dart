@@ -7,25 +7,35 @@ class InjectStokLabel implements StokLabelData {
   final String noFurnitureWIP;
   @override
   final String label;
+
+  /// Sisa Pcs efektif (net partial) dari label FurnitureWIP ini.
+  final int pcs;
   @override
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const InjectStokLabel({
     required this.noFurnitureWIP,
     required this.label,
+    required this.pcs,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
+  /// Tidak ada kolom sak asli — Pcs yang ditampilkan sebagai SAK/PCS.
   @override
-  int get sakSisa => 0;
+  int get sakSisa => pcs;
 
   factory InjectStokLabel.fromJson(Map<String, dynamic> j) => InjectStokLabel(
     noFurnitureWIP: pickS(j, ['NoFurnitureWIP', 'noFurnitureWIP']) ?? '',
     label: pickS(j, ['Label', 'label']) ?? '',
+    pcs: pickI(j, ['Pcs', 'pcs']) ?? 0,
     beratSisa: pickD(j, ['Berat', 'berat']) ?? 0,
     dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

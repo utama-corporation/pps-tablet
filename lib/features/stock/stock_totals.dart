@@ -92,13 +92,13 @@ Future<StockProsesTotals> fetchStockProsesTotals(StockProsesKey key) async {
       return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
     case StockProsesKey.wipInject:
       final items = await InjectStokRepository().fetchStok();
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.wipStamping:
       final items = await StampingStokRepository().fetchStok();
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.wipSpanner:
       final items = await SpannerStokRepository().fetchStok();
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.bahanPendukung:
       final items = await BahanPendukungStokRepository().fetchStok();
       final labelSisa = items.fold<int>(0, (sum, i) => sum + i.labelSisa);
@@ -110,17 +110,31 @@ Future<StockProsesTotals> fetchStockProsesTotals(StockProsesKey key) async {
       );
     case StockProsesKey.barangJadiGrande:
       final items = await PackingProduksiRepository().fetchStok(type: 'GRANDE');
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.barangJadiHana:
       final items = await PackingProduksiRepository().fetchStok(type: 'HANA');
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.barangJadiKursi:
       final items = await PackingProduksiRepository().fetchStok(type: 'PART KURSI');
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.barangJadiEnamel:
       final items = await PackingProduksiRepository().fetchStok(type: 'ENAMEL');
-      return _sumBerat(items, (i) => i.labelSisa, (i) => i.beratSisa);
+      return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
   }
+}
+
+StockProsesTotals _sumPcs<T>(
+  List<T> items,
+  int Function(T item) labelSisaOf,
+  int Function(T item) pcsSisaOf,
+) {
+  final labelSisa = items.fold<int>(0, (sum, i) => sum + labelSisaOf(i));
+  final pcsSisa = items.fold<int>(0, (sum, i) => sum + pcsSisaOf(i));
+  return StockProsesTotals(
+    labelSisa: labelSisa,
+    amount: pcsSisa.toDouble(),
+    unit: StockAmountUnit.pcs,
+  );
 }
 
 StockProsesTotals _sumBerat<T>(

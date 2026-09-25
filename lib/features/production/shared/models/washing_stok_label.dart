@@ -11,6 +11,8 @@ class WashingStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const WashingStokLabel({
     required this.noWashing,
@@ -18,6 +20,7 @@ class WashingStokLabel implements StokLabelData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   factory WashingStokLabel.fromJson(Map<String, dynamic> j) => WashingStokLabel(
@@ -26,5 +29,6 @@ class WashingStokLabel implements StokLabelData {
     sakSisa: pickI(j, ['SakSisa', 'sakSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

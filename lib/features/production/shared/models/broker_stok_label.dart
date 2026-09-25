@@ -11,6 +11,8 @@ class BrokerStokLabel implements StokLabelData {
   final double beratSisa;
   @override
   final DateTime? dateCreate;
+  @override
+  final String lokasi;
 
   const BrokerStokLabel({
     required this.noBroker,
@@ -18,6 +20,7 @@ class BrokerStokLabel implements StokLabelData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreate,
+    this.lokasi = '',
   });
 
   factory BrokerStokLabel.fromJson(Map<String, dynamic> j) => BrokerStokLabel(
@@ -26,5 +29,6 @@ class BrokerStokLabel implements StokLabelData {
     sakSisa: pickI(j, ['SakSisa', 'sakSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreate: pickDT(j, ['DateCreate', 'dateCreate']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

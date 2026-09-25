@@ -49,6 +49,7 @@ import '../../production/shared/widgets/stok_item_label_dialog.dart';
 import '../../production/shared/widgets/stok_item_panel.dart';
 
 import '../stock_proses_key.dart';
+import '../stock_totals.dart';
 
 /// Satu sumber data stok (endpoint stok + endpoint label) untuk
 /// [StockDetailScreen] — analog dengan `TypedStokItemSource` di
@@ -71,6 +72,8 @@ class _TypedStockSource<T extends StokItemData, L extends StokLabelData>
     this.sakColumnLabel = 'SAK',
     this.showBeratColumn = true,
     this.oldestDateOf,
+    this.amountLabel = 'Total Berat',
+    this.amountUnit = StockAmountUnit.kg,
   });
 
   final Future<List<T>> Function() fetchStok;
@@ -80,6 +83,8 @@ class _TypedStockSource<T extends StokItemData, L extends StokLabelData>
   final String sakColumnLabel;
   final bool showBeratColumn;
   final DateTime? Function(T item)? oldestDateOf;
+  final String amountLabel;
+  final StockAmountUnit amountUnit;
 
   @override
   Widget buildPane(_StockRefreshController controller) =>
@@ -166,10 +171,15 @@ class _StockSourcePaneState<T extends StokItemData, L extends StokLabelData>
       0,
       (sum, item) => sum + widget.source.labelSisaOf(item),
     );
-    final totalBerat = _items.fold<double>(
-      0,
-      (sum, item) => sum + item.beratSisa,
-    );
+    final totalAmount = widget.source.amountUnit == StockAmountUnit.pcs
+        ? _items.fold<double>(
+            0,
+            (sum, item) => sum + item.sakSisa.toDouble(),
+          )
+        : _items.fold<double>(
+            0,
+            (sum, item) => sum + item.beratSisa,
+          );
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -178,7 +188,9 @@ class _StockSourcePaneState<T extends StokItemData, L extends StokLabelData>
           _StockTotalSummary(
             isLoading: _loading,
             totalLabel: totalLabel,
-            totalBerat: totalBerat,
+            totalAmount: totalAmount,
+            amountLabel: widget.source.amountLabel,
+            amountUnit: widget.source.amountUnit,
           ),
           Expanded(
             child: StokItemList<T>(
@@ -213,12 +225,20 @@ class _StockTotalSummary extends StatelessWidget {
   const _StockTotalSummary({
     required this.isLoading,
     required this.totalLabel,
-    required this.totalBerat,
+    required this.totalAmount,
+    this.amountLabel = 'Total Berat',
+    this.amountUnit = StockAmountUnit.kg,
   });
 
   final bool isLoading;
   final int totalLabel;
-  final double totalBerat;
+  final double totalAmount;
+  final String amountLabel;
+  final StockAmountUnit amountUnit;
+
+  String get _amountText => amountUnit == StockAmountUnit.pcs
+      ? '${totalAmount.toStringAsFixed(0)} pcs'
+      : '${totalAmount.toStringAsFixed(2)} kg';
 
   @override
   Widget build(BuildContext context) {
@@ -258,8 +278,8 @@ class _StockTotalSummary extends StatelessWidget {
                 ),
                 Expanded(
                   child: _StockTotalTile(
-                    label: 'Total Berat',
-                    value: '${totalBerat.toStringAsFixed(2)} kg',
+                    label: amountLabel,
+                    value: _amountText,
                     icon: Icons.scale_outlined,
                   ),
                 ),
@@ -536,8 +556,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetWip),
             labelSisaOf: (item) => item.labelSisa,
-            sakColumnLabel: 'PCS',
+            sakColumnLabel: 'pcs',
             showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           ),
         ];
@@ -549,8 +571,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idBJ),
             labelSisaOf: (item) => item.labelSisa,
-            sakColumnLabel: 'PCS',
+            sakColumnLabel: 'pcs',
             showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           ),
         ];
@@ -621,7 +645,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
             labelSisaOf: (InjectStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
@@ -633,7 +660,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
             labelSisaOf: (InjectStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
@@ -645,7 +675,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
             labelSisaOf: (InjectStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
@@ -657,8 +690,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetMaterial),
             labelSisaOf: (BahanPendukungStokItem item) => item.labelSisa,
-            sakColumnLabel: 'PCS',
+            sakColumnLabel: 'pcs',
             showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
           )
         ];
       case StockProsesKey.barangJadiGrande:
@@ -669,7 +704,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'GRANDE'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'GRANDE'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
@@ -681,7 +719,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'HANA'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'HANA'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
@@ -693,7 +734,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'PART KURSI'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'PART KURSI'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
@@ -705,7 +749,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'ENAMEL'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'ENAMEL'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            showSakColumn: false,
+            sakColumnLabel: 'pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];

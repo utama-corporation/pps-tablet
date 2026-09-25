@@ -11,9 +11,12 @@ class BonggolanStokItem implements StokItemData {
   @override
   final double beratSisa;
 
-  /// Tanggal item tertua (paling lama mengendap) dalam stok ini — null bila
+/// Tanggal item tertua (paling lama mengendap) dalam stok ini — null bila
   /// stok kosong.
   final DateTime? dateCreateTertua;
+
+  @override
+  final String lokasi;
 
   const BonggolanStokItem({
     required this.idBonggolan,
@@ -21,6 +24,7 @@ class BonggolanStokItem implements StokItemData {
     required this.labelSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   /// Stok bonggolan tidak dihitung per sak, hanya berat.
@@ -34,5 +38,6 @@ class BonggolanStokItem implements StokItemData {
         labelSisa: pickI(j, ['LabelSisa', 'labelSisa']) ?? 0,
         beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
         dateCreateTertua: pickDT(j, ['DateCreateTertua', 'dateCreateTertua']),
+        lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
       );
 }

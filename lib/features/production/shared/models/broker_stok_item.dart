@@ -17,6 +17,9 @@ class BrokerStokItem implements StokItemData {
   /// stok kosong.
   final DateTime? dateCreateTertua;
 
+  @override
+  final String lokasi;
+
   const BrokerStokItem({
     required this.idBroker,
     required this.nama,
@@ -24,6 +27,7 @@ class BrokerStokItem implements StokItemData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   factory BrokerStokItem.fromJson(Map<String, dynamic> j) => BrokerStokItem(
@@ -37,5 +41,6 @@ class BrokerStokItem implements StokItemData {
       'dateCreateTertua',
       'date_create_tertua',
     ]),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }

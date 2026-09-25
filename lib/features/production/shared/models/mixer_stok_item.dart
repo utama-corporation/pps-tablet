@@ -17,6 +17,9 @@ class MixerStokItem implements StokItemData {
   /// tidak ada stok.
   final DateTime? dateCreateTertua;
 
+  @override
+  final String lokasi;
+
   const MixerStokItem({
     required this.idMixer,
     required this.nama,
@@ -24,6 +27,7 @@ class MixerStokItem implements StokItemData {
     required this.sakSisa,
     required this.beratSisa,
     this.dateCreateTertua,
+    this.lokasi = '',
   });
 
   factory MixerStokItem.fromJson(Map<String, dynamic> j) => MixerStokItem(
@@ -33,5 +37,6 @@ class MixerStokItem implements StokItemData {
     sakSisa: pickI(j, ['SakSisa', 'sakSisa']) ?? 0,
     beratSisa: pickD(j, ['BeratSisa', 'beratSisa']) ?? 0,
     dateCreateTertua: pickDT(j, ['DateCreateTertua', 'dateCreateTertua']),
+    lokasi: pickS(j, ['Lokasi', 'lokasi']) ?? '',
   );
 }
