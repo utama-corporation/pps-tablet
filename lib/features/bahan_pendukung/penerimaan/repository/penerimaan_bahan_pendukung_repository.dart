@@ -182,15 +182,31 @@ class PenerimaanBahanPendukungRepository {
   //  FASE 2: ADD ITEMS ke header yang sudah ada
   //  POST /api/penerimaan-bahan-pendukung/:noPenerimaan/items
   //  Boleh dipanggil >1x per NoPenerimaan.
+  //
+  //  Backend membalas 201 dengan `data.items[]`, tiap item memuat kode label
+  //  hasil generate server pada key camelCase `noBahanPendukung`
+  //  (contoh: "BP.0000000001"). Kode itu dikembalikan di sini supaya caller
+  //  bisa langsung mencetak tanpa perlu fetch ulang.
   // ==========================================
-  Future<void> addItems({
+  Future<List<String>> addItems({
     required String noPenerimaan,
     required List<PenerimaanBahanPendukungItemInput> items,
   }) async {
-    await api.postJson(
+    final body = await api.postJson(
       '/api/penerimaan-bahan-pendukung/$noPenerimaan/items',
       body: {'items': items.map((it) => it.toJson()).toList()},
     );
+
+    final data = body['data'];
+    if (data is! Map<String, dynamic>) return const <String>[];
+    final created = data['items'];
+    if (created is! List) return const <String>[];
+
+    return created
+        .whereType<Map<String, dynamic>>()
+        .map((e) => (e['noBahanPendukung'] ?? e['NoBahanPendukung'])?.toString() ?? '')
+        .where((code) => code.isNotEmpty)
+        .toList();
   }
 
   Future<void> delete(String noPenerimaan) async {

@@ -726,12 +726,18 @@ class PdfPrintService {
     return _HttpBytes(resp, resp.bodyBytes);
   }
 
-  /// Unduh satu PDF label pakai Bearer token (dipakai jalur cetak multi-label,
-  /// yang perlu bytes tiap label untuk dikirim ke [LabelPrinter]).
-  Future<Uint8List> _fetchPdfBytes(Uri url) async {
+  /// Unduh satu PDF label pakai Bearer token.
+  ///
+  /// Dipakai dialog cetak (Multiple/Quick) yang sudah memegang [PrinterTarget]
+  /// dan memanggil [LabelPrinter.forTarget] sendiri, sehingga tidak perlu
+  /// lewat preview viewer.
+  static Future<Uint8List> fetchPdfBytes(
+    Uri url, {
+    http.Client? client,
+  }) async {
     final token = await TokenStorage.getToken();
-    final client = httpClient ?? http.Client();
-    final resp = await client
+    final httpClient = client ?? http.Client();
+    final resp = await httpClient
         .get(
           url,
           headers: {
@@ -744,6 +750,12 @@ class PdfPrintService {
       throw Exception('HTTP ${resp.statusCode} — tidak ada data PDF.');
     }
     return resp.bodyBytes;
+  }
+
+  /// Unduh satu PDF label pakai Bearer token (dipakai jalur cetak multi-label,
+  /// yang perlu bytes tiap label untuk dikirim ke [LabelPrinter]).
+  Future<Uint8List> _fetchPdfBytes(Uri url) async {
+    return fetchPdfBytes(url, client: httpClient);
   }
 
   Future<void> _saveOriginalTemp(Uint8List src, String filename) async {

@@ -100,6 +100,11 @@ class _PrinterSelectorTileState extends State<PrinterSelectorTile> {
     final btnBg = _hasPrinter ? Colors.green.shade100 : Colors.amber.shade100;
     final btnFg = _hasPrinter ? Colors.green.shade800 : Colors.amber.shade800;
 
+    // Printer jaringan (IP) tidak lewat Bluetooth — jangan tampilkan ikon BT
+    // karena itu menyesatkan operator. `isNetwork` juga_true untuk identifier
+    // berbentuk IPv4, jadi tetap aman untuk backend lama.
+    final isNetwork = _detail?.isNetwork ?? false;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
@@ -116,7 +121,11 @@ class _PrinterSelectorTileState extends State<PrinterSelectorTile> {
               color: iconBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.bluetooth_rounded, size: 18, color: iconColor),
+            child: Icon(
+              isNetwork ? Icons.lan_rounded : Icons.bluetooth_rounded,
+              size: 18,
+              color: iconColor,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -177,6 +186,7 @@ class _PrinterSelectorTileState extends State<PrinterSelectorTile> {
 
   Widget _buildCompact() {
     final color = _hasPrinter ? Colors.green : Colors.orange;
+    final isNetwork = _detail?.isNetwork ?? false;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -187,7 +197,11 @@ class _PrinterSelectorTileState extends State<PrinterSelectorTile> {
       ),
       child: Row(
         children: [
-          Icon(Icons.bluetooth_rounded, size: 18, color: color.shade700),
+          Icon(
+            isNetwork ? Icons.lan_rounded : Icons.bluetooth_rounded,
+            size: 18,
+            color: color.shade700,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(

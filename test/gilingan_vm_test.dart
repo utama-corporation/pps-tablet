@@ -17,8 +17,9 @@ void main() {
     final result = await vm.createProduksi(
       tglProduksi: DateTime(2025, 01, 01),
       idMesin: 1,
-      idOperator: 2,
+      idOperators: [2],
       shift: 1,
+      jam: 2,
       hourStart: "08:00:00",
       hourEnd: "10:00:00",
       jmlhAnggota: 5,
@@ -92,23 +93,23 @@ class FakeGilinganRepository extends GilinganProductionRepository {
   Future<GilinganProduction> createProduksi({
     required DateTime tglProduksi,
     required int idMesin,
-    required int idOperator,
+    required List<int> idOperators,
     required int shift,
+    required double jam,
+    int? outputJenisId,
+    int? idRegu,
     String? hourStart,
     String? hourEnd,
     int? jmlhAnggota,
     int? hadir,
     double? hourMeter,
-    String? approveBy,
-    String? checkBy1,
-    String? checkBy2,
   }) async {
     // Konversi hourMeter (double?) → int?
     final intHourMeter = hourMeter?.toInt();
 
     return GilinganProduction(
       noProduksi: "W.TEST_CREATE",
-      idOperator: idOperator,
+      idOperator: idOperators.isNotEmpty ? idOperators.first : 0,
       idMesin: idMesin,
       namaMesin: "Mesin Fake",
       namaOperator: "Operator Fake",
@@ -118,11 +119,10 @@ class FakeGilinganRepository extends GilinganProductionRepository {
       jmlhAnggota: jmlhAnggota,
       hadir: hadir,
       hourMeter: intHourMeter,
-      checkBy1: checkBy1,
-      checkBy2: checkBy2,
-      approveBy: approveBy,
       hourStart: hourStart, // simpan format "HH:mm:00" atau "HH:mm"
       hourEnd: hourEnd,
+      outputJenisId: outputJenisId,
+      idRegu: idRegu,
     );
   }
 

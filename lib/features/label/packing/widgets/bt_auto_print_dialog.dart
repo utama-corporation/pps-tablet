@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../common/widgets/info_box.dart';
-import '../../../../common/widgets/master_printer_selector.dart';
 import '../../../../common/widgets/printer_selector_tile.dart';
+import '../../../../core/printing/label_printer_target_mixin.dart';
 import '../../../../core/utils/bt_print_service.dart';
 import '../../../../core/utils/device_printer_service.dart';
 
@@ -15,30 +15,40 @@ class BtAutoPrintDialog extends StatefulWidget {
   /// Total label berhasil dibuat (dari backend create)
   final int count;
 
-  final String reportName;
+  final String? reportName;
   final String baseUrl;
   final GenerateSameCallback onGenerateSame;
-  final String labelQueryKey;
+  final String? labelQueryKey;
   final String Function(dynamic header) labelExtractor;
   final Future<void> Function(String code)? markAsPrinted;
+
+  /// Builder URL PDF per kode label. Kalau diisi, dialog mencetak lewat
+  /// `BtPrintService.printLabelFromUrl` (REST endpoint PDF) dan mengabaikan
+  /// [reportName]/[labelQueryKey]. Dipakai fitur yang tidak punya Crystal
+  /// Report — mis. bahan pendukung & barang dagang.
+  ///
+  /// Kalau null, dialog memakai mode Crystal Report lama.
+  final Uri Function(String code)? pdfUrlBuilder;
 
   const BtAutoPrintDialog({
     super.key,
     required this.headers,
     required this.count,
-    required this.reportName,
+    this.reportName,
     required this.baseUrl,
     required this.onGenerateSame,
-    required this.labelQueryKey,
+    this.labelQueryKey,
     required this.labelExtractor,
     this.markAsPrinted,
+    this.pdfUrlBuilder,
   });
 
   @override
   State<BtAutoPrintDialog> createState() => _BtAutoPrintDialogState();
 }
 
-class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
+class _BtAutoPrintDialogState extends State<BtAutoPrintDialog>
+    with LabelPrinterTargetMixin<BtAutoPrintDialog> {
   int _currentIndex = 0;
 
   bool _busy = false;
@@ -51,10 +61,9 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
   late List<dynamic> _headers;
   late int _count;
 
-  // Printer yang tersimpan / dipilih
-  String? _printerId;
-  String? _printerMac;
-  String? _printerName;
+  // Printer yang tersimpan / dipilih dikelola oleh
+  // [LabelPrinterTargetMixin] (field `printerId`/`printerMac`/`printerName`/
+  // `printerTarget`) sehingga printer jaringan & Bluetooth bisa dipilih.
 
   @override
   void initState() {
@@ -69,24 +78,9 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
   }
 
   Future<void> _loadSavedPrinter() async {
-    final saved = await DevicePrinterService.loadDefaultPrinter();
-    if (saved != null && mounted) {
-      setState(() {
-        _printerId = saved.id;
-        _printerMac = saved.mac;
-        _printerName = saved.name;
-        _status = 'Siap mencetak ke ${saved.name}.';
-      });
-      return;
-    }
-    final legacy = await BtPrintService.loadSavedPrinter();
-    if (legacy != null && mounted) {
-      setState(() {
-        _printerMac = legacy.mac;
-        _printerName = legacy.name;
-        _status = 'Siap mencetak ke ${legacy.name}.';
-      });
-    }
+    await loadTargetPrinter();
+    if (!mounted || !hasPrinter) return;
+    setState(() => _status = 'Siap mencetak ke $printerName.');
   }
 
   // ── Getters ──────────────────────────────────────────────────────────────
@@ -230,7 +224,7 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: (_busy || _printerMac == null) ? null : _doPrint,
+                  onPressed: (_busy || !hasPrinter) ? null : _doPrint,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade800,
                     foregroundColor: Colors.white,
@@ -306,13 +300,32 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
   }
 
   Widget _buildPrinterRow() {
-    return PrinterSelectorTile(
-      printerName: _printerName,
-      printerMac: _printerMac,
-      printerId: _printerId,
-      onSelect: _selectPrinter,
-      disabled: _busy,
-      compact: true,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PrinterSelectorTile(
+          printerName: printerName,
+          printerMac: printerMac,
+          printerId: printerId,
+          onSelect: _selectPrinter,
+          disabled: _busy,
+          compact: true,
+        ),
+        if (hasPrinter)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text(
+              printerTargetSubtitle,
+              style: TextStyle(
+                fontSize: 11,
+                color: isNetworkPrinter
+                    ? Colors.teal.shade700
+                    : Colors.blueGrey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -324,8 +337,8 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
       _currentIndex--;
       _error = null;
       _lastPrintSuccess = false;
-      _status = _printerName != null
-          ? 'Siap mencetak ke $_printerName.'
+      _status = hasPrinter
+          ? 'Siap mencetak ke $printerName.'
           : 'Pilih printer lalu tap PRINT untuk mencetak.';
     });
   }
@@ -336,33 +349,26 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
       _currentIndex++;
       _error = null;
       _lastPrintSuccess = false;
-      _status = _printerName != null
-          ? 'Siap mencetak ke $_printerName.'
+      _status = hasPrinter
+          ? 'Siap mencetak ke $printerName.'
           : 'Pilih printer lalu tap PRINT untuk mencetak.';
     });
   }
 
-  /// Buka dialog MasterPrinterSelector untuk memilih printer Bluetooth
+  /// Buka dialog MasterPrinterSelector untuk memilih printer (Bluetooth atau
+  /// jaringan).
   Future<void> _selectPrinter() async {
-    final outcome = await MasterPrinterSelector.show(
-      context: context,
-      currentMac: _printerMac,
-    );
-
-    if (outcome == null) return;
-
+    final picked = await pickTargetPrinter();
+    if (!picked) return;
     setState(() {
-      _printerId = outcome.id;
-      _printerMac = outcome.mac;
-      _printerName = outcome.printerName;
       _error = null;
-      _status = 'Siap mencetak ke ${outcome.printerName}.';
+      _status = 'Siap mencetak ke $printerName.';
     });
   }
 
   Future<void> _doPrint() async {
     if (_headers.isEmpty || _currentIndex >= _headers.length) return;
-    if (_printerMac == null) {
+    if (!hasPrinter) {
       setState(() => _error = 'Pilih printer terlebih dahulu.');
       return;
     }
@@ -376,17 +382,59 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
 
     final labelCode = _currentLabel;
 
-    final ok = await _btService.printLabel(
-      reportName: widget.reportName,
-      query: {widget.labelQueryKey: labelCode},
-      mac: _printerMac!,
-      onStatus: (s) {
-        if (mounted) setState(() => _status = s);
-      },
-      onError: (e) {
-        if (mounted) setState(() => _error = e);
-      },
-    );
+    final bool ok;
+    final urlBuilder = widget.pdfUrlBuilder;
+    if (urlBuilder != null) {
+      ok = await printPdfViaTarget(
+        urlBuilder(labelCode),
+        onStatus: (s) {
+          if (mounted) setState(() => _status = s);
+        },
+        onError: (e) {
+          if (mounted) setState(() => _error = e);
+        },
+      );
+    } else {
+      final reportName = widget.reportName;
+      final queryKey = widget.labelQueryKey;
+      if (reportName == null || queryKey == null) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = 'Konfigurasi cetak tidak lengkap.';
+        });
+        return;
+      }
+      final query = {queryKey: labelCode};
+      if (isNetworkPrinter) {
+        // Printer jaringan tidak bisa pakai printLabel() (ESC/POS via BT) —
+        // bangun URL Crystal Report lalu kirim bytes-nya via relay TSPL.
+        ok = await printPdfViaTarget(
+          _btService.buildPdfUri(
+            reportName: reportName,
+            query: query,
+          ),
+          onStatus: (s) {
+            if (mounted) setState(() => _status = s);
+          },
+          onError: (e) {
+            if (mounted) setState(() => _error = e);
+          },
+        );
+      } else {
+        ok = await _btService.printLabel(
+          reportName: reportName,
+          query: query,
+          mac: printerMac!,
+          onStatus: (s) {
+            if (mounted) setState(() => _status = s);
+          },
+          onError: (e) {
+            if (mounted) setState(() => _error = e);
+          },
+        );
+      }
+    }
 
     if (!mounted) return;
     setState(() => _busy = false);
@@ -395,7 +443,7 @@ class _BtAutoPrintDialogState extends State<BtAutoPrintDialog> {
       // Log print ke microservice (fire-and-forget)
       final printBy = await DevicePrinterService.getLoggedUsername();
       DevicePrinterService.logPrint(
-        printerId: _printerMac!,
+        printerId: printerId?.isNotEmpty == true ? printerId! : printerMac!,
         printBy: printBy,
       );
       setState(() {

@@ -8,8 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../../common/widgets/auto_repeat_print_dialog.dart';
+import '../../../common/widgets/print_mode_selector.dart';
 import '../../../common/widgets/success_status_dialog.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/endpoints.dart';
+import '../../label/packing/widgets/bt_auto_print_dialog.dart';
 import '../../supplier/widgets/supplier_dropdown.dart';
 import '../model/barang_dagang_master_item.dart';
 import '../repository/penerimaan_barang_dagang_repository.dart';
@@ -46,9 +50,14 @@ class _PenerimaanBarangDagangItemFormDialogState
   String? _loadMaterialsError;
   List<BarangDagangMasterItem> _materials = const [];
 
+  // ── Mode cetak ──
+  PrintMode _printMode = PrintMode.single;
+  late final TextEditingController _repeatCountCtrl;
+
   @override
   void initState() {
     super.initState();
+    _repeatCountCtrl = TextEditingController(text: '1');
     _repo = PenerimaanBarangDagangRepository(api: context.read<ApiClient>());
     _loadMaterials();
   }
@@ -57,8 +66,12 @@ class _PenerimaanBarangDagangItemFormDialogState
   void dispose() {
     _qtyCtrl.dispose();
     _keteranganCtrl.dispose();
+    _repeatCountCtrl.dispose();
     super.dispose();
   }
+
+  int get _repeatCount =>
+      (int.tryParse(_repeatCountCtrl.text.trim()) ?? 1).clamp(1, 99);
 
   Future<void> _loadMaterials() async {
     setState(() {
@@ -90,6 +103,104 @@ class _PenerimaanBarangDagangItemFormDialogState
     });
   }
 
+  /// Buat satu label dan kembalikan kode labelnya (mis. "BD.0000000001").
+  ///
+  /// Memakai data form yang sedang terisi supaya tombol "BUAT LABEL BARU
+  /// (DATA SAMA)" di dialog Multiple dan loop Quick mengulang label identik.
+  Future<String> _createLabel() async {
+    final codes = await _repo.addItems(
+      noPenerimaan: widget.noPenerimaan,
+      items: [
+        PenerimaanBarangDagangItemInput(
+          idSupplier: _selectedSupplierId!,
+          idBarangDagang: _selectedMaterial!.idBarangDagang,
+          qty: double.parse(_qtyCtrl.text.trim().replaceAll(',', '.')),
+          keterangan: _keteranganCtrl.text,
+        ),
+      ],
+    );
+    if (codes.isEmpty) {
+      throw Exception(
+        'Label berhasil dibuat tapi kode label tidak dikembalikan server.',
+      );
+    }
+    return codes.first;
+  }
+
+  Future<void> _showAutoPrintDialog(List<String> codes) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => BtAutoPrintDialog(
+        headers: List<dynamic>.from(codes),
+        count: codes.length,
+        baseUrl: ApiConstants.baseUrl,
+        pdfUrlBuilder: (code) =>
+            Uri.parse(ApiConstants.barangDagangLabelPdf(code)),
+        labelExtractor: (h) => h.toString(),
+        onGenerateSame: () async {
+          final next = await _createLabel();
+          return <dynamic>[next];
+        },
+        markAsPrinted: (code) async {
+          try {
+            await _repo.markItemPrinted(code);
+          } catch (_) {}
+        },
+      ),
+    );
+  }
+
+  Future<void> _showAutoRepeatDialog(String firstCode) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AutoRepeatPrintDialog(
+        totalRounds: _repeatCount,
+        firstNoLabel: firstCode,
+        pdfUrlBuilder: (code) =>
+            Uri.parse(ApiConstants.barangDagangLabelPdf(code)),
+        onCreate: _createLabel,
+        markAsPrinted: (code) async {
+          try {
+            await _repo.markItemPrinted(code);
+          } catch (_) {}
+        },
+      ),
+    );
+  }
+
+  Widget _buildLabelCodeBox(List<String> codes) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final code in codes)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '• $code',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: .2,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (_selectedSupplierId == null) {
       setState(() => _saveError = 'Supplier wajib dipilih.');
@@ -111,7 +222,7 @@ class _PenerimaanBarangDagangItemFormDialogState
     });
 
     try {
-      await _repo.addItems(
+      final codes = await _repo.addItems(
         noPenerimaan: widget.noPenerimaan,
         items: [
           PenerimaanBarangDagangItemInput(
@@ -124,13 +235,35 @@ class _PenerimaanBarangDagangItemFormDialogState
       );
 
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (_) => const SuccessStatusDialog(
-          title: 'Berhasil Menyimpan',
-          message: 'Barang berhasil ditambahkan.',
-        ),
-      );
+      setState(() => _isSaving = false);
+
+      if (codes.isEmpty) {
+        // Server tidak mengembalikan kode — label tetap tersimpan, tapi kita
+        // tidak bisa menampilkan nomornya maupun membuka mode Multiple/Quick.
+        await showDialog<void>(
+          context: context,
+          builder: (_) => const SuccessStatusDialog(
+            title: 'Berhasil Menyimpan',
+            message: 'Barang berhasil ditambahkan.',
+          ),
+        );
+      } else if (_printMode == PrintMode.quick) {
+        await _showAutoRepeatDialog(codes.first);
+      } else if (_printMode == PrintMode.multiple) {
+        await _showAutoPrintDialog(codes);
+      } else {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => SuccessStatusDialog(
+            title: 'Berhasil Menyimpan',
+            message: codes.length > 1
+                ? 'Label berhasil dibuat (${codes.length} label).'
+                : 'Label berhasil dibuat.',
+            extraContent: _buildLabelCodeBox(codes),
+          ),
+        );
+      }
+
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -158,7 +291,18 @@ class _PenerimaanBarangDagangItemFormDialogState
             Flexible(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(18),
-                child: _buildFields(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildFields(),
+                    const SizedBox(height: 16),
+                    PrintModeSelector(
+                      value: _printMode,
+                      repeatCountCtrl: _repeatCountCtrl,
+                      onChanged: (mode) => setState(() => _printMode = mode),
+                    ),
+                  ],
+                ),
               ),
             ),
             if (_saveError != null) _buildErrorBanner(),

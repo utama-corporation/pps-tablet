@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../features/bahan_pendukung/penerimaan/repository/penerimaan_bahan_pendukung_repository.dart';
 import '../../features/label/broker/repository/broker_repository.dart';
 import '../../features/label/bahan_baku/repository/bahan_baku_repository.dart';
 import '../../features/label/bonggolan/repository/bonggolan_repository.dart';
@@ -13,6 +14,7 @@ import '../../features/label/furniture_wip/repository/furniture_wip_repository.d
 import '../../features/label/packing/repository/packing_repository.dart';
 import '../../features/label/reject/repository/reject_repository.dart';
 import '../../features/label/washing/repository/washing_repository.dart';
+import '../../features/penerimaan_barang_dagang/repository/penerimaan_barang_dagang_repository.dart';
 import '../network/api_client.dart';
 import '../network/label_print_lock_api.dart';
 
@@ -33,6 +35,10 @@ class LabelPrintSyncQueue extends ChangeNotifier with WidgetsBindingObserver {
   final FurnitureWipRepository _furnitureWipRepo = FurnitureWipRepository();
   final PackingRepository _packingRepo = PackingRepository(api: ApiClient());
   final RejectRepository _rejectRepo = RejectRepository(api: ApiClient());
+  final PenerimaanBahanPendukungRepository _bahanPendukungRepo =
+      PenerimaanBahanPendukungRepository(api: ApiClient());
+  final PenerimaanBarangDagangRepository _barangDagangRepo =
+      PenerimaanBarangDagangRepository(api: ApiClient());
 
   Box<dynamic>? _box;
   Timer? _timer;
@@ -224,6 +230,12 @@ class LabelPrintSyncQueue extends ChangeNotifier with WidgetsBindingObserver {
           noBahanBaku: noBahanBaku,
           noPallet: noPallet,
         );
+        return;
+      case 'bahan_pendukung':
+        await _bahanPendukungRepo.markItemPrinted(noLabel);
+        return;
+      case 'barang_dagang':
+        await _barangDagangRepo.markItemPrinted(noLabel);
         return;
       default:
         throw UnsupportedError('Unsupported print feature: $feature');
