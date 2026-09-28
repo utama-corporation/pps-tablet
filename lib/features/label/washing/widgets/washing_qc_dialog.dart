@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../common/widgets/qc_dialog_components.dart';
+import '../../../../core/utils/date_formatter.dart';
 import '../model/washing_header_model.dart';
 
 class WashingQcResult {
@@ -11,6 +12,9 @@ class WashingQcResult {
   final double? moisture2;
   final double? moisture3;
 
+  /// Tanggal QC — boleh backdate (lampau) untuk input susulan.
+  final DateTime dateQc;
+
   const WashingQcResult({
     required this.density1,
     required this.density2,
@@ -18,6 +22,7 @@ class WashingQcResult {
     required this.moisture1,
     required this.moisture2,
     required this.moisture3,
+    required this.dateQc,
   });
 }
 
@@ -40,6 +45,10 @@ class _WashingQcDialogState extends State<WashingQcDialog> {
   late final TextEditingController _moisture2Ctrl;
   late final TextEditingController _moisture3Ctrl;
 
+  /// Default: tanggal QC yang tersimpan, atau hari ini bila belum pernah.
+  /// Operator bisa mundur ke tanggal lampau untuk input QC susulan.
+  late DateTime _dateQc;
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +68,7 @@ class _WashingQcDialogState extends State<WashingQcDialog> {
     _moisture3Ctrl = TextEditingController(
       text: _toText(widget.header.moisture3),
     );
+    _dateQc = parseAnyToDateTime(widget.header.dateQc) ?? DateTime.now();
   }
 
   @override
@@ -100,7 +110,59 @@ class _WashingQcDialogState extends State<WashingQcDialog> {
         moisture1: _parseNullableDecimal(_moisture1Ctrl.text),
         moisture2: _parseNullableDecimal(_moisture2Ctrl.text),
         moisture3: _parseNullableDecimal(_moisture3Ctrl.text),
+        dateQc: _dateQc,
       ),
+    );
+  }
+
+  /// Shortcut tanggal yang paling sering dipakai untuk input QC susulan.
+  Widget _quickDateRow() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final options = <(String, DateTime)>[
+      ('Hari ini', today),
+      ('Kemarin', today.subtract(const Duration(days: 1))),
+      ('2 hari lalu', today.subtract(const Duration(days: 2))),
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: options.map((o) {
+        final selected =
+            o.$2.year == _dateQc.year &&
+            o.$2.month == _dateQc.month &&
+            o.$2.day == _dateQc.day;
+        return InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _dateQc = o.$2),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? QcDialogPalette.primarySubtle
+                  : QcDialogPalette.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: selected
+                    ? QcDialogPalette.primary
+                    : QcDialogPalette.border,
+              ),
+            ),
+            child: Text(
+              o.$1,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected
+                    ? QcDialogPalette.primary
+                    : QcDialogPalette.subtleText,
+              ),
+            ),
+          ),
+        );
+      }).toList(growable: false),
     );
   }
 
@@ -127,6 +189,30 @@ class _WashingQcDialogState extends State<WashingQcDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const QcSectionTitle(
+                    icon: Icons.event_note_outlined,
+                    text: 'Tanggal QC',
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: QcDateField(
+                          label: 'Tanggal QC',
+                          hintText: 'boleh backdate',
+                          value: _dateQc,
+                          locale: const Locale('id', 'ID'),
+                          onChanged: (d) => setState(() => _dateQc = d),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _quickDateRow(),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1, color: QcDialogPalette.border),
+                  ),
                   const QcSectionTitle(
                     icon: Icons.science_outlined,
                     text: 'Density (g/cm3)',

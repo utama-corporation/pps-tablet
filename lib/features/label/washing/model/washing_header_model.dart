@@ -35,6 +35,13 @@ class WashingHeader {
   final double? moisture2;
   final double? moisture3;
 
+  /// Tanggal QC diisi operator — bisa backdate (tanggal lampau) untuk input
+  /// susulan. Null = belum pernah diisi QC.
+  final String? dateQc;
+
+  /// Username yang terakhir menyimpan QC.
+  final String? qcBy;
+
   // ➕ field tambahan dari join
   final String? noProduksi;
   final String? namaMesin;
@@ -66,6 +73,8 @@ class WashingHeader {
     this.moisture,
     this.moisture2,
     this.moisture3,
+    this.dateQc,
+    this.qcBy,
     this.noProduksi,
     this.namaMesin,
     this.noBongkarSusun,
@@ -85,6 +94,14 @@ class WashingHeader {
       return s == 'true' || s == '1' || s == 'y' || s == 'yes';
     }
     return defaultValue;
+  }
+
+  /// String kosong / "null" dari API diperlakukan sebagai null.
+  static String? _toStringOrNull(dynamic v) {
+    if (v == null) return null;
+    final s = v.toString().trim();
+    if (s.isEmpty || s.toLowerCase() == 'null') return null;
+    return s;
   }
 
   factory WashingHeader.fromJson(Map<String, dynamic> json) {
@@ -109,6 +126,8 @@ class WashingHeader {
       moisture: (json['Moisture'] as num?)?.toDouble(),
       moisture2: (json['Moisture2'] as num?)?.toDouble(),
       moisture3: (json['Moisture3'] as num?)?.toDouble(),
+      dateQc: _toStringOrNull(json['DateQc']),
+      qcBy: _toStringOrNull(json['QcBy'] ?? json['UpdateByQc']),
       noProduksi: json['NoProduksi'],
       namaMesin: json['NamaMesin'],
       noBongkarSusun: json['NoBongkarSusun'],
@@ -136,6 +155,8 @@ class WashingHeader {
     'Moisture': moisture,
     'Moisture2': moisture2,
     'Moisture3': moisture3,
+    'DateQc': dateQc,
+    'QcBy': qcBy,
     'NoProduksi': noProduksi,
     'NamaMesin': namaMesin,
     'NoBongkarSusun': noBongkarSusun,
@@ -162,6 +183,8 @@ class WashingHeader {
     double? moisture,
     double? moisture2,
     double? moisture3,
+    String? dateQc,
+    String? qcBy,
     String? noProduksi,
     String? namaMesin,
     String? noBongkarSusun,
@@ -187,6 +210,8 @@ class WashingHeader {
       moisture: moisture ?? this.moisture,
       moisture2: moisture2 ?? this.moisture2,
       moisture3: moisture3 ?? this.moisture3,
+      dateQc: dateQc ?? this.dateQc,
+      qcBy: qcBy ?? this.qcBy,
       noProduksi: noProduksi ?? this.noProduksi,
       namaMesin: namaMesin ?? this.namaMesin,
       noBongkarSusun: noBongkarSusun ?? this.noBongkarSusun,
@@ -194,6 +219,49 @@ class WashingHeader {
       idLokasi: idLokasi ?? this.idLokasi,
       hasBeenPrinted: hasBeenPrinted ?? this.hasBeenPrinted,
       used: used ?? this.used,
+    );
+  }
+
+  /// Patch nilai QC di tengah list (realtime / optimistic update).
+  /// Semua argumen nullable: null berarti "kosongkan nilai ini", bukan
+  /// "jangan diubah" — dipakai untuk menyamakan baris dengan payload
+  /// socket yang berisi nilai QC lengkap.
+  WashingHeader withQc({
+    double? density,
+    double? density2,
+    double? density3,
+    double? moisture,
+    double? moisture2,
+    double? moisture3,
+    String? dateQc,
+    String? qcBy,
+  }) {
+    return WashingHeader(
+      noWashing: noWashing,
+      idJenisPlastik: idJenisPlastik,
+      namaJenisPlastik: namaJenisPlastik,
+      idWarehouse: idWarehouse,
+      namaWarehouse: namaWarehouse,
+      dateCreate: dateCreate,
+      idStatus: idStatus,
+      statusText: statusText,
+      createBy: createBy,
+      dateTimeCreate: dateTimeCreate,
+      density: density,
+      density2: density2,
+      density3: density3,
+      moisture: moisture,
+      moisture2: moisture2,
+      moisture3: moisture3,
+      dateQc: _toStringOrNull(dateQc),
+      qcBy: _toStringOrNull(qcBy),
+      noProduksi: noProduksi,
+      namaMesin: namaMesin,
+      noBongkarSusun: noBongkarSusun,
+      blok: blok,
+      idLokasi: idLokasi,
+      hasBeenPrinted: hasBeenPrinted,
+      used: used,
     );
   }
 }

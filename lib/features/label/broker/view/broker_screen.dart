@@ -4,6 +4,8 @@ import 'package:pps_tablet/features/audit/view/audit_screen_with_prefilled.dart'
 import 'package:provider/provider.dart';
 import '../../../../core/services/dialog_service.dart';
 import '../../../../core/services/label_print_sync_queue.dart';
+import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/view_model/label_qc_socket_manager.dart';
 import '../view_model/broker_view_model.dart';
 import '../model/broker_header_model.dart';
 import '../model/broker_detail_model.dart';
@@ -30,6 +32,7 @@ class _BrokerScreenState extends State<BrokerScreen> {
   Timer? _debounce;
   LabelPrintSyncQueue? _syncQueue;
   int _lastPendingCount = 0;
+  VoidCallback? _unsubscribeQcUpdated;
 
   bool _isUsed(String? dateUsage) {
     final s = (dateUsage ?? '').trim();
@@ -137,6 +140,7 @@ class _BrokerScreenState extends State<BrokerScreen> {
       minMeltTemp: qc.minMeltTemp,
       mfi: qc.mfi,
       visualNote: qc.visualNote,
+      dateQc: qc.dateQc,
     );
 
     DialogService.instance.hideLoading();
@@ -145,7 +149,9 @@ class _BrokerScreenState extends State<BrokerScreen> {
     if (res != null) {
       await DialogService.instance.showSuccess(
         title: 'QC Tersimpan',
-        message: 'Nilai QC untuk ${header.noBroker} berhasil diperbarui.',
+        message:
+            'Nilai QC untuk ${header.noBroker} berhasil diperbarui '
+            '(tanggal ${formatDateToShortId(qc.dateQc)}).',
       );
     } else {
       await DialogService.instance.showError(
@@ -167,12 +173,37 @@ class _BrokerScreenState extends State<BrokerScreen> {
       _syncQueue = context.read<LabelPrintSyncQueue>();
       _lastPendingCount = _syncQueue!.pendingCountFor('broker');
       _syncQueue!.addListener(_onSyncQueueChanged);
+
+      _unsubscribeQcUpdated = context
+          .read<LabelQcSocketManager>()
+          .addQcUpdatedListener(_onQcRealtime);
     });
     _scrollController.addListener(_onScroll);
   }
 
+  /// QC disimpan dari tablet lain — patch baris yang sedang tampil.
+  void _onQcRealtime(LabelQcUpdatedEvent event) {
+    if (!mounted) return;
+    final applied = context.read<BrokerViewModel>().applyQcRealtime(event);
+    if (!applied) return;
+
+    final by = (event.updatedBy ?? '').trim();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          content: Text(
+            'QC ${event.noLabel} diperbarui'
+            '${by.isEmpty ? '' : ' oleh $by'}',
+          ),
+        ),
+      );
+  }
+
   @override
   void dispose() {
+    _unsubscribeQcUpdated?.call();
     _syncQueue?.removeListener(_onSyncQueueChanged);
     _scrollController.dispose();
     _detailScrollController.dispose();

@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pps_tablet/core/view_model/permission_view_model.dart';
 import 'package:pps_tablet/core/view_model/label_print_lock_socket_manager.dart';
+import 'package:pps_tablet/core/view_model/label_qc_socket_manager.dart';
 import 'package:pps_tablet/features/stock_opname_v2/view_model/so_v2_socket_manager.dart';
 import 'package:pps_tablet/core/services/label_print_sync_queue.dart';
 import 'package:pps_tablet/features/audit/repository/audit_repository.dart';
@@ -220,6 +221,7 @@ class MyApp extends StatelessWidget {
           create: (_) => LabelPrintLockSocketManager()..connect(),
         ),
         ChangeNotifierProvider(create: (_) => SoV2SocketManager()..connect()),
+        ChangeNotifierProvider(create: (_) => LabelQcSocketManager()..connect()),
         ChangeNotifierProvider(create: (_) => LabelPrintSyncQueue()..start()),
         ChangeNotifierProvider(create: (_) => LabelDetailViewModel()),
         ChangeNotifierProvider(

@@ -46,6 +46,14 @@ class BrokerHeader {
   final double? moisture2;
   final double? moisture3;
 
+  // Quality — tanggal & pelaku
+  /// Tanggal QC diisi operator — bisa backdate (tanggal lampau) untuk input
+  /// susulan. Null = belum pernah diisi QC.
+  final String? dateQc;
+
+  /// Username yang terakhir menyimpan QC.
+  final String? qcBy;
+
   // Produksi / Mesin / Bongkar Susun (from your new joins)
   final String? noProduksi; // NoProduksi (MAX(...) or STRING_AGG result)
   final String? namaMesin; // NamaMesin
@@ -82,6 +90,8 @@ class BrokerHeader {
     this.density3,
     this.moisture2,
     this.moisture3,
+    this.dateQc,
+    this.qcBy,
     this.noProduksi,
     this.namaMesin,
     this.noBongkarSusun,
@@ -113,6 +123,14 @@ class BrokerHeader {
     return 0;
   }
 
+  /// String kosong / "null" dari API diperlakukan sebagai null.
+  static String? _toStringOrNull(dynamic v) {
+    if (v == null) return null;
+    final s = v.toString().trim();
+    if (s.isEmpty || s.toLowerCase() == 'null') return null;
+    return s;
+  }
+
   factory BrokerHeader.fromJson(Map<String, dynamic> json) {
     final statusText = json['StatusText']?.toString() ?? '';
     return BrokerHeader(
@@ -138,6 +156,8 @@ class BrokerHeader {
       density3: _toDouble(json['Density3']),
       moisture2: _toDouble(json['Moisture2']),
       moisture3: _toDouble(json['Moisture3']),
+      dateQc: _toStringOrNull(json['DateQc']),
+      qcBy: _toStringOrNull(json['QcBy'] ?? json['UpdateByQc']),
 
       // ⬇️ fields dari service baru
       noProduksi: json['NoProduksi']?.toString(),
@@ -174,6 +194,8 @@ class BrokerHeader {
     'Density3': density3,
     'Moisture2': moisture2,
     'Moisture3': moisture3,
+    'DateQc': dateQc,
+    'QcBy': qcBy,
 
     // ⬇️ ikutkan jika perlu dikirim balik
     'NoProduksi': noProduksi,
@@ -207,6 +229,8 @@ class BrokerHeader {
     double? density3,
     double? moisture2,
     double? moisture3,
+    String? dateQc,
+    String? qcBy,
     String? noProduksi,
     String? namaMesin,
     String? noBongkarSusun,
@@ -236,6 +260,8 @@ class BrokerHeader {
       density3: density3 ?? this.density3,
       moisture2: moisture2 ?? this.moisture2,
       moisture3: moisture3 ?? this.moisture3,
+      dateQc: dateQc ?? this.dateQc,
+      qcBy: qcBy ?? this.qcBy,
       noProduksi: noProduksi ?? this.noProduksi,
       namaMesin: namaMesin ?? this.namaMesin,
       noBongkarSusun: noBongkarSusun ?? this.noBongkarSusun,
@@ -243,6 +269,57 @@ class BrokerHeader {
       dateTimeCreate: dateTimeCreate ?? this.dateTimeCreate,
       hasBeenPrinted: hasBeenPrinted ?? this.hasBeenPrinted,
       used: used ?? this.used,
+    );
+  }
+
+  /// Patch nilai QC di tengah list (realtime / optimistic update).
+  /// Semua argumen nullable: null berarti "kosongkan nilai ini", bukan
+  /// "jangan diubah" — dipakai untuk menyamakan baris dengan payload
+  /// socket yang berisi nilai QC lengkap.
+  BrokerHeader withQc({
+    double? density,
+    double? density2,
+    double? density3,
+    double? moisture,
+    double? moisture2,
+    double? moisture3,
+    double? maxMeltTemp,
+    double? minMeltTemp,
+    double? mfi,
+    String? visualNote,
+    String? dateQc,
+    String? qcBy,
+  }) {
+    return BrokerHeader(
+      noBroker: noBroker,
+      idJenisPlastik: idJenisPlastik,
+      namaJenisPlastik: namaJenisPlastik,
+      idWarehouse: idWarehouse,
+      namaWarehouse: namaWarehouse,
+      dateCreate: dateCreate,
+      statusText: statusText,
+      idStatus: idStatus,
+      blok: blok,
+      idLokasi: idLokasi,
+      density: density,
+      moisture: moisture,
+      maxMeltTemp: maxMeltTemp,
+      minMeltTemp: minMeltTemp,
+      mfi: mfi,
+      visualNote: visualNote,
+      density2: density2,
+      density3: density3,
+      moisture2: moisture2,
+      moisture3: moisture3,
+      dateQc: _toStringOrNull(dateQc),
+      qcBy: _toStringOrNull(qcBy),
+      noProduksi: noProduksi,
+      namaMesin: namaMesin,
+      noBongkarSusun: noBongkarSusun,
+      createBy: createBy,
+      dateTimeCreate: dateTimeCreate,
+      hasBeenPrinted: hasBeenPrinted,
+      used: used,
     );
   }
 }

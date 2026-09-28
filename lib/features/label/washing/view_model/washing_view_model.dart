@@ -2,6 +2,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/view_model/label_qc_socket_manager.dart';
 import '../model/washing_header_model.dart';
 import '../model/washing_detail_model.dart';
 import '../repository/washing_repository.dart';
@@ -296,6 +298,7 @@ class WashingViewModel extends ChangeNotifier {
     required double? moisture1,
     required double? moisture2,
     required double? moisture3,
+    DateTime? dateQc,
   }) async {
     try {
       isLoading = true;
@@ -310,9 +313,22 @@ class WashingViewModel extends ChangeNotifier {
         moisture1: moisture1,
         moisture2: moisture2,
         moisture3: moisture3,
+        dateQc: dateQc,
       );
 
-      await fetchWashingHeaders(search: _search);
+      // Patch baris yang sama di tempat (bukan refetch seluruh halaman) supaya
+      // posisi scroll dan highlight pilihan tidak hilang.
+      _applyLocalQc(
+        noWashing,
+        density: density1,
+        density2: density2,
+        density3: density3,
+        moisture: moisture1,
+        moisture2: moisture2,
+        moisture3: moisture3,
+        dateQc: dateQc == null ? null : toDbDateString(dateQc),
+      );
+
       setSelectedNoWashing(noWashing);
 
       return res;
@@ -325,6 +341,54 @@ class WashingViewModel extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  void _applyLocalQc(
+    String noWashing, {
+    double? density,
+    double? density2,
+    double? density3,
+    double? moisture,
+    double? moisture2,
+    double? moisture3,
+    String? dateQc,
+    String? qcBy,
+  }) {
+    final idx = items.indexWhere((e) => e.noWashing == noWashing);
+    if (idx < 0) return;
+    final current = items[idx];
+    items[idx] = current.withQc(
+      density: density,
+      density2: density2,
+      density3: density3,
+      moisture: moisture,
+      moisture2: moisture2,
+      moisture3: moisture3,
+      dateQc: dateQc ?? current.dateQc,
+      qcBy: qcBy ?? current.qcBy,
+    );
+  }
+
+  /// Terapkan update QC realtime dari tablet lain. Return true kalau baris
+  ///-nya ada di list yang sedang tampil (jadi ter-highlight hijau).
+  bool applyQcRealtime(LabelQcUpdatedEvent event) {
+    if (event.kind != LabelQcKind.washing) return false;
+
+    final idx = items.indexWhere((e) => e.noWashing == event.noLabel);
+    if (idx < 0) return false;
+
+    items[idx] = items[idx].withQc(
+      density: event.density,
+      density2: event.density2,
+      density3: event.density3,
+      moisture: event.moisture,
+      moisture2: event.moisture2,
+      moisture3: event.moisture3,
+      dateQc: event.dateQc,
+      qcBy: event.updatedBy,
+    );
+    notifyListeners();
+    return true;
   }
 
   // =============================

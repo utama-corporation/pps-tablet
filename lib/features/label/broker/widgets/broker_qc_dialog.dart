@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../common/widgets/qc_dialog_components.dart';
+import '../../../../core/utils/date_formatter.dart';
 import '../model/broker_header_model.dart';
 
 class BrokerQcResult {
@@ -15,6 +16,9 @@ class BrokerQcResult {
   final double? mfi;
   final String? visualNote;
 
+  /// Tanggal QC — boleh backdate (lampau) untuk input susulan.
+  final DateTime dateQc;
+
   const BrokerQcResult({
     required this.density1,
     required this.density2,
@@ -26,6 +30,7 @@ class BrokerQcResult {
     required this.minMeltTemp,
     required this.mfi,
     required this.visualNote,
+    required this.dateQc,
   });
 }
 
@@ -51,6 +56,10 @@ class _BrokerQcDialogState extends State<BrokerQcDialog> {
   late final TextEditingController _minMeltCtrl;
   late final TextEditingController _mfiCtrl;
   late final TextEditingController _visualNoteCtrl;
+
+  /// Default: tanggal QC yang tersimpan, atau hari ini bila belum pernah.
+  /// Operator bisa mundur ke tanggal lampau untuk input QC susulan.
+  late DateTime _dateQc;
 
   @override
   void initState() {
@@ -81,6 +90,7 @@ class _BrokerQcDialogState extends State<BrokerQcDialog> {
     _visualNoteCtrl = TextEditingController(
       text: widget.header.visualNote ?? '',
     );
+    _dateQc = parseAnyToDateTime(widget.header.dateQc) ?? DateTime.now();
   }
 
   @override
@@ -132,7 +142,59 @@ class _BrokerQcDialogState extends State<BrokerQcDialog> {
         minMeltTemp: _parseNullableDecimal(_minMeltCtrl.text),
         mfi: _parseNullableDecimal(_mfiCtrl.text),
         visualNote: visualNote.isEmpty ? null : visualNote,
+        dateQc: _dateQc,
       ),
+    );
+  }
+
+  /// Shortcut tanggal yang paling sering dipakai untuk input QC susulan.
+  Widget _quickDateRow() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final options = <(String, DateTime)>[
+      ('Hari ini', today),
+      ('Kemarin', today.subtract(const Duration(days: 1))),
+      ('2 hari lalu', today.subtract(const Duration(days: 2))),
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: options.map((o) {
+        final selected =
+            o.$2.year == _dateQc.year &&
+            o.$2.month == _dateQc.month &&
+            o.$2.day == _dateQc.day;
+        return InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _dateQc = o.$2),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? QcDialogPalette.primarySubtle
+                  : QcDialogPalette.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: selected
+                    ? QcDialogPalette.primary
+                    : QcDialogPalette.border,
+              ),
+            ),
+            child: Text(
+              o.$1,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected
+                    ? QcDialogPalette.primary
+                    : QcDialogPalette.subtleText,
+              ),
+            ),
+          ),
+        );
+      }).toList(growable: false),
     );
   }
 
@@ -159,6 +221,24 @@ class _BrokerQcDialogState extends State<BrokerQcDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const QcSectionTitle(
+                    icon: Icons.event_note_outlined,
+                    text: 'Tanggal QC',
+                  ),
+                  const SizedBox(height: 8),
+                  QcDateField(
+                    label: 'Tanggal QC',
+                    hintText: 'boleh backdate',
+                    value: _dateQc,
+                    locale: const Locale('id', 'ID'),
+                    onChanged: (d) => setState(() => _dateQc = d),
+                  ),
+                  const SizedBox(height: 8),
+                  _quickDateRow(),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1, color: QcDialogPalette.border),
+                  ),
                   const QcSectionTitle(
                     icon: Icons.science_outlined,
                     text: 'Density',

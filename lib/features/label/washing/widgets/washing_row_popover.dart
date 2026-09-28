@@ -10,6 +10,7 @@ import '../../../../core/network/label_print_lock_api.dart';
 import '../../../../core/view_model/label_print_lock_socket_manager.dart';
 import '../../../../core/services/label_print_sync_queue.dart';
 import '../../../../core/services/dialog_service.dart';
+import '../../../../core/utils/date_formatter.dart';
 import '../../../../core/utils/pdf_print_service.dart';
 import '../../../../core/view_model/permission_view_model.dart';
 import '../model/washing_header_model.dart';
@@ -328,6 +329,10 @@ class _WashingRowPopoverState extends State<WashingRowPopover> {
   }
 
   Widget _buildQcDataCard() {
+    final qcDate = formatDateToShortId(widget.header.dateQc);
+    final qcBy = (widget.header.qcBy ?? '').trim();
+    final hasQcDate = qcDate.isNotEmpty && qcDate != widget.header.dateQc;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -338,14 +343,29 @@ class _WashingRowPopoverState extends State<WashingRowPopover> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Quality Control',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF44546F),
-              letterSpacing: 0.2,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Quality Control',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF44546F),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              if (hasQcDate)
+                Text(
+                  qcBy.isEmpty ? qcDate : '$qcDate • $qcBy',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B778C),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(

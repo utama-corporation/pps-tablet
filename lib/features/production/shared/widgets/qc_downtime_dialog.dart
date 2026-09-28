@@ -22,19 +22,18 @@ const _green = Color(0xFF15803D);
 const _downtimeColor = Color(0xFFB45309);
 const _defaultAccent = _accent;
 
-// Jeda setelah jam akhir bucket sebelum QC bisa diinput (mis. range
-// 07:00-08:00 sudah bisa diinput mulai jam 08:00, begitu jamnya berakhir).
-// Window bucket berikutnya selalu dimulai tepat saat window bucket ini
-// tertutup — sama persis dengan pola QC inject.
+// Jeda sebelum QC boleh diinput (mis. range 07:00-08:00 baru bisa diinput
+// mulai jam 08:00, begitu jamnya berakhir). Setelah terbuka, bucket tidak
+// pernah ditutup lagi — keterangan downtime bisa diinput kapan saja.
 const _kQcInputOpenDelay = Duration.zero;
 
-enum _QcBucketStatus { locked, available, expired, submitted }
+enum _QcBucketStatus { locked, available, submitted }
 
 /// Dialog input QC tiap jam untuk produksi tanpa metrik numerik (washing &
 /// broker): hanya mencatat keterangan downtime per bucket jam produksi.
-/// Pola window meniru inject QC: bucket hanya bisa diinput dalam jendela
-/// 1 jam setelah jam-nya berakhir; jika terlewat muncul pesan
-/// "Jam ini sudah lewat dan tidak diinput"; countdown sisa waktu ditampilkan.
+/// Bucket baru bisa diinput setelah jam produksinya berakhir; setelah itu
+/// tidak ada batas waktu — keterangan bisa diinput, diedit, atau dihapus
+/// kapan saja. Bucket yang jamnya belum selesai masih terkunci.
 class QcDowntimeDialog extends StatefulWidget {
   const QcDowntimeDialog({
     super.key,
@@ -71,10 +70,9 @@ class QcDowntimeDialog extends StatefulWidget {
 
 class _QcDowntimeDialogState extends State<QcDowntimeDialog> {
   List<String> _bucketLabels = [];
-  // Waktu window QC bucket ini terbuka (akhir jam bucket + delay).
+  // Waktu bucket boleh diinput (akhir jam bucket + delay). Setelah lewat,
+  // bucket tetap terbuka selamanya — tidak ada penutupan window.
   final Map<String, DateTime> _bucketOpensAt = {};
-  // Waktu window bucket ini tertutup — langsung dari server (QcDowntimeBucket).
-  final Map<String, DateTime> _bucketClosesAt = {};
   final Map<String, QcDowntimeItem?> _submitted = {};
   bool _isLoading = true;
 
@@ -194,39 +192,22 @@ class _QcDowntimeDialogState extends State<QcDowntimeDialog> {
     }
   }
 
-  DateTime? _closesAtFor(String label) {
-    final fromServer = _bucketClosesAt[label];
-    if (fromServer != null) return fromServer;
-    final idx = _bucketLabels.indexOf(label);
-    if (idx == -1) return null;
-    if (idx + 1 < _bucketLabels.length) {
-      return _bucketOpensAt[_bucketLabels[idx + 1]];
-    }
-    return _bucketOpensAt[label]?.add(const Duration(hours: 1));
-  }
-
-  bool _isWithinInputWindow(String label) {
+  // Bucket bisa diinput begitu jam produksinya selesai, tanpa batas waktu
+  // berikutnya — jadi input/edit keterangan downtime bebas kapan saja.
+  bool _isOpenForInput(String label) {
     final opensAt = _bucketOpensAt[label];
     if (opensAt == null) return false;
-    final now = DateTime.now();
-    if (now.isBefore(opensAt)) return false;
-    final closesAt = _closesAtFor(label);
-    if (closesAt != null && !now.isBefore(closesAt)) return false;
-    return true;
+    return !DateTime.now().isBefore(opensAt);
   }
 
   _QcBucketStatus _statusFor(String label) {
     if (_submitted[label] != null) return _QcBucketStatus.submitted;
-    final opensAt = _bucketOpensAt[label];
-    if (opensAt == null) return _QcBucketStatus.locked;
-    if (_isWithinInputWindow(label)) return _QcBucketStatus.available;
-    final now = DateTime.now();
-    if (now.isBefore(opensAt)) return _QcBucketStatus.locked;
-    return _QcBucketStatus.expired;
+    return _isOpenForInput(label)
+        ? _QcBucketStatus.available
+        : _QcBucketStatus.locked;
   }
 
-  // Edit hanya boleh selama window input bucket masih terbuka.
-  bool _canEditBucket(String label) => _isWithinInputWindow(label);
+  bool _canEditBucket(String label) => _isOpenForInput(label);
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
@@ -245,7 +226,6 @@ class _QcDowntimeDialogState extends State<QcDowntimeDialog> {
         _bucketLabels = detail.buckets.map((b) => b.label).toList();
         for (final b in detail.buckets) {
           _bucketOpensAt[b.label] = b.opensAt;
-          _bucketClosesAt[b.label] = b.closesAt;
         }
       } else if (shiftHrStart != null && shiftHrEnd != null) {
         final anchor = _resolveAnchor(shiftHrStart, shiftHrEnd, _tglProduksi);
@@ -261,8 +241,8 @@ class _QcDowntimeDialogState extends State<QcDowntimeDialog> {
       setState(() => _submitted.addAll(map));
     } catch (_) {
       // Fallback bila endpoint gagal total: hitung dari jam yang dikirim
-      // pemanggil (anchor = tglProduksi asli), sehingga status terjatuh ke
-      // "Terlewat" untuk data lampau, bukan "Terkunci".
+      // pemanggil (anchor = tglProduksi asli) agar bucket yang jamnya sudah
+      // selesai tetap bisa diinput.
       if (widget.hourStart != null && widget.hourEnd != null) {
         final anchor = _resolveAnchor(
           widget.hourStart!,
@@ -343,7 +323,6 @@ class _QcDowntimeDialogState extends State<QcDowntimeDialog> {
                           canEdit: _canEditBucket(label),
                           submittedItem: _submitted[label],
                           windowOpensAt: _bucketOpensAt[label],
-                          windowClosesAt: _closesAtFor(label),
                           accent: accent,
                           onCreate: (keterangan) =>
                               widget.create(hourStart, keterangan),
@@ -545,7 +524,6 @@ class _QcBucketRow extends StatefulWidget {
     required this.accent,
     this.submittedItem,
     this.windowOpensAt,
-    this.windowClosesAt,
   });
 
   final String label;
@@ -554,7 +532,6 @@ class _QcBucketRow extends StatefulWidget {
   final bool canEdit;
   final QcDowntimeItem? submittedItem;
   final DateTime? windowOpensAt;
-  final DateTime? windowClosesAt;
   final Color accent;
   final Future<QcDowntimeItem> Function(String keterangan) onCreate;
   final Future<QcDowntimeItem> Function(int id, String keterangan) onUpdate;
@@ -657,7 +634,6 @@ class _QcBucketRowState extends State<_QcBucketRow> {
     final isSubmitted = status == _QcBucketStatus.submitted &&
         (submitted?.id ?? 0) > 0;
     final isSubmittedValid = isSubmitted;
-    final isExpired = status == _QcBucketStatus.expired;
     final isLocked = status == _QcBucketStatus.locked;
 
     final Color bgColor;
@@ -667,10 +643,6 @@ class _QcBucketRowState extends State<_QcBucketRow> {
       bgColor = const Color(0xFFFFFBEB);
       borderColor = _downtimeColor.withValues(alpha: 0.30);
       labelColor = _downtimeColor;
-    } else if (isExpired) {
-      bgColor = const Color(0xFFFEF2F2);
-      borderColor = const Color(0xFFFCA5A5);
-      labelColor = const Color(0xFFDC2626);
     } else if (isLocked) {
       bgColor = const Color(0xFFF9FAFB);
       borderColor = const Color(0xFFE5E7EB);
@@ -697,12 +669,6 @@ class _QcBucketRowState extends State<_QcBucketRow> {
             ),
           ),
         ],
-      );
-    } else if (isExpired) {
-      statusBadge = _iconText(
-        Icons.cancel_outlined,
-        'Terlewat',
-        labelColor,
       );
     } else if (isLocked) {
       statusBadge = _iconText(
@@ -740,8 +706,8 @@ class _QcBucketRowState extends State<_QcBucketRow> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: (isLocked || isExpired) && !isSubmittedValid
-                ? _buildStatusInfo(isExpired)
+            child: isLocked && !isSubmittedValid
+                ? _buildLockedInfo()
                 : _buildFields(isSubmittedValid && !_isEditing ? submitted : null),
           ),
           const SizedBox(width: 8),
@@ -819,8 +785,7 @@ class _QcBucketRowState extends State<_QcBucketRow> {
         ],
       );
     }
-    if (widget.status != _QcBucketStatus.locked &&
-        widget.status != _QcBucketStatus.expired) {
+    if (widget.status != _QcBucketStatus.locked) {
       return _actionBtn(
         icon: Icons.save_outlined,
         label: 'Simpan',
@@ -904,33 +869,7 @@ class _QcBucketRowState extends State<_QcBucketRow> {
     );
   }
 
-  Widget _buildStatusInfo(bool isExpired) {
-    if (isExpired) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFEF2F2),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFFFCA5A5)),
-        ),
-        child: const Row(
-          children: [
-            Icon(
-              Icons.cancel_outlined,
-              size: 13,
-              color: Color(0xFFDC2626),
-            ),
-            SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Jam ini sudah lewat dan tidak diinput',
-                style: TextStyle(fontSize: 11, color: Color(0xFFDC2626)),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+  Widget _buildLockedInfo() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -983,16 +922,6 @@ class _QcBucketRowState extends State<_QcBucketRow> {
           Text(
             _error!,
             style: const TextStyle(fontSize: 10, color: Color(0xFFDC2626)),
-          ),
-        ],
-        if (widget.status == _QcBucketStatus.available &&
-            widget.windowClosesAt != null) ...[
-          const SizedBox(height: 4),
-          _QcWindowCountdown(
-            targetTime: widget.windowClosesAt!,
-            label: 'Tertutup dalam',
-            icon: Icons.timer_outlined,
-            color: const Color(0xFFB45309),
           ),
         ],
       ],

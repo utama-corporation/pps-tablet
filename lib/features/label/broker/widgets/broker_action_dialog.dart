@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/network/endpoints.dart';
 import '../../../../core/network/label_print_lock_api.dart';
 import '../../../../core/services/label_print_sync_queue.dart';
+import '../../../../core/utils/date_formatter.dart';
 import '../../../../core/utils/pdf_print_service.dart';
 import '../../../../core/view_model/label_print_lock_socket_manager.dart';
 import '../../../../core/view_model/permission_view_model.dart';
@@ -270,6 +271,10 @@ class _BrokerActionDialogState extends State<BrokerActionDialog> {
   // ── Panel kiri: QC data ───────────────────────────────────────────────────
 
   Widget _buildQcPanel(bool canQC) {
+    final qcDate = formatDateToShortId(widget.header.dateQc);
+    final qcBy = (widget.header.qcBy ?? '').trim();
+    final hasQcDate = qcDate.isNotEmpty && qcDate != widget.header.dateQc;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -280,7 +285,21 @@ class _BrokerActionDialogState extends State<BrokerActionDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _sectionLabel('Quality Control', Icons.science_outlined),
+                  Row(
+                    children: [
+                      _sectionLabel('Quality Control', Icons.science_outlined),
+                      const Spacer(),
+                      if (hasQcDate)
+                        Text(
+                          qcBy.isEmpty ? qcDate : '$qcDate • $qcBy',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6B778C),
+                          ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   Container(
                     decoration: BoxDecoration(

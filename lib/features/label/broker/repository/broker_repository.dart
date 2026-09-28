@@ -137,6 +137,9 @@ class BrokerRepository {
     return api.putJson('/api/labels/broker/$noBroker', body: body);
   }
 
+  /// Update QC broker (header-only) by NoBroker.
+  /// [dateQc] dikirim sebagai 'yyyy-MM-dd' dan boleh lampau (backdate) —
+  /// server yang memvalidasi agar tidak melebihi hari ini.
   Future<Map<String, dynamic>> updateBrokerQc({
     required String noBroker,
     required double? density1,
@@ -149,6 +152,7 @@ class BrokerRepository {
     required double? minMeltTemp,
     required double? mfi,
     required String? visualNote,
+    DateTime? dateQc,
   }) async {
     final body = <String, dynamic>{
       'header': {
@@ -162,6 +166,7 @@ class BrokerRepository {
         'MinMeltTemp': minMeltTemp,
         'MFI': mfi,
         'VisualNote': visualNote,
+        if (dateQc != null) 'DateQc': toDbDateString(dateQc),
       },
     };
 

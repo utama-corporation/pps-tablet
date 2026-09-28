@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 class QcDialogPalette {
   static const primary = Color(0xFF1565C0);
@@ -169,6 +170,94 @@ class QcDecimalField extends StatelessWidget {
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
       decoration: qcInputDecoration(label: label, suffix: suffix),
     );
+  }
+}
+
+/// Field tanggal (backdate) untuk dialog QC. Default `lastDate` = hari ini
+/// supaya operator tidak bisa menginput QC untuk tanggal di masa depan, tapi
+/// bebas memilih tanggal lampau untuk input QC susulan.
+class QcDateField extends StatelessWidget {
+  final String label;
+  final DateTime value;
+  final ValueChanged<DateTime> onChanged;
+  final String? hintText;
+  final DateTime? firstDate;
+  final DateTime? lastDate;
+  final Locale? locale;
+
+  const QcDateField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.hintText,
+    this.firstDate,
+    this.lastDate,
+    this.locale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _pick(context),
+      child: InputDecorator(
+        decoration: qcInputDecoration(
+          label: label,
+        ).copyWith(
+          helperText: hintText,
+          helperStyle: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: QcDialogPalette.subtleText,
+          ),
+          prefixIcon: const Icon(
+            Icons.event_outlined,
+            size: 18,
+            color: QcDialogPalette.subtleText,
+          ),
+          suffixIcon: const Icon(
+            Icons.arrow_drop_down,
+            size: 20,
+            color: QcDialogPalette.subtleText,
+          ),
+        ),
+        child: Text(
+          DateFormat('dd MMM yyyy', 'id_ID').format(value),
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: QcDialogPalette.text,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final now = DateTime.now();
+    final first = firstDate ?? DateTime(now.year - 5);
+    final last = lastDate ?? now;
+
+    var initial = value;
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
+      helpText: 'Pilih $label',
+      builder: locale == null
+          ? null
+          : (ctx, child) => Localizations.override(
+              context: ctx,
+              locale: locale,
+              child: child!,
+            ),
+    );
+    if (picked != null) onChanged(picked);
   }
 }
 

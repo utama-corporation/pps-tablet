@@ -226,7 +226,9 @@ class WashingRepository {
     throw Exception('Gagal update washing (status: ${resp.statusCode})');
   }
 
-  /// Update QC washing (header-only) by NoWashing
+  /// Update QC washing (header-only) by NoWashing.
+  /// [dateQc] dikirim sebagai 'yyyy-MM-dd' dan boleh lampau (backdate) —
+  /// server yang memvalidasi agar tidak melebihi hari ini.
   Future<Map<String, dynamic>> updateWashingQc({
     required String noWashing,
     required double? density1,
@@ -235,6 +237,7 @@ class WashingRepository {
     required double? moisture1,
     required double? moisture2,
     required double? moisture3,
+    DateTime? dateQc,
   }) async {
     final token = await TokenStorage.getToken();
     final url = Uri.parse(
@@ -249,6 +252,7 @@ class WashingRepository {
         "Moisture": moisture1,
         "Moisture2": moisture2,
         "Moisture3": moisture3,
+        if (dateQc != null) "DateQc": toDbDateString(dateQc),
       },
     };
 

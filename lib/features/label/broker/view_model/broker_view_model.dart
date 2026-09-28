@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/view_model/label_qc_socket_manager.dart';
 import '../model/broker_header_model.dart';
 import '../model/broker_detail_model.dart';
 import '../model/broker_partial_model.dart';
@@ -266,6 +268,7 @@ class BrokerViewModel extends ChangeNotifier {
     required double? minMeltTemp,
     required double? mfi,
     required String? visualNote,
+    DateTime? dateQc,
   }) async {
     try {
       isLoading = true;
@@ -284,9 +287,30 @@ class BrokerViewModel extends ChangeNotifier {
         minMeltTemp: minMeltTemp,
         mfi: mfi,
         visualNote: visualNote,
+        dateQc: dateQc,
       );
 
-      await fetchBrokerHeaders(search: _search);
+      // Patch baris yang sama di tempat (bukan refetch seluruh halaman) supaya
+      // posisi scroll dan highlight pilihan tidak hilang.
+      final idx = items.indexWhere((e) => e.noBroker == noBroker);
+      if (idx >= 0) {
+        final current = items[idx];
+        items[idx] = current.withQc(
+          density: density1,
+          density2: density2,
+          density3: density3,
+          moisture: moisture1,
+          moisture2: moisture2,
+          moisture3: moisture3,
+          maxMeltTemp: maxMeltTemp,
+          minMeltTemp: minMeltTemp,
+          mfi: mfi,
+          visualNote: visualNote,
+          dateQc: dateQc == null ? current.dateQc : toDbDateString(dateQc),
+          qcBy: current.qcBy,
+        );
+      }
+
       setSelectedNoBroker(noBroker);
 
       return res;
@@ -298,6 +322,32 @@ class BrokerViewModel extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Terapkan update QC realtime dari tablet lain. Return true kalau baris
+  ///-nya ada di list yang sedang tampil (jadi ter-highlight hijau).
+  bool applyQcRealtime(LabelQcUpdatedEvent event) {
+    if (event.kind != LabelQcKind.broker) return false;
+
+    final idx = items.indexWhere((e) => e.noBroker == event.noLabel);
+    if (idx < 0) return false;
+
+    items[idx] = items[idx].withQc(
+      density: event.density,
+      density2: event.density2,
+      density3: event.density3,
+      moisture: event.moisture,
+      moisture2: event.moisture2,
+      moisture3: event.moisture3,
+      maxMeltTemp: event.maxMeltTemp,
+      minMeltTemp: event.minMeltTemp,
+      mfi: event.mfi,
+      visualNote: event.visualNote,
+      dateQc: event.dateQc,
+      qcBy: event.updatedBy,
+    );
+    notifyListeners();
+    return true;
   }
 
   Future<bool> deleteWashing(String noBroker) async {

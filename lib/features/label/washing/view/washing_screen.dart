@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../../../../common/widgets/interactive_popover.dart';
 import '../../../../core/services/dialog_service.dart';
 import '../../../../core/services/label_print_sync_queue.dart';
+import '../../../../core/utils/date_formatter.dart';
+import '../../../../core/view_model/label_qc_socket_manager.dart';
 import '../view_model/washing_view_model.dart';
 import '../model/washing_header_model.dart';
 import '../model/washing_detail_model.dart';
@@ -32,6 +34,7 @@ class _WashingTableScreenState extends State<WashingTableScreen> {
   Timer? _debounce;
   LabelPrintSyncQueue? _syncQueue;
   int _lastPendingCount = 0;
+  VoidCallback? _unsubscribeQcUpdated;
 
   // Popover animasi (custom)
   final InteractivePopover _popover = InteractivePopover();
@@ -54,12 +57,37 @@ class _WashingTableScreenState extends State<WashingTableScreen> {
       _syncQueue = context.read<LabelPrintSyncQueue>();
       _lastPendingCount = _syncQueue!.pendingCountFor('washing');
       _syncQueue!.addListener(_onSyncQueueChanged);
+
+      _unsubscribeQcUpdated = context
+          .read<LabelQcSocketManager>()
+          .addQcUpdatedListener(_onQcRealtime);
     });
     _scrollController.addListener(_onScroll);
   }
 
+  /// QC disimpan dari tablet lain — patch baris yang sedang tampil.
+  void _onQcRealtime(LabelQcUpdatedEvent event) {
+    if (!mounted) return;
+    final applied = context.read<WashingViewModel>().applyQcRealtime(event);
+    if (!applied) return;
+
+    final by = (event.updatedBy ?? '').trim();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          content: Text(
+            'QC ${event.noLabel} diperbarui'
+            '${by.isEmpty ? '' : ' oleh $by'}',
+          ),
+        ),
+      );
+  }
+
   @override
   void dispose() {
+    _unsubscribeQcUpdated?.call();
     _syncQueue?.removeListener(_onSyncQueueChanged);
     _popover.dispose();
     _scrollController.dispose();
@@ -198,6 +226,7 @@ class _WashingTableScreenState extends State<WashingTableScreen> {
       moisture1: qc.moisture1,
       moisture2: qc.moisture2,
       moisture3: qc.moisture3,
+      dateQc: qc.dateQc,
     );
 
     DialogService.instance.hideLoading();
@@ -206,7 +235,9 @@ class _WashingTableScreenState extends State<WashingTableScreen> {
     if (res != null) {
       await DialogService.instance.showSuccess(
         title: 'QC Tersimpan',
-        message: 'Nilai QC untuk ${header.noWashing} berhasil diperbarui.',
+        message:
+            'Nilai QC untuk ${header.noWashing} berhasil diperbarui '
+            '(tanggal ${formatDateToShortId(qc.dateQc)}).',
       );
     } else {
       await DialogService.instance.showError(
