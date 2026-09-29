@@ -283,29 +283,52 @@ class _BrokerProductionMesinScreenState
   Future<void> _openQcDialog(BrokerMesinInfo mesin) async {
     if (!mounted || !mesin.hasProduction) return;
     final item = mesin.produksiList.first;
+    await _showQcDialog(
+      noProduksi: item.noProduksi,
+      namaMesin: mesin.namaMesin,
+      shift: item.shift,
+      hourStart: item.hourStart,
+      hourEnd: item.hourEnd,
+      tglProduksi: item.tglProduksi,
+      outputJenisNama: item.outputJenisNama,
+    );
+  }
+
+  /// Dialog input QC downtime. Dipakai baik dari kartu mesin (produksi yang
+  /// sedang berjalan) maupun dari context menu baris riwayat produksi.
+  Future<void> _showQcDialog({
+    required String noProduksi,
+    required String namaMesin,
+    int? shift,
+    String? hourStart,
+    String? hourEnd,
+    DateTime? tglProduksi,
+    String? outputJenisNama,
+  }) async {
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => QcDowntimeDialog(
-        noProduksi: item.noProduksi,
-        namaMesin: mesin.namaMesin,
-        shift: item.shift,
-        hourStart: item.hourStart,
-        hourEnd: item.hourEnd,
-        tglProduksi: item.tglProduksi,
+        noProduksi: noProduksi,
+        namaMesin: namaMesin,
+        shift: shift,
+        hourStart: hourStart,
+        hourEnd: hourEnd,
+        tglProduksi: tglProduksi,
         outputJenisList: [
-          if ((item.outputJenisNama ?? '').trim().isNotEmpty)
-            item.outputJenisNama!.trim(),
+          if ((outputJenisNama ?? '').trim().isNotEmpty)
+            outputJenisNama!.trim(),
         ],
-        fetch: () => _prodRepo.fetchQc(item.noProduksi),
+        fetch: () => _prodRepo.fetchQc(noProduksi),
         create: (hourStart, keterangan) => _prodRepo.createQc(
-          item.noProduksi,
+          noProduksi,
           hourStart: hourStart,
           keterangan: keterangan,
         ),
         update: (id, keterangan) =>
-            _prodRepo.updateQc(item.noProduksi, id, keterangan),
-        delete: (id) => _prodRepo.deleteQc(item.noProduksi, id),
+            _prodRepo.updateQc(noProduksi, id, keterangan),
+        delete: (id) => _prodRepo.deleteQc(noProduksi, id),
       ),
     );
   }
@@ -544,6 +567,15 @@ class _BrokerProductionMesinScreenState
                     }
                     if (mounted) _refreshAll();
                   },
+                  onQc: (row) => _showQcDialog(
+                    noProduksi: row.noProduksi,
+                    namaMesin: row.namaMesin,
+                    shift: row.shift,
+                    hourStart: row.hourStart,
+                    hourEnd: row.hourEnd,
+                    tglProduksi: row.tglProduksi,
+                    outputJenisNama: row.outputJenisNama,
+                  ),
                   onDelete: (row) async {
                     await showDialog<void>(
                       context: context,

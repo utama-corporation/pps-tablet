@@ -215,7 +215,22 @@ class _PenerimaanBahanPendukungLabelListScreenState
     }
   }
 
-  Future<void> _markComplete() async {
+  Future<void> _markComplete(PenerimaanBahanPendukungDetail detail) async {
+    final belumDiprint = detail.items
+        .where((i) => i.hasBeenPrinted <= 0)
+        .length;
+    if (belumDiprint > 0) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => ErrorStatusDialog(
+          title: 'Label Belum Dicetak',
+          message:
+              'Masih ada $belumDiprint label yang belum diprint. Harap print $belumDiprint label lagi untuk menyelesaikan penerimaan ini.',
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -253,7 +268,11 @@ class _PenerimaanBahanPendukungLabelListScreenState
     }
   }
 
-  Widget _buildHeader(PenerimaanBahanPendukung header) {
+  Widget _buildHeader(PenerimaanBahanPendukungDetail detail) {
+    final header = detail.header;
+    final belumDiprint = detail.items
+        .where((i) => i.hasBeenPrinted <= 0)
+        .length;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: const BoxDecoration(
@@ -279,6 +298,17 @@ class _PenerimaanBahanPendukungLabelListScreenState
                   header.noPenerimaan,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
+                if (belumDiprint > 0) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '$belumDiprint label belum diprint',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFD97706),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -308,7 +338,7 @@ class _PenerimaanBahanPendukungLabelListScreenState
             )
           else
             ElevatedButton.icon(
-              onPressed: _markComplete,
+              onPressed: () => _markComplete(detail),
               icon: const Icon(Icons.check_circle_outline, size: 16),
               label: const Text(
                 'Selesai',
@@ -420,9 +450,7 @@ class _PenerimaanBahanPendukungLabelListScreenState
 
           return Column(
             children: [
-              _selectionMode
-                  ? _buildSelectionBar()
-                  : _buildHeader(detail.header),
+              _selectionMode ? _buildSelectionBar() : _buildHeader(detail),
               Expanded(
                 child: items.isEmpty
                     ? Center(

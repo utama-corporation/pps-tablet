@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/utils/number_formatter.dart';
 import '../models/stok_item_data.dart';
 
 /// Dialog rincian label (per pallet/sak) untuk satu item stok,
@@ -214,17 +215,18 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
             SizedBox(
               width: _sakColWidth,
               child: Text(
-                widget.sakColumnLabel,
+                widget.sakColumnLabel.toUpperCase(),
                 style: style,
                 textAlign: TextAlign.right,
               ),
             ),
             const SizedBox(width: 12),
           ],
-          const SizedBox(
-            width: _beratColWidth,
-            child: Text('BERAT', style: style, textAlign: TextAlign.right),
-          ),
+          if(widget.showBeratColumn)
+            const SizedBox(
+              width: _beratColWidth,
+              child: Text('BERAT', style: style, textAlign: TextAlign.right),
+            ),
         ],
       ),
     );
@@ -336,7 +338,7 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
                 SizedBox(
                   width: _sakColWidth,
                   child: Text(
-                    '${label.sakSisa}',
+                    formatThousands(label.sakSisa),
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                       fontSize: 12.5,
@@ -347,10 +349,11 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
                 ),
                 const SizedBox(width: 12),
               ],
+            if(widget.showBeratColumn)
               SizedBox(
                 width: _beratColWidth,
                 child: Text(
-                  '${label.beratSisa.toStringAsFixed(2)} kg',
+                  '${formatThousands(label.beratSisa, decimals: 2)} kg',
                   textAlign: TextAlign.right,
                   style: const TextStyle(
                     fontSize: 12.5,
@@ -359,6 +362,7 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
                   ),
                 ),
               ),
+
             ],
           ),
         );
@@ -394,7 +398,7 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
             SizedBox(
               width: _sakColWidth,
               child: Text(
-                '$totalSak',
+                formatThousands(totalSak),
                 textAlign: TextAlign.right,
                 style: const TextStyle(
                   fontSize: 12.5,
@@ -405,18 +409,20 @@ class _StokItemLabelDialogState<T extends StokItemData, L extends StokLabelData>
             ),
             const SizedBox(width: 12),
           ],
-          SizedBox(
-            width: _beratColWidth,
-            child: Text(
-              '${totalBerat.toStringAsFixed(2)} kg',
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1F2937),
+          if(widget.showBeratColumn)
+            SizedBox(
+              width: _beratColWidth,
+              child: Text(
+                //'${totalBerat.toStringAsFixed(2)} kg',
+                '${formatThousands(totalBerat, decimals: 2)} kg',
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/number_formatter.dart';
 import '../../production/shared/models/bahan_baku_proses_label.dart';
 import '../../production/shared/models/barang_jadi_stok_item.dart';
 import '../../production/shared/models/barang_jadi_stok_label.dart';
@@ -237,8 +238,8 @@ class _StockTotalSummary extends StatelessWidget {
   final StockAmountUnit amountUnit;
 
   String get _amountText => amountUnit == StockAmountUnit.pcs
-      ? '${totalAmount.toStringAsFixed(0)} pcs'
-      : '${totalAmount.toStringAsFixed(2)} kg';
+      ? '${formatThousands(totalAmount)} pcs'
+      : '${formatThousands(totalAmount, decimals: 2)} kg';
 
   @override
   Widget build(BuildContext context) {
@@ -266,7 +267,7 @@ class _StockTotalSummary extends StatelessWidget {
                 Expanded(
                   child: _StockTotalTile(
                     label: 'Jumlah Label',
-                    value: '$totalLabel',
+                    value: formatThousands(totalLabel),
                     icon: Icons.label_outline_rounded,
                   ),
                 ),
@@ -645,7 +646,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
             labelSisaOf: (InjectStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
@@ -675,7 +676,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetWIP),
             labelSisaOf: (InjectStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
@@ -690,7 +691,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: repo.fetchStok,
             fetchLabel: (item) => repo.fetchLabel(item.idCabinetMaterial),
             labelSisaOf: (BahanPendukungStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
@@ -704,7 +705,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'GRANDE'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'GRANDE'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
@@ -719,7 +720,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'HANA'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'HANA'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
@@ -734,7 +735,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'PART KURSI'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'PART KURSI'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
@@ -749,7 +750,67 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             fetchStok: () => repo.fetchStok(type: 'ENAMEL'),
             fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'ENAMEL'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
-            sakColumnLabel: 'pcs',
+            sakColumnLabel: 'Pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiModelux:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Modelux',
+            fetchStok: () => repo.fetchStok(type: 'MODELUX'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'MODELUX'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            sakColumnLabel: 'Pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiMerona:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Merona',
+            fetchStok: () => repo.fetchStok(type: 'MERONA'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'MERONA'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            sakColumnLabel: 'Pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiMoore:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Moore',
+            fetchStok: () => repo.fetchStok(type: 'MOORE'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'MOORE'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            sakColumnLabel: 'Pcs',
+            showBeratColumn: false,
+            amountLabel: 'Total Qty',
+            amountUnit: StockAmountUnit.pcs,
+            oldestDateOf: (item) => item.dateCreateTertua,
+          )
+        ];
+      case StockProsesKey.barangJadiSekar:
+        final repo = PackingProduksiRepository();
+        return [
+          _TypedStockSource<PackingStokItem, PackingStokLabel>(
+            label: 'Packing Produksi Sekar',
+            fetchStok: () => repo.fetchStok(type: 'SEKAR'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'SEKAR'),
+            labelSisaOf: (PackingStokItem item) => item.labelSisa,
+            sakColumnLabel: 'Pcs',
             showBeratColumn: false,
             amountLabel: 'Total Qty',
             amountUnit: StockAmountUnit.pcs,
