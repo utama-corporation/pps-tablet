@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/number_formatter.dart';
 import '../stock_totals.dart';
 
 /// Kartu proses pada grid menu Stock — bergaya sama dengan
@@ -89,13 +90,13 @@ class StockProsesCard extends StatelessWidget {
     }
     final t = totals!;
     final amountText = t.unit == StockAmountUnit.pcs
-        ? '${t.amount.toStringAsFixed(0)} pcs'
-        : '${t.amount.toStringAsFixed(2)} kg';
+        ? '${formatThousands(t.amount)} pcs'
+        : '${formatThousands(t.amount, decimals: 2)} kg';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          '${t.labelSisa} Label',
+          '${formatThousands(t.labelSisa)} Label',
           style: const TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w700,

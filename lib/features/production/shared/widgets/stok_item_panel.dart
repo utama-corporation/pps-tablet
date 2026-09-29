@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/utils/number_formatter.dart';
 import '../models/stok_item_data.dart';
 
 /// Header bar untuk section "Stok Item", konsisten dengan
@@ -143,14 +144,14 @@ class StokItemList<T extends StokItemData> extends StatelessWidget {
         if (showSakColumn && showBeratColumn) {
           qtyLabel = 'Stok';
           qtyValue =
-              '${item.sakSisa} $sakColumnLabel · '
-              '${item.beratSisa.toStringAsFixed(2)} kg';
+              '${formatThousands(item.sakSisa)} $sakColumnLabel · '
+              '${formatThousands(item.beratSisa, decimals: 2)} kg';
         } else if (showBeratColumn) {
           qtyLabel = 'Berat';
-          qtyValue = '${item.beratSisa.toStringAsFixed(2)} kg';
+          qtyValue = '${formatThousands(item.beratSisa, decimals: 2)} kg';
         } else {
           qtyLabel = sakColumnLabel;
-          qtyValue = '${item.sakSisa}';
+          qtyValue = formatThousands(item.sakSisa);
         }
 
         return _StokItemRow(

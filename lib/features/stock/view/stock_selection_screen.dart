@@ -38,26 +38,30 @@ final Map<_StockProsesTitle, List<_StockProsesDef>> _dashboardInventoryData = {
     const _StockProsesDef(key: StockProsesKey.washing, title: 'Washing', icon: Icons.local_laundry_service_outlined),
     const _StockProsesDef(key: StockProsesKey.broker, title: 'Broker', icon: Icons.recycling_outlined),
     const _StockProsesDef(key: StockProsesKey.crusher, title: 'Crusher', icon: Icons.grain_outlined),
-    const _StockProsesDef(key: StockProsesKey.bonggolan, title: 'Bonggolan', icon: Icons.scatter_plot_outlined),
     const _StockProsesDef(key: StockProsesKey.gilingan, title: 'Gilingan', icon: Icons.settings_outlined),
     const _StockProsesDef(key: StockProsesKey.mixer, title: 'Mixer', icon: Icons.blender_outlined),
-    const _StockProsesDef(key: StockProsesKey.reject, title: 'Reject', icon: Icons.report_gmailerrorred_outlined),
-  ],
-  const _StockProsesTitle(title: '3. WIP (Work In Progress)', subtitle: 'Barang Setengah Jadi / Semi-Finished') : [
     const _StockProsesDef(key: StockProsesKey.wipInject, title: 'Inject', icon: Icons.format_paint_outlined),
     const _StockProsesDef(key: StockProsesKey.wipStamping, title: 'Stamping', icon: Icons.layers_outlined),
     const _StockProsesDef(key: StockProsesKey.wipSpanner, title: 'Packing Spanner', icon: Icons.extension_outlined),
   ],
+  //const _StockProsesTitle(title: '3. WIP (Work In Progress)', subtitle: 'Barang Setengah Jadi / Semi-Finished') : [
+
+  //],
+  const _StockProsesTitle(title: '3. Waste', subtitle: 'Sisa Hasil Produksi & Barang Reject') : [
+    const _StockProsesDef(key: StockProsesKey.bonggolan, title: 'Bonggolan', icon: Icons.scatter_plot_outlined),
+    const _StockProsesDef(key: StockProsesKey.reject, title: 'Reject', icon: Icons.report_gmailerrorred_outlined),
+  ],
   const _StockProsesTitle(title: '4. Barang Jadi', subtitle: 'Produk Jadi Siap Kirim / Finish Goods') : [
     const _StockProsesDef(key: StockProsesKey.barangJadiGrande, title: 'Grande', icon: Icons.star_border_outlined),
     const _StockProsesDef(key: StockProsesKey.barangJadiHana, title: 'Hana', icon: Icons.view_in_ar),
-    const _StockProsesDef(key: StockProsesKey.barangJadiKursi, title: 'Kursi', icon: Icons.chair),
-    const _StockProsesDef(key: StockProsesKey.barangJadiEnamel, title: 'Enamel', icon: Icons.fact_check_outlined),
+    const _StockProsesDef(key: StockProsesKey.barangJadiModelux, title: 'Modelux', icon: Icons.weekend_outlined),
+    const _StockProsesDef(key: StockProsesKey.barangJadiMerona, title: 'Merona', icon: Icons.chair_alt_outlined),
+    const _StockProsesDef(key: StockProsesKey.barangJadiMoore, title: 'Moore', icon: Icons.inventory_rounded),
+    const _StockProsesDef(key: StockProsesKey.barangJadiSekar, title: 'Sekar', icon: Icons.dining),
+    //const _StockProsesDef(key: StockProsesKey.barangJadiKursi, title: 'Kursi', icon: Icons.chair),
+    //const _StockProsesDef(key: StockProsesKey.barangJadiEnamel, title: 'Enamel', icon: Icons.fact_check_outlined),
   ]
 };
-
-
-
 
 /// Grid pilihan proses untuk menu Stock — layout meniru grid mesin pada
 /// layar produksi (`WashingProductionMesinScreen` dkk), tapi kartunya

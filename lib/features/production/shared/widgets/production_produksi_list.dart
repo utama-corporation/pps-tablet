@@ -69,6 +69,7 @@ class ProductionProduksiList<T> extends StatefulWidget {
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
+    this.onQc,
     this.showMesin = true,
   });
 
@@ -80,6 +81,10 @@ class ProductionProduksiList<T> extends StatefulWidget {
   final Future<void> Function(T) onTap;
   final Future<void> Function(T) onEdit;
   final Future<void> Function(T) onDelete;
+
+  /// Aksi QC pada baris riwayat produksi. Bila diisi, tombol "QC" muncul di
+  /// context menu long-press; bila null, menu hanya berisi Edit & Hapus.
+  final Future<void> Function(T)? onQc;
   final bool showMesin;
 
   @override
@@ -180,6 +185,9 @@ class _ProductionProduksiListState<T>
                     child: _ContextMenu(
                       onEdit: () => Navigator.of(context).pop('edit'),
                       onDelete: () => Navigator.of(context).pop('hapus'),
+                      onQc: widget.onQc == null
+                          ? null
+                          : () => Navigator.of(context).pop('qc'),
                     ),
                   ),
                 ],
@@ -188,6 +196,7 @@ class _ProductionProduksiListState<T>
               if (mounted) setState(() => _activeIndex = null);
               if (value == 'edit') widget.onEdit(item);
               if (value == 'hapus') widget.onDelete(item);
+              if (value == 'qc') widget.onQc?.call(item);
             },
             onEdit: () => widget.onEdit(item),
             onDelete: () => widget.onDelete(item),
@@ -202,6 +211,7 @@ const _kBlue = Color(0xFF1D4ED8);
 const _kLocked = Color(0xFFF97316);
 const _kGreen = Color(0xFF059669);
 const _kRed = Color(0xFFDC2626);
+const _kTeal = Color(0xFF0D9488);
 const _kYellow = Color(0xFFD97706);
 
 Color _statusColor(String? status) {
@@ -420,16 +430,20 @@ class _ProduksiRowState extends State<_ProduksiRow> {
   }
 }
 
-// ── Context menu (horizontal Edit | Delete) ───────────────────────────────────
+// ── Context menu (horizontal Edit | QC | Delete) ──────────────────────────────
 
 class _ContextMenu extends StatelessWidget {
   const _ContextMenu({
     required this.onEdit,
     required this.onDelete,
+    this.onQc,
   });
 
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+
+  /// Tombol QC hanya dirender bila tidak null.
+  final VoidCallback? onQc;
 
   @override
   Widget build(BuildContext context) {
@@ -467,6 +481,17 @@ class _ContextMenu extends StatelessWidget {
                   onTap: onEdit,
                 ),
                 Container(width: 1, height: 60, color: const Color(0xFFE5E7EB)),
+                if (onQc != null) ...[
+                  _MenuBtn(
+                    icon: Icons.checklist_outlined,
+                    label: 'QC',
+                    color: _kTeal,
+                    isFirst: false,
+                    isLast: false,
+                    onTap: onQc!,
+                  ),
+                  Container(width: 1, height: 60, color: const Color(0xFFE5E7EB)),
+                ],
                 _MenuBtn(
                   icon: Icons.delete_outline,
                   label: 'Hapus',

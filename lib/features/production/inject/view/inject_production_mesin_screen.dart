@@ -24,7 +24,8 @@ import '../view_model/inject_production_view_model.dart';
 import '../widgets/inject_production_delete_dialog.dart';
 import '../widgets/inject_production_form_dialog.dart';
 import '../widgets/inject_qc_dialog.dart';
-import 'inject_production_input_screen.dart';
+//import 'inject_production_input_screen.dart';
+import 'inject_production_input_screen_v3.dart';
 
 class InjectProductionMesinScreen extends StatefulWidget {
   const InjectProductionMesinScreen({super.key});
@@ -145,7 +146,7 @@ class _InjectProductionMesinScreenState
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => InjectProductionInputScreen(noProduksi: noProduksi),
+        builder: (_) => InjectProductionInputScreen(noProduksi: noProduksi) //InjectProductionInputScreen(noProduksi: noProduksi),
       ),
     );
   }

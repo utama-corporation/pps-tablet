@@ -28,6 +28,19 @@ enum SoV2Status {
     }
   }
 
+  /// Nilai yang dikirim balik ke server sebagai query filter `status`
+  /// (kebalikan dari [fromApi]).
+  static String toApiValue(SoV2Status status) {
+    switch (status) {
+      case SoV2Status.notStarted:
+        return 'not_started';
+      case SoV2Status.inProgress:
+        return 'in_progress';
+      case SoV2Status.completed:
+        return 'completed';
+    }
+  }
+
   Color get color {
     switch (this) {
       case SoV2Status.notStarted:

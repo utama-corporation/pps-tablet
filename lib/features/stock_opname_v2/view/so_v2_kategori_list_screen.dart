@@ -4,11 +4,15 @@ import 'package:provider/provider.dart';
 import '../../../common/widgets/confirm_dialog.dart';
 import '../../../common/widgets/loading_dialog.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../production/shared/widgets/production_overlay_drawer.dart';
 import '../model/so_v2_kategori.dart';
+import '../model/so_v2_riwayat_sesi.dart';
 import '../view_model/so_v2_kategori_list_view_model.dart';
+import '../view_model/so_v2_riwayat_view_model.dart';
 import '../view_model/so_v2_socket_manager.dart';
 import '../widgets/so_v2_generate_preview_dialog.dart';
 import '../widgets/so_v2_period_picker_dialog.dart';
+import '../widgets/so_v2_riwayat_panel.dart';
 import 'so_v2_detail_screen.dart';
 
 const _kSurface = Color(0xFFF8F9FB);
@@ -25,6 +29,12 @@ class SoV2KategoriListScreen extends StatefulWidget {
 
 class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
   late final SoV2KategoriListViewModel _vm;
+
+  /// State terpisah untuk panel riwayat supaya grid utama tetap live dan
+  /// full width saat panel dibuka.
+  late final SoV2RiwayatViewModel _riwayatVm;
+  bool _isRiwayatExpanded = false;
+
   final Set<String> _joinedRooms = {};
   VoidCallback? _unsubscribeHasilInserted;
   VoidCallback? _unsubscribeHasilDeleted;
@@ -33,6 +43,7 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
   void initState() {
     super.initState();
     _vm = SoV2KategoriListViewModel();
+    _riwayatVm = SoV2RiwayatViewModel();
     _vm.addListener(_syncSocketRooms);
     _vm.load();
 
@@ -55,6 +66,7 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
     }
     _vm.removeListener(_syncSocketRooms);
     _vm.dispose();
+    _riwayatVm.dispose();
     super.dispose();
   }
 
@@ -103,6 +115,32 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
     );
     if (period == null) return;
     _vm.loadRiwayat(year: period.year, month: period.month);
+  }
+
+  /// Buka/tutup panel riwayat dari tab mengambang di tepi kanan. Isi panel
+  /// (dan paging-nya) baru dibuat saat terbuka, jadi tidak ada request
+  /// selama pengguna tidak pernah membuka riwayat.
+  void _toggleRiwayatPanel() {
+    setState(() => _isRiwayatExpanded = !_isRiwayatExpanded);
+  }
+
+  /// Ketuk kartu sesi riwayat → buka layar detail sesi tersebut. Layar
+  /// detail punya aksi sendiri (scan/hapus/complete), jadi setelah
+  /// keluar dari sana kedua data dimuat ulang.
+  Future<void> _openRiwayatSesi(SoV2RiwayatSesi sesi) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SoV2DetailScreen(
+          stockOpnameNo: sesi.stockOpnameNo,
+          categoryCode: sesi.categoryCode,
+          categoryName: sesi.categoryName,
+        ),
+      ),
+    );
+    if (mounted) {
+      _vm.load();
+      _riwayatVm.refresh();
+    }
   }
 
   Future<void> _onTapKategori(SoV2Kategori kategori) async {
@@ -315,30 +353,55 @@ class _SoV2KategoriListScreenState extends State<SoV2KategoriListScreen> {
         builder: (context, vm, _) {
           return Scaffold(
             backgroundColor: _kSurface,
-            body: Stack(
-              children: [
-                Positioned.fill(
-                  child: RefreshIndicator(
-                    onRefresh: () => vm.isRiwayatMode
-                        ? vm.loadRiwayat(
-                            year: vm.riwayatPeriod!.year,
-                            month: vm.riwayatPeriod!.month,
-                          )
-                        : vm.load(),
-                    child: _buildBody(vm),
+            body: LayoutBuilder(
+              builder: (context, c) => Stack(
+                children: [
+                  Positioned.fill(
+                    child: RefreshIndicator(
+                      onRefresh: () => vm.isRiwayatMode
+                          ? vm.loadRiwayat(
+                              year: vm.riwayatPeriod!.year,
+                              month: vm.riwayatPeriod!.month,
+                            )
+                          : vm.load(),
+                      child: _buildBody(vm),
+                    ),
                   ),
-                ),
-                const Positioned(top: 16, left: 16, child: _StatusLegend()),
-                Positioned(
-                  top: 12,
-                  right: 16,
-                  child: _RiwayatFilterChip(
-                    period: vm.riwayatPeriod,
-                    onTap: _openRiwayat,
-                    onClear: vm.load,
+                  const Positioned(top: 16, left: 16, child: _StatusLegend()),
+                  Positioned(
+                    top: 12,
+                    right: 16,
+                    child: _RiwayatFilterChip(
+                      period: vm.riwayatPeriod,
+                      onTap: _openRiwayat,
+                      onClear: vm.load,
+                    ),
                   ),
-                ),
-              ],
+                  // ── Panel riwayat (buka/tutup dari tepi kanan) ─────
+                  // Sengaja overlay, bukan Row: grid kategori tetap
+                  // full width & live meski panel sedang terbuka.
+                  Positioned.fill(
+                    child: ChangeNotifierProvider<SoV2RiwayatViewModel>.value(
+                      value: _riwayatVm,
+                      child: Consumer<SoV2RiwayatViewModel>(
+                        builder: (context, riwayat, _) =>
+                            ProductionOverlayDrawer(
+                              isOpen: _isRiwayatExpanded,
+                              onClose: _toggleRiwayatPanel,
+                              onOpen: _toggleRiwayatPanel,
+                              width: c.maxWidth * 0.4,
+                              child: SoV2RiwayatPanel(
+                                vm: riwayat,
+                                isOpen: _isRiwayatExpanded,
+                                onClose: _toggleRiwayatPanel,
+                                onOpenSesi: _openRiwayatSesi,
+                              ),
+                            ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },

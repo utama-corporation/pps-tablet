@@ -8,6 +8,7 @@ import '../model/so_v2_generate_preview.dart';
 import '../model/so_v2_kategori.dart';
 import '../model/so_v2_lokasi_page.dart';
 import '../model/so_v2_label_page.dart';
+import '../model/so_v2_riwayat_sesi.dart';
 import '../model/so_v2_scan_summary.dart';
 
 class SoV2Repository {
@@ -58,6 +59,60 @@ class SoV2Repository {
 
   Future<void> deleteStockOpname(String stockOpnameNo) async {
     await _api.deleteJson('/api/stock-opname-v2/transaksi/$stockOpnameNo');
+  }
+
+  /// Daftar riwayat SELURUH sesi stock opname (bukan per kategori) dengan
+  /// paging server-side. Query opsional: `search` (no. SO / kategori) dan
+  /// `status` (not_started / in_progress / completed). Kalau endpoint ini
+  /// belum diimplementasikan di server, balasannya 404 dan exception
+  /// dilempar dengan pesan ramah supaya tampil apa adanya di panel.
+  Future<SoV2RiwayatPage> fetchRiwayat({
+    required int page,
+    int pageSize = 20,
+    String? search,
+    SoV2Status? status,
+  }) async {
+    try {
+      final body = await _api.getJson(
+        '/api/stock-opname-v2/transaksi',
+        query: {
+          'page': page,
+          'pageSize': pageSize,
+          if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+          if (status != null) 'status': SoV2Status.toApiValue(status),
+        },
+      );
+      final data = body['data'];
+      if (data is Map<String, dynamic>) {
+        return SoV2RiwayatPage.fromJson(data);
+      }
+      // Beberapa handler membungkus page di dalam `data` sebagai array polos
+      // tanpa meta paging — tetap bisa ditampilkan, cuma tanpa tombol
+      // "muat lagi".
+      if (data is List) {
+        return SoV2RiwayatPage(
+          data: data
+              .map(
+                (e) => SoV2RiwayatSesi.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
+              .toList(),
+          currentPage: page,
+          pageSize: pageSize,
+          totalRecords: data.length,
+          totalPages: 1,
+        );
+      }
+      throw Exception('Response tidak mengandung data');
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        throw Exception(
+          'Endpoint riwayat stock opname belum tersedia di server',
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<SoV2BlokPage> fetchBlok({required String stockOpnameNo}) async {
