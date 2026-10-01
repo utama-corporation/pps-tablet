@@ -9,11 +9,16 @@ class ProductionFilterChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.selectedColor = const Color(0xFF1D4ED8),
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Warna saat aktif. Default biru; layar beraccent lain bisa mengoverride
+  /// supaya chip menyatu dengan tema halaman tersebut.
+  final Color selectedColor;
 
   @override
   Widget build(BuildContext context) {
@@ -23,11 +28,10 @@ class ProductionFilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1D4ED8) : const Color(0xFFF3F4F6),
+          color: selected ? selectedColor : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color:
-                selected ? const Color(0xFF1D4ED8) : const Color(0xFFD1D5DB),
+            color: selected ? selectedColor : const Color(0xFFD1D5DB),
           ),
         ),
         child: Text(

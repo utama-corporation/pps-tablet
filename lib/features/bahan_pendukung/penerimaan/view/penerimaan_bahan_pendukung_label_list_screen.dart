@@ -8,6 +8,7 @@ import '../../../../common/widgets/success_status_dialog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/endpoints.dart';
 import '../../../../core/utils/pdf_print_service.dart';
+import '../../../production/shared/widgets/production_filter_chip.dart';
 import '../../../production/shared/widgets/production_inline_stat.dart';
 import '../../../production/shared/widgets/production_output_detail_dialog.dart';
 import '../model/penerimaan_bahan_pendukung_model.dart';
@@ -15,6 +16,28 @@ import '../repository/penerimaan_bahan_pendukung_repository.dart';
 import '../widgets/penerimaan_bahan_pendukung_item_form_dialog.dart';
 
 const _kAccent = Color(0xFF00897B);
+
+/// Filter tampilan label berdasarkan status cetak. Sengaja client-side saja:
+/// satu penerimaan biasanya kecil dan seluruh item sudah terambil di
+/// fetchDetail(), jadi tidak perlu round-trip ke server.
+enum _PrintFilter {
+  all('Semua'),
+  unprinted('Belum Dicetak'),
+  printed('Sudah Dicetak');
+
+  const _PrintFilter(this.label);
+
+  final String label;
+
+  bool matches(PenerimaanBahanPendukungItem item) => switch (this) {
+    _PrintFilter.all => true,
+    _PrintFilter.unprinted => item.hasBeenPrinted <= 0,
+    _PrintFilter.printed => item.hasBeenPrinted > 0,
+  };
+
+  int count(List<PenerimaanBahanPendukungItem> items) =>
+      items.where(matches).length;
+}
 
 class PenerimaanBahanPendukungLabelListScreen extends StatefulWidget {
   final String noPenerimaan;
@@ -36,6 +59,8 @@ class _PenerimaanBahanPendukungLabelListScreenState
 
   bool _selectionMode = false;
   final Set<String> _selectedCodes = {};
+
+  _PrintFilter _printFilter = _PrintFilter.all;
 
   @override
   void initState() {
@@ -77,6 +102,61 @@ class _PenerimaanBahanPendukungLabelListScreenState
       _selectionMode = false;
       _selectedCodes.clear();
     });
+  }
+
+  /// Ganti filter cetak. Selection mode ikut direset supaya bulk delete/print
+  /// tidak ikut menyasar label yang sedang tersembunyi di balik filter.
+  void _setPrintFilter(_PrintFilter filter) {
+    if (_printFilter == filter) return;
+    setState(() {
+      _printFilter = filter;
+      _selectionMode = false;
+      _selectedCodes.clear();
+    });
+  }
+
+  Widget _buildFilterBar(List<PenerimaanBahanPendukungItem> allItems) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
+      child: Row(
+        children: [
+          for (final filter in _PrintFilter.values) ...[
+            if (filter != _PrintFilter.values.first) const SizedBox(width: 6),
+            ProductionFilterChip(
+              label: '${filter.label} (${filter.count(allItems)})',
+              selected: _printFilter == filter,
+              selectedColor: _kAccent,
+              onTap: () => _setPrintFilter(filter),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(List<PenerimaanBahanPendukungItem> allItems) {
+    if (allItems.isEmpty) {
+      return Center(
+        child: Text(
+          'Belum ada barang',
+          style: TextStyle(color: Colors.grey.shade500),
+        ),
+      );
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          'Tidak ada label "${_printFilter.label}"',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey.shade500),
+        ),
+      ),
+    );
   }
 
   Future<void> _bulkDelete() async {
@@ -446,19 +526,16 @@ class _PenerimaanBahanPendukungLabelListScreenState
           }
 
           final detail = snapshot.data!;
-          final items = detail.items;
+          final allItems = detail.items;
+          final items = allItems.where(_printFilter.matches).toList();
 
           return Column(
             children: [
               _selectionMode ? _buildSelectionBar() : _buildHeader(detail),
+              if (!_selectionMode) _buildFilterBar(allItems),
               Expanded(
                 child: items.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Belum ada barang',
-                          style: TextStyle(color: Colors.grey.shade500),
-                        ),
-                      )
+                    ? _buildEmptyState(allItems)
                     : Padding(
                         padding: const EdgeInsets.all(16),
                         child: LayoutBuilder(

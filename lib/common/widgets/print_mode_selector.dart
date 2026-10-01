@@ -38,16 +38,23 @@ extension PrintModeX on PrintMode {
 /// Kolom "Jumlah label" hanya muncul saat mode [PrintMode.quick].
 /// [repeatCountCtrl] dimiliki pemanggil supaya nilai jumlah label tetap
 /// terbaca setelah dialog ditutup.
+///
+/// Mode di [disabledModes] tampil mati (tidak bisa dipilih) dengan
+/// [disabledReason] sebagai penjelas lewat tooltip.
 class PrintModeSelector extends StatelessWidget {
   final PrintMode value;
   final TextEditingController repeatCountCtrl;
   final ValueChanged<PrintMode> onChanged;
+  final Set<PrintMode> disabledModes;
+  final String? disabledReason;
 
   const PrintModeSelector({
     super.key,
     required this.value,
     required this.repeatCountCtrl,
     required this.onChanged,
+    this.disabledModes = const {},
+    this.disabledReason,
   });
 
   /// Jumlah label untuk mode Quick, dibatasi 1..99.
@@ -152,16 +159,22 @@ class PrintModeSelector extends StatelessWidget {
 
   Widget _buildChip(PrintMode mode) {
     final selected = value == mode;
-    return GestureDetector(
-      onTap: () => _handleTap(mode),
+    final disabled = disabledModes.contains(mode) && !selected;
+
+    final chip = GestureDetector(
+      onTap: disabled ? null : () => _handleTap(mode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         decoration: BoxDecoration(
-          color: selected ? Colors.blue.shade700 : Colors.white,
+          color: disabled
+              ? Colors.grey.shade100
+              : (selected ? Colors.blue.shade700 : Colors.white),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: selected ? Colors.blue.shade700 : Colors.blue.shade300,
+            color: disabled
+                ? Colors.grey.shade200
+                : (selected ? Colors.blue.shade700 : Colors.blue.shade300),
           ),
         ),
         child: Column(
@@ -170,7 +183,9 @@ class PrintModeSelector extends StatelessWidget {
             Icon(
               mode.icon,
               size: 18,
-              color: selected ? Colors.white : Colors.blue.shade600,
+              color: disabled
+                  ? Colors.grey.shade400
+                  : (selected ? Colors.white : Colors.blue.shade600),
             ),
             const SizedBox(height: 4),
             Text(
@@ -179,12 +194,18 @@ class PrintModeSelector extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? Colors.white : Colors.blue.shade800,
+                color: disabled
+                    ? Colors.grey.shade400
+                    : (selected ? Colors.white : Colors.blue.shade800),
               ),
             ),
           ],
         ),
       ),
     );
+
+    if (!disabled) return chip;
+    final reason = disabledReason;
+    return reason == null ? chip : Tooltip(message: reason, child: chip);
   }
 }

@@ -2,8 +2,17 @@
 //
 // Dialog tambah 1 barang ("label") barang dagang — langsung menyimpan ke
 // server lewat addItems(). Nama barang diambil dari master MstBarangDagang
-// (dropdown, tidak di-scope per warehouse). Supplier + Qty + Keterangan
-// diisi manual.
+// (dropdown, tidak di-scope per warehouse). Keterangan diisi manual.
+//
+// Aturan Qty — sumber kebenaran MstBarangDagang.PcsPerLabel ("isipcs master"):
+//  • Field di-prefill dengan isipcs master saat nama barang dipilih.
+//  • Qty BEBAS diisi kapan saja selama belum ada label tersimpan yang
+//    menyimpang dari master.
+//  • Begitu ada satu label dengan qty ≠ master, input berikutnya untuk nama
+//    barang yang sama terkunci (readOnly) dan WAJIB memakai isipcs master.
+//  • Selama qty masih deviasi, mode Multiple/Quick dinonaktifkan — kalau tidak
+//    satu angka deviasi akan terduplikasi ke puluhan label sekaligus.
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -50,6 +59,13 @@ class _PenerimaanBarangDagangItemFormDialogState
   String? _loadMaterialsError;
   List<BarangDagangMasterItem> _materials = const [];
 
+  // Qty label yang sudah tersimpan per IdBarangDagang. Dipakai untuk
+  // mendeteksi apakah SUDAH ADA label yang menyimpang dari isipcs master —
+  // kalau ada, input berikutnya untuk nama barang itu dikunci ke master.
+  Map<int, List<double>> _savedQtyByMaterial = const {};
+  bool _isLoadingSavedQty = false;
+  bool _qtyTouchedByUser = false;
+
   // ── Mode cetak ──
   PrintMode _printMode = PrintMode.single;
   late final TextEditingController _repeatCountCtrl;
@@ -60,6 +76,7 @@ class _PenerimaanBarangDagangItemFormDialogState
     _repeatCountCtrl = TextEditingController(text: '1');
     _repo = PenerimaanBarangDagangRepository(api: context.read<ApiClient>());
     _loadMaterials();
+    _loadSavedQty();
   }
 
   @override
@@ -96,10 +113,148 @@ class _PenerimaanBarangDagangItemFormDialogState
     }
   }
 
+  /// Isipcs master (MstBarangDagang.PcsPerLabel) — sumber kebenaran qty.
+  /// Null = master tidak punya isipcs, jadi tidak ada yang bisa dikunci.
+  double? get _masterQty {
+    final pcs = _selectedMaterial?.pcsPerLabel;
+    if (pcs == null || pcs <= 0) return null;
+    return pcs.toDouble();
+  }
+
+  /// Qty label tersimpan untuk nama barang terpilih yang menyimpang dari
+  /// isipcs master. Kosong = belum pernah menyimpang.
+  List<double> get _deviatingSavedQty {
+    final id = _selectedMaterial?.idBarangDagang;
+    final master = _masterQty;
+    if (id == null || master == null) return const [];
+    return (_savedQtyByMaterial[id] ?? const <double>[])
+        .where((q) => (q - master).abs() > 0.000001)
+        .toList(growable: false);
+  }
+
+  /// Field bebas diisi KAPAN SAJA — terkunci hanya setelah ada label tersimpan
+  /// yang qty-nya berbeda dari isipcs master. Tanpa isipcs master tidak ada
+  /// acuan, jadi tidak pernah terkunci.
+  bool get _isQtyLocked => _deviatingSavedQty.isNotEmpty;
+
+  double? get _qtyValue =>
+      double.tryParse(_qtyCtrl.text.trim().replaceAll(',', '.'));
+
+  /// Qty yang benar-benar dikirim: kalau terkunci, paksa isipcs master dan
+  /// abaikan isi controller.
+  double? get _effectiveQty => _isQtyLocked ? _masterQty : _qtyValue;
+
+  bool get _qtyDeviatesFromMaster {
+    final master = _masterQty;
+    final value = _qtyValue;
+    if (master == null || value == null) return false;
+    return (master - value).abs() > 0.000001;
+  }
+
+  PrintMode get _effectivePrintMode =>
+      _qtyDeviatesFromMaster ? PrintMode.single : _printMode;
+
+  /// Mode yang mati saat qty deviasi dari isipcs master. Kalau tidak, satu
+  /// angka deviasi akan langsung diduplikasi jadi puluhan label — padahal
+  /// hanya boleh ada satu label menyimpang per nama barang.
+  Set<PrintMode> get _blockedPrintModes => _qtyDeviatesFromMaster
+      ? const {PrintMode.multiple, PrintMode.quick}
+      : const {};
+
+  String? get _printModeBlockedReason {
+    if (!_qtyDeviatesFromMaster) return null;
+    final master = _masterQty!;
+    final value = _qtyValue!;
+    return 'Qty $value PCS berbeda dari isipcs master '
+        '(${_fmtQtyInput(master)} PCS). Multiple dan Quick hanya bisa dipakai '
+        'kalau qty sama dengan master, supaya hanya satu label yang boleh '
+        'berbeda dari master.';
+  }
+
+  Widget _buildPrintModeNotice() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 15, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Mode Multiple & Quick dinonaktifkan selama qty berbeda dari '
+              'isipcs master, supaya hanya satu label yang menyimpang. '
+              'Kembalikan qty ke ${_fmtQtyInput(_masterQty!)} PCS untuk '
+              'mengaktifkan lagi.',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.4,
+                color: Colors.amber.shade900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _fmtQtyInput(double v) {
+    if (v == v.roundToDouble() && v.abs() < 1e15) return v.toInt().toString();
+    return v.toString();
+  }
+
+  /// Isi field qty dari isipcs master. Nilai yang ditampilkan tetap master —
+  /// bukan hasil pengisian label sebelumnya.
+  void _applyQtyForMaterial(BarangDagangMasterItem? material) {
+    if (material == null) {
+      _qtyCtrl.clear();
+      return;
+    }
+    final pcs = material.pcsPerLabel;
+    _qtyCtrl.text = (pcs != null && pcs > 0) ? _fmtQtyInput(pcs.toDouble()) : '';
+  }
+
+  /// Kumpulkan qty label tersimpan per nama barang. Dipakai untuk
+  /// mendeteksi apakah sudah ada label yang menyimpang dari isipcs master —
+  /// kalau sudah ada, input berikutnya untuk barang itu wajib master.
+  /// Gagal load tidak memblokir form, qty tetap bisa diisi bebas.
+  Future<void> _loadSavedQty() async {
+    setState(() => _isLoadingSavedQty = true);
+    try {
+      final detail = await _repo.fetchDetail(widget.noPenerimaan);
+      if (!mounted) return;
+      final map = <int, List<double>>{};
+      for (final item in detail.items) {
+        if (item.idBarangDagang <= 0 || item.qty <= 0) continue;
+        (map[item.idBarangDagang] ??= []).add(item.qty);
+      }
+      setState(() {
+        _savedQtyByMaterial = map;
+        _isLoadingSavedQty = false;
+        final material = _selectedMaterial;
+        if (material == null) return;
+        // Kalau sudah terkunci, master yang menang. Kalau belum, jangan
+        // menimpa angka yang sudah diketik user.
+        if (_isQtyLocked || !_qtyTouchedByUser) {
+          _applyQtyForMaterial(material);
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingSavedQty = false);
+    }
+  }
+
   void _onMaterialSelected(BarangDagangMasterItem? material) {
     setState(() {
       _selectedMaterial = material;
       _saveError = null;
+      _qtyTouchedByUser = false;
+      _applyQtyForMaterial(material);
     });
   }
 
@@ -108,13 +263,17 @@ class _PenerimaanBarangDagangItemFormDialogState
   /// Memakai data form yang sedang terisi supaya tombol "BUAT LABEL BARU
   /// (DATA SAMA)" di dialog Multiple dan loop Quick mengulang label identik.
   Future<String> _createLabel() async {
+    final qty = _effectiveQty;
+    if (qty == null || qty <= 0) {
+      throw Exception('Qty wajib diisi dan harus > 0.');
+    }
     final codes = await _repo.addItems(
       noPenerimaan: widget.noPenerimaan,
       items: [
         PenerimaanBarangDagangItemInput(
           idSupplier: _selectedSupplierId!,
           idBarangDagang: _selectedMaterial!.idBarangDagang,
-          qty: double.parse(_qtyCtrl.text.trim().replaceAll(',', '.')),
+          qty: qty,
           keterangan: _keteranganCtrl.text,
         ),
       ],
@@ -210,11 +369,12 @@ class _PenerimaanBarangDagangItemFormDialogState
       setState(() => _saveError = 'Nama barang wajib dipilih dari daftar.');
       return;
     }
-    final qty = double.tryParse(_qtyCtrl.text.trim().replaceAll(',', '.'));
+    final qty = _effectiveQty;
     if (qty == null || qty <= 0) {
       setState(() => _saveError = 'Qty wajib diisi dan harus > 0.');
       return;
     }
+    final materialId = _selectedMaterial!.idBarangDagang;
 
     setState(() {
       _isSaving = true;
@@ -227,7 +387,7 @@ class _PenerimaanBarangDagangItemFormDialogState
         items: [
           PenerimaanBarangDagangItemInput(
             idSupplier: _selectedSupplierId!,
-            idBarangDagang: _selectedMaterial!.idBarangDagang,
+            idBarangDagang: materialId,
             qty: qty,
             keterangan: _keteranganCtrl.text,
           ),
@@ -235,7 +395,22 @@ class _PenerimaanBarangDagangItemFormDialogState
       );
 
       if (!mounted) return;
-      setState(() => _isSaving = false);
+      // Simpan qty ini sebagai "riwayat" supaya input berikutnya tahu kalau
+      // sudah ada label yang menyimpang dari master → input setelahnya wajib
+      // master. Kalau qtynya sendiri sudah sama dengan master, field tetap
+      // bebas.
+      setState(() {
+        _isSaving = false;
+        _savedQtyByMaterial = {
+          ..._savedQtyByMaterial,
+          materialId: [
+            ...?_savedQtyByMaterial[materialId],
+            qty,
+          ],
+        };
+        _qtyCtrl.text = _fmtQtyInput(_effectiveQty ?? qty);
+        _qtyTouchedByUser = false;
+      });
 
       if (codes.isEmpty) {
         // Server tidak mengembalikan kode — label tetap tersimpan, tapi kita
@@ -247,9 +422,9 @@ class _PenerimaanBarangDagangItemFormDialogState
             message: 'Barang berhasil ditambahkan.',
           ),
         );
-      } else if (_printMode == PrintMode.quick) {
+      } else if (_effectivePrintMode == PrintMode.quick) {
         await _showAutoRepeatDialog(codes.first);
-      } else if (_printMode == PrintMode.multiple) {
+      } else if (_effectivePrintMode == PrintMode.multiple) {
         await _showAutoPrintDialog(codes);
       } else {
         await showDialog<void>(
@@ -297,10 +472,16 @@ class _PenerimaanBarangDagangItemFormDialogState
                     _buildFields(),
                     const SizedBox(height: 16),
                     PrintModeSelector(
-                      value: _printMode,
+                      value: _effectivePrintMode,
                       repeatCountCtrl: _repeatCountCtrl,
                       onChanged: (mode) => setState(() => _printMode = mode),
+                      disabledModes: _blockedPrintModes,
+                      disabledReason: _printModeBlockedReason,
                     ),
+                    if (_printModeBlockedReason != null) ...[
+                      const SizedBox(height: 8),
+                      _buildPrintModeNotice(),
+                    ],
                   ],
                 ),
               ),
@@ -365,24 +546,7 @@ class _PenerimaanBarangDagangItemFormDialogState
         const SizedBox(height: 12),
         _buildMaterialDropdown(),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _qtyCtrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
-          onChanged: (_) => setState(() => _saveError = null),
-          decoration: InputDecoration(
-            labelText: 'Qty (PCS)',
-            prefixIcon: const Icon(Icons.numbers_outlined, size: 20),
-            isDense: true,
-            filled: true,
-            fillColor: Colors.grey.shade50,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 10,
-            ),
-          ),
-        ),
+        _buildQtyField(),
         const SizedBox(height: 12),
         TextFormField(
           controller: _keteranganCtrl,
@@ -401,6 +565,79 @@ class _PenerimaanBarangDagangItemFormDialogState
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildQtyField() {
+    final locked = _isQtyLocked;
+    final master = _masterQty;
+    final deviating = _deviatingSavedQty;
+
+    final String? helperText;
+    final Color fillColor;
+    if (locked) {
+      helperText =
+          'Terkunci — sudah ada ${deviating.length} label '
+          '(${_fmtQtyInput(deviating.first)} PCS) yang berbeda dari isipcs '
+          'master, jadi input berikutnya wajib ${_fmtQtyInput(master!)} PCS.';
+      fillColor = Colors.grey.shade100;
+    } else if (_isLoadingSavedQty) {
+      helperText = 'Memuat data label sebelumnya...';
+      fillColor = Colors.grey.shade50;
+    } else if (master != null) {
+      helperText =
+          'Isipcs master: ${_fmtQtyInput(master)} PCS. Bebas diisi selama '
+          'semua label sama dengan master.';
+      fillColor = _qtyDeviatesFromMaster
+          ? Colors.amber.shade50
+          : Colors.grey.shade50;
+    } else {
+      helperText = 'Master tidak punya isipcs — isi bebas kapan saja.';
+      fillColor = Colors.grey.shade50;
+    }
+
+    return TextFormField(
+      controller: _qtyCtrl,
+      readOnly: locked,
+      keyboardType: locked
+          ? TextInputType.number
+          : const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: locked
+          ? const <TextInputFormatter>[]
+          : [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      onChanged: (_) => setState(() {
+        _saveError = null;
+        _qtyTouchedByUser = true;
+      }),
+      decoration: InputDecoration(
+        labelText: 'Qty (PCS)',
+        helperText: helperText,
+        helperMaxLines: 3,
+        helperStyle: TextStyle(
+          fontSize: 10.5,
+          height: 1.35,
+          color: locked ? Colors.grey.shade600 : Colors.grey.shade500,
+        ),
+        prefixIcon: const Icon(Icons.numbers_outlined, size: 20),
+        suffixIcon: locked
+            ? Tooltip(
+                message: 'Qty terkunci ke isipcs master, tidak bisa diubah',
+                child: Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: Colors.grey.shade500,
+                ),
+              )
+            : null,
+        isDense: true,
+        filled: true,
+        fillColor: fillColor,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
+      ),
     );
   }
 

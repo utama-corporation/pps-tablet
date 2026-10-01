@@ -10,6 +10,10 @@ class CabinetMaterialItem {
   final int? IdWarehouse;
   final String? NamaWarehouse;
 
+  // Isipcs master (dbo.MstCabinetMaterial.PcsPerLabel) — dipakai sebagai
+  // acuan qty di form penerimaan bahan pendukung. Null/0 = tidak ada acuan.
+  final num? PcsPerLabel;
+
   // ===== LABEL BAHAN PENDUKUNG (hasil scan BP.) =====
   // Diisi untuk baris existing dari GET inputs (kolom NoBahanPendukung, bisa
   // string dipisah koma atau array) dan kosong untuk baris temp.
@@ -40,6 +44,7 @@ class CabinetMaterialItem {
     this.NamaUOM,
     this.IdWarehouse,
     this.NamaWarehouse,
+    this.PcsPerLabel,
     this.TglSaldoAwal,
     this.noBahanPendukung = const <String>[],
     this.SaldoAwal,
@@ -124,6 +129,7 @@ class CabinetMaterialItem {
 
       IdWarehouse: pickI(j, ['IdWarehouse', 'idWarehouse']),
       NamaWarehouse: pickS(j, ['NamaWarehouse', 'namaWarehouse']),
+      PcsPerLabel: pickN(j, ['PcsPerLabel', 'pcsPerLabel']),
       TglSaldoAwal: pickDT(j, ['TglSaldoAwal', 'tglSaldoAwal']),
       noBahanPendukung: _parseNoBahanPendukung(
         j['noBahanPendukung'] ?? j['NoBahanPendukung'],
@@ -152,6 +158,7 @@ class CabinetMaterialItem {
     String? NamaUOM,
     int? IdWarehouse,
     String? NamaWarehouse,
+    num? PcsPerLabel,
     DateTime? TglSaldoAwal,
     List<String>? noBahanPendukung,
     num? SaldoAwal,
@@ -174,6 +181,7 @@ class CabinetMaterialItem {
       NamaUOM: NamaUOM ?? this.NamaUOM,
       IdWarehouse: IdWarehouse ?? this.IdWarehouse,
       NamaWarehouse: NamaWarehouse ?? this.NamaWarehouse,
+      PcsPerLabel: PcsPerLabel ?? this.PcsPerLabel,
       TglSaldoAwal: TglSaldoAwal ?? this.TglSaldoAwal,
       noBahanPendukung: noBahanPendukung ?? this.noBahanPendukung,
       SaldoAwal: SaldoAwal ?? this.SaldoAwal,
