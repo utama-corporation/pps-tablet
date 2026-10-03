@@ -277,7 +277,9 @@ class _OutputCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 if (entry.totalBerat > 0)
                   Text(
-                    '${nf.format(entry.totalBerat)} kg',
+                    vm.isPcsCategory
+                        ? '${entry.totalBerat.toStringAsFixed(0)} pcs'
+                        : '${nf.format(entry.totalBerat)} kg',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,

@@ -805,13 +805,65 @@ class _BsV2InputTile extends StatelessWidget {
                         ? Icons.category_outlined
                         : Icons.scale_outlined,
                     text: lbl.isPcsCategory
-                        ? '${lbl.totalBerat.toInt()} pcs'
+                        ? (lbl.isPartial && lbl.totalPcs != null
+                              ? '${lbl.totalBerat.toInt()} / ${lbl.totalPcs!.toInt()} pcs'
+                              : '${lbl.totalBerat.toInt()} pcs')
                         : '${nf.format(lbl.totalBerat)} kg',
                   ),
                 ],
               ),
+              if (lbl.isPartial && (lbl.noPartial?.isNotEmpty ?? false)) ...[
+                const SizedBox(height: 5),
+                _PartialBadge(noPartial: lbl.noPartial!),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tanda input bongkar-susun yang labelsonya sudah pernah dipecah sebelum
+/// dipakai. Jumlah pcs = sisa label, bukan pcs aslinya.
+class _PartialBadge extends StatelessWidget {
+  final String noPartial;
+  const _PartialBadge({required this.noPartial});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Input parsial dari $noPartial',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.call_split_rounded,
+              size: 10,
+              color: Colors.orange.shade700,
+            ),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text(
+                'PARSIAL • $noPartial',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                  color: Colors.orange.shade800,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

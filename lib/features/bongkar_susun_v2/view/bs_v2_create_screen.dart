@@ -189,13 +189,9 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (vm.inputBeratByJenis.isNotEmpty) ...[
+            if (vm.inputAllocations.isNotEmpty) ...[
               _BeratSummaryCard(
-                inputByJenis: vm.inputBeratByJenis,
-                remainingByJenis: vm.remainingByJenis,
-                jenisNames: {
-                  for (final j in vm.jenisOptions) j.idJenis: j.namaJenis,
-                },
+                allocations: vm.inputAllocations,
                 nf: _nf,
                 unit: vm.quantityUnit,
               ),
@@ -205,6 +201,7 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
               isSubmitting: vm.isSubmitting,
               isBalanced: vm.isBalanced,
               allOutputsValid: vm.allOutputsValid,
+              balanceError: vm.balanceError,
               inputCount: vm.inputs.length,
               outputCount: vm.outputs.length,
               onSubmit: () => _submit(context, vm),
@@ -316,64 +313,75 @@ class _InputsCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
-              children: [
-                _sectionHeader(Icons.input_rounded, 'Input'),
-                const Spacer(),
-                if (inputs.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _kPrimary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${inputs.length} label',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: _kPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Material(
-                  color: _kPrimary,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
-                    onTap: onScan,
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 7,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.qr_code_scanner,
-                            size: 15,
-                            color: Colors.white,
+            child: LayoutBuilder(
+              builder: (context, c) {
+                // Panel input sempit di tablet (leftW 320 - padding = ~288),
+                // jadi "N label" + tombol "Scan" tidak muat side-by-side.
+                // Hilangkan teks pill supaya tidak overflow.
+                final compact = c.maxWidth < 300;
+                return Row(
+                  children: [
+                    _sectionHeader(Icons.input_rounded, 'Input'),
+                    const Spacer(),
+                    if (inputs.isNotEmpty) ...[
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 6 : 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _kPrimary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          compact ? '${inputs.length}' : '${inputs.length} label',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _kPrimary,
                           ),
-                          SizedBox(width: 4),
-                          Text(
-                            'Scan',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Material(
+                      color: _kPrimary,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        onTap: onScan,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 10 : 14,
+                            vertical: 7,
                           ),
-                        ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.qr_code_scanner,
+                                size: 15,
+                                color: Colors.white,
+                              ),
+                              if (!compact) ...[
+                                const SizedBox(width: 4),
+                                const Text(
+                                  'Scan',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
           const Divider(height: 1, color: _kBorder),
@@ -451,13 +459,43 @@ class _InputLabelTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  lbl.labelCode,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1D23),
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        lbl.labelCode,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1D23),
+                        ),
+                      ),
+                    ),
+                    if (lbl.isPartial) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Text(
+                          'SISA',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -556,16 +594,12 @@ class _InputLabelTile extends StatelessWidget {
 // ─── Berat Summary ─────────────────────────────────────────────────────────
 
 class _BeratSummaryCard extends StatelessWidget {
-  final Map<int, double> inputByJenis;
-  final Map<int, double> remainingByJenis;
-  final Map<int, String> jenisNames;
+  final List<BsV2InputAllocation> allocations;
   final NumberFormat nf;
   final String unit;
 
   const _BeratSummaryCard({
-    required this.inputByJenis,
-    required this.remainingByJenis,
-    required this.jenisNames,
+    required this.allocations,
     required this.nf,
     this.unit = 'kg',
   });
@@ -584,19 +618,18 @@ class _BeratSummaryCard extends StatelessWidget {
             iconColor: const Color(0xFF0A7349),
           ),
           const SizedBox(height: 12),
-          ...inputByJenis.entries.map((e) {
-            final rem = remainingByJenis[e.key] ?? e.value;
-            final balanced = rem.abs() < 0.001;
-            final over = rem < -0.001;
-            final progress = e.value > 0
-                ? ((e.value - rem.clamp(0.0, e.value)) / e.value).clamp(
-                    0.0,
-                    1.0,
-                  )
+          ...allocations.map((a) {
+            final rem = a.remaining;
+            final balanced = a.isFullyAllocated;
+            final over = a.isOverAllocated;
+            final progress = a.total > 0
+                ? (a.allocated / a.total).clamp(0.0, 1.0)
                 : 0.0;
             final barColor = over
                 ? Colors.red
                 : (balanced ? const Color(0xFF0A7349) : _kPrimary);
+            final isInt = unit == 'pcs';
+            final fmt = isInt ? (v) => v.toStringAsFixed(0) : (v) => nf.format(v);
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Column(
@@ -606,7 +639,8 @@ class _BeratSummaryCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          jenisNames[e.key] ?? 'Jenis ${e.key}',
+                          a.label.labelCode,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -614,19 +648,14 @@ class _BeratSummaryCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
                       Text(
-                        balanced
-                            ? '✓ Seimbang'
-                            : over
-                            ? '⚠ Lebih ${nf.format(-rem)} $unit'
-                            : 'Sisa ${nf.format(rem)} $unit',
+                        '${fmt(a.allocated)} / ${fmt(a.total)} $unit',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: balanced
                               ? const Color(0xFF0A7349)
-                              : (over ? Colors.red : Colors.orange.shade700),
+                              : Colors.orange.shade700,
                         ),
                       ),
                     ],
@@ -643,8 +672,18 @@ class _BeratSummaryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Total input: ${nf.format(e.value)} $unit',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                    balanced
+                        ? '✓ Teralokasi penuh'
+                        : over
+                        ? '⚠ Lebih ${fmt(-rem)} $unit'
+                        : 'Sisa ${fmt(rem)} $unit',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: balanced
+                          ? const Color(0xFF0A7349)
+                          : (over ? Colors.red : Colors.orange.shade700),
+                    ),
                   ),
                 ],
               ),
@@ -662,6 +701,7 @@ class _SubmitCard extends StatelessWidget {
   final bool isSubmitting;
   final bool isBalanced;
   final bool allOutputsValid;
+  final String? balanceError;
   final int inputCount;
   final int outputCount;
   final VoidCallback onSubmit;
@@ -670,6 +710,7 @@ class _SubmitCard extends StatelessWidget {
     required this.isSubmitting,
     required this.isBalanced,
     required this.allOutputsValid,
+    this.balanceError,
     required this.inputCount,
     required this.outputCount,
     required this.onSubmit,
@@ -694,15 +735,51 @@ class _SubmitCard extends StatelessWidget {
                 const Color(0xFF1565C0),
               ),
               const SizedBox(width: 8),
-              _stat(
-                Icons.output_rounded,
-                '$outputCount',
-                'Output',
-                const Color(0xFF0A7349),
+_stat(
+                    Icons.output_rounded,
+                    '$outputCount',
+                    'Output',
+                    const Color(0xFF0A7349),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
+              if (balanceError != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 14,
+                        color: Colors.red.shade400,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          balanceError!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.3,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
           // Submit button
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),

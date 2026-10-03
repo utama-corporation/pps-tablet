@@ -37,6 +37,29 @@ class OutputEntry {
   }
 }
 
+/// Alokasi output untuk satu label input.
+///
+/// Backend tidak menyimpan pemetaan label-input → output (hanya total per
+/// jenis), jadi ini murni tampilan. Output per jenis dibagi berurutan ke
+/// label-label input dengan jenis tersebut — label pertama sampai habis,
+/// lalu lanjut ke label berikutnya. Dengan ini 2 label @5 pcs + output 10
+/// pcs terisi penuh di kedua baris, bukan cuma baris pertama.
+class BsV2InputAllocation {
+  final BsV2LabelInfo label;
+  final double total;
+  final double allocated;
+
+  const BsV2InputAllocation({
+    required this.label,
+    required this.total,
+    required this.allocated,
+  });
+
+  double get remaining => total - allocated;
+  bool get isFullyAllocated => remaining.abs() < 0.001;
+  bool get isOverAllocated => remaining < -0.001;
+}
+
 class BsV2CreateViewModel extends ChangeNotifier {
   final BsV2Repository repository;
 
@@ -112,6 +135,93 @@ class BsV2CreateViewModel extends ChangeNotifier {
       m[entry.key] = entry.value - allocated;
     }
     return m;
+  }
+
+  /// Alokasi output per label input, dihitung berurutan per jenis.
+  ///
+  /// Output total suatu jenis dibagi dari label input pertama: selama label
+  /// masih punya sisa, sebanyak itu yang terisi; kalau label habis, sisa
+  /// output lanjut ke label input berikutnya. Sisa output yang tidak cukup
+  /// (output > jumlah input) TIDAK ikut dialokasikan — baris terkait
+  /// ditandai over lewat [remainingByJenis] supaya pesan tidak seimbang
+  /// tetap muncul.
+  List<BsV2InputAllocation> get inputAllocations {
+    final need = Map<int, double>.from(outputBeratByJenis);
+    final result = <BsV2InputAllocation>[];
+
+    for (final lbl in inputs) {
+      final total = lbl.totalBerat;
+      var outstanding = need[lbl.idJenis] ?? 0.0;
+      final take = outstanding > 0
+          ? (outstanding < total ? outstanding : total)
+          : 0.0;
+
+      if (outstanding > 0) {
+        need[lbl.idJenis] = outstanding - take;
+      }
+
+      result.add(
+        BsV2InputAllocation(
+          label: lbl,
+          total: total,
+          allocated: take,
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  /// Alokasi yang gagal terpenuhi per jenis (sisa input > 0 atau output > input)
+  List<({int idJenis, double remaining})> get unbalancedByJenis {
+    final m = <int, double>{};
+    for (final entry in inputBeratByJenis.entries) {
+      final remaining = remainingByJenis[entry.key] ?? 0.0;
+      if (remaining.abs() >= 0.001) m[entry.key] = remaining;
+    }
+    return m.entries
+        .map((e) => (idJenis: e.key, remaining: e.value))
+        .toList();
+  }
+
+  /// Alasan submit ditolak, null kalau sudah seimbang.
+  String? get balanceError {
+    if (inputs.isEmpty) return null;
+    if (outputs.isEmpty) {
+      return 'Output belum diisi. Tambahkan minimal 1 output.';
+    }
+
+    final bad = unbalancedByJenis;
+    if (bad.isEmpty && allOutputsValid) return null;
+
+    if (bad.isEmpty) {
+      return 'Output belum seimbang dengan input: ada output yang belum '
+          'diisi nominalnya.';
+    }
+
+    final parts = bad.map((e) {
+      final name = jenisOptions
+          .firstWhere(
+            (j) => j.idJenis == e.idJenis,
+            orElse: () => (idJenis: e.idJenis, namaJenis: 'Jenis ${e.idJenis}'),
+          )
+          .namaJenis;
+      final rem = e.remaining;
+      final txt = _trimNum(rem.abs());
+      return rem < 0
+          ? '$name lebih $txt $quantityUnit'
+          : '$name kurang $txt $quantityUnit';
+    }).join(', ');
+
+    return 'Output belum seimbang dengan input ($parts).';
+  }
+
+  static String _trimNum(double v) {
+    if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+    return v
+        .toStringAsFixed(3)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   /// True if an output entry has ≥1 sak with berat > 0 (saks-based) or berat > 0 (bonggolan)

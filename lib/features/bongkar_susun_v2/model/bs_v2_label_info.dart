@@ -38,6 +38,17 @@ class BsV2LabelInfo {
   final String? noBahanBaku;
   final bool isPartial;
 
+  /// Detail bongkar-susun: kode partial (BL.xxxxxxxx) yang dicatat untuk
+  /// input ini. Terisi hanya kalau label input sudah pernah dipecah sebelum
+  /// dipakai - artinya jumlah pcs yang dipakai = sisa pcs label, bukan pcs
+  /// aslinya.
+  final String? noPartial;
+
+  /// Detail bongkar-susun: Pcs asli label sebelum dipartial.
+  /// Dipakai bersama [totalBerat] (pcs terpakai) untuk menampilkan
+  /// "9 / 15 pcs".
+  final double? totalPcs;
+
   const BsV2LabelInfo({
     required this.labelCode,
     required this.category,
@@ -48,6 +59,8 @@ class BsV2LabelInfo {
     this.saks = const [],
     this.noBahanBaku,
     this.isPartial = false,
+    this.noPartial,
+    this.totalPcs,
   });
 
   bool get isWashing => category == 'washing';
@@ -95,6 +108,11 @@ class BsV2LabelInfo {
       labelCode: _s(j['labelCode']),
       category: category,
       isPartial: isPartial,
+      noPartial: (() {
+        final v = _s(j['noPartial'] ?? j['NoPartial']).trim();
+        return v.isEmpty ? null : v;
+      })(),
+      totalPcs: j['totalPcs'] == null ? null : _d(j['totalPcs']),
       idJenis: isGilingan ? _i(j['idGilingan']) : _i(j['idJenis']),
       namaJenis: _s(j['namaJenis']),
       noBahanBaku: isBahanBaku
