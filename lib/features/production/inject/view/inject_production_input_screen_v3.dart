@@ -12,7 +12,6 @@ import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../core/view_model/permission_view_model.dart';
 import '../../shared/models/production_label_lookup_result.dart';
 import '../../shared/models/bahan_pendukung_item.dart';
-import '../../shared/widgets/add_cabinet_material_dialog.dart';
 import '../../shared/widgets/confirm_save_temp_dialog.dart';
 import '../../shared/widgets/save_button_with_badge.dart';
 import '../../shared/widgets/unsaved_temp_warning_dialog.dart';
@@ -1319,23 +1318,6 @@ class _InjectProductionInputScreenState
 
   // ── Cabinet Material ───────────────────────────────────────────────────────
 
-  Future<void> _openAddMaterialDialog(InjectProductionInputViewModel vm) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AddCabinetMaterialDialog(
-        idWarehouse: 5,
-        loadMaterials: ({required idWarehouse, bool force = false}) => vm
-            .loadMasterCabinetMaterials(idWarehouse: idWarehouse, force: force),
-        isAlreadyInTemp: (id) => vm.hasCabinetMaterialInTemp(id),
-        onAddTemp: ({required masterItem, required jumlah}) =>
-            vm.addTempCabinetMaterialFromMaster(
-              masterItem: masterItem,
-              Jumlah: jumlah,
-            ),
-      ),
-    );
-  }
-
   Future<void> _deleteExistingMaterial(
     InjectProductionInputViewModel vm,
     CabinetMaterialItem item,
@@ -1844,41 +1826,27 @@ class _InjectProductionInputScreenState
                                   ),
                                 ),
                                 const SizedBox(width: 10),
-                                if (_selectedInputTab == 'material')
-                                  FloatingActionButton(
-                                    heroTag: 'fab_add_inject_material',
-                                    mini: true,
-                                    backgroundColor: locked
-                                        ? Colors.grey.shade300
-                                        : _kInjectPrimary,
-                                    foregroundColor: Colors.white,
-                                    onPressed: locked
-                                        ? null
-                                        : () => _openAddMaterialDialog(vm),
-                                    child: const Icon(Icons.add),
-                                  )
-                                else
-                                  FloatingActionButton(
-                                    heroTag: 'fab_scan_inject_input',
-                                    mini: true,
-                                    backgroundColor: locked
-                                        ? Colors.grey.shade300
-                                        : _kInjectPrimary,
-                                    foregroundColor: Colors.white,
-                                    onPressed: locked || vm.isLookupLoading
-                                        ? null
-                                        : _openScanDialog,
-                                    child: vm.isLookupLoading
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Icon(Icons.qr_code_scanner),
-                                  ),
+                                FloatingActionButton(
+                                  heroTag: 'fab_scan_inject_input',
+                                  mini: true,
+                                  backgroundColor: locked
+                                      ? Colors.grey.shade300
+                                      : _kInjectPrimary,
+                                  foregroundColor: Colors.white,
+                                  onPressed: locked || vm.isLookupLoading
+                                      ? null
+                                      : _openScanDialog,
+                                  child: vm.isLookupLoading
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.qr_code_scanner),
+                                ),
                               ],
                             ),
                         ],
@@ -2175,7 +2143,7 @@ class _InjectProductionInputScreenState
     if (materialAll.isEmpty) {
       return const Center(
         child: Text(
-          'Belum ada material kabinet.\nTambah dengan tombol + di bawah.',
+          'Belum ada label Material',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
         ),

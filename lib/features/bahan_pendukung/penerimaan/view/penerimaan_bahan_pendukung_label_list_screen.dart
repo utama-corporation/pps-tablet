@@ -7,12 +7,16 @@ import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../common/widgets/success_status_dialog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/endpoints.dart';
+import '../../../../core/utils/number_formatter.dart';
 import '../../../../core/utils/pdf_print_service.dart';
+import '../../../production/shared/models/label_usage_status.dart';
 import '../../../production/shared/widgets/production_filter_chip.dart';
 import '../../../production/shared/widgets/production_inline_stat.dart';
 import '../../../production/shared/widgets/production_output_detail_dialog.dart';
+import '../../../production/shared/widgets/production_usage_badge.dart';
 import '../model/penerimaan_bahan_pendukung_model.dart';
 import '../repository/penerimaan_bahan_pendukung_repository.dart';
+import '../widgets/penerimaan_bahan_pendukung_item_edit_dialog.dart';
 import '../widgets/penerimaan_bahan_pendukung_item_form_dialog.dart';
 
 const _kAccent = Color(0xFF00897B);
@@ -160,15 +164,55 @@ class _PenerimaanBahanPendukungLabelListScreenState
   }
 
   Future<void> _bulkDelete() async {
-    final codes = _selectedCodes.toList();
-    if (codes.isEmpty) return;
+    if (_selectedCodes.isEmpty) return;
+
+    // Status pemakaian diambil ulang dari server: label bisa saja sudah
+    // terpakai di perangkat lain sejak list ini terakhir dimuat.
+    List<PenerimaanBahanPendukungItem> items;
+    try {
+      items = (await _repo.fetchDetail(widget.noPenerimaan)).items;
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) =>
+            ErrorStatusDialog(title: 'Gagal Memuat', message: e.toString()),
+      );
+      return;
+    }
+    if (!mounted) return;
+
+    final deletable = <String>[];
+    var blocked = 0;
+    for (final item in items) {
+      if (!_selectedCodes.contains(item.noBahanPendukung)) continue;
+      if (item.canDelete) {
+        deletable.add(item.noBahanPendukung);
+      } else {
+        blocked++;
+      }
+    }
+
+    if (deletable.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => const ErrorStatusDialog(
+          title: 'Tidak Bisa Dihapus',
+          message:
+              'Semua label yang dipilih sudah terpakai atau habis. Label yang sudah dipakai tidak bisa dihapus karena riwayatnya masih tercatat di proses produksi.',
+        ),
+      );
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (_) => ConfirmDialog(
-        title: 'Hapus ${codes.length} Barang?',
-        message: 'Yakin ingin menghapus ${codes.length} barang yang dipilih?',
+        title: 'Hapus ${deletable.length} Barang?',
+        message: blocked > 0
+            ? '$blocked label sudah terpakai atau habis dan akan dilewati. Yakin ingin menghapus ${deletable.length} barang yang dipilih?'
+            : 'Yakin ingin menghapus ${deletable.length} barang yang dipilih?',
         confirmLabel: 'Hapus',
         confirmIcon: Icons.delete_outline,
       ),
@@ -176,7 +220,7 @@ class _PenerimaanBahanPendukungLabelListScreenState
     if (confirmed != true || !mounted) return;
 
     var failed = 0;
-    for (final code in codes) {
+    for (final code in deletable) {
       try {
         await _repo.deleteItem(code);
       } catch (_) {
@@ -234,6 +278,26 @@ class _PenerimaanBahanPendukungLabelListScreenState
     if (added == true && mounted) _reload();
   }
 
+  Future<void> _openEditDialog(PenerimaanBahanPendukungItem item) async {
+    // Status label bisa berubah di perangkat lain di antara dialog detail dibuka
+    // dan tombol ditekan. Biarkan server yang menolak (409) — dialog edit
+    // sudah menampilkan pesan error-nya sendiri.
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PenerimaanBahanPendukungItemEditDialog(
+        noPenerimaan: widget.noPenerimaan,
+        noBahanPendukung: item.noBahanPendukung,
+        namaBarang: item.namaBarang,
+        idCabinetMaterial: item.idCabinetMaterial,
+        idSupplier: item.idSupplier,
+        qty: item.qty,
+        accentColor: _kAccent,
+      ),
+    );
+    if (saved == true && mounted) _reload();
+  }
+
   Future<void> _openDetailDialog(PenerimaanBahanPendukungItem item) async {
     await showDialog<void>(
       context: context,
@@ -249,12 +313,28 @@ class _PenerimaanBahanPendukungLabelListScreenState
           if (mounted) _reload();
           return count;
         },
-        onDelete: () => _deleteItem(item),
+        onEdit: item.canEdit ? () => _openEditDialog(item) : null,
+        // Label terpakai/habis tidak bisa dihapus — tombol disembunyikan,
+        // bukan hanya dinonaktifkan, supaya tidak ada jalan buntu di UI.
+        onDelete: item.canDelete ? () => _deleteItem(item) : null,
         metrics: [
           ProductionMetric(
             label: 'Qty',
             icon: Icons.numbers_outlined,
             text: '${_fmtQty(item.qty)} PCS',
+          ),
+          // Sisa hanya relevan kalau label sudah dipotong oleh konsumsi
+          // parsial — kalau masih utuh, angka ini cuma mengulang Qty.
+          if (item.usageStatus == LabelUsageStatus.terpakai)
+            ProductionMetric(
+              label: 'Sisa',
+              icon: Icons.inventory_2_outlined,
+              text: '${_fmtQty(item.qtySisa)} PCS',
+            ),
+          ProductionMetric(
+            label: 'Status',
+            icon: Icons.verified_outlined,
+            text: item.usageStatus.label,
           ),
           if (item.namaSupplier.isNotEmpty)
             ProductionMetric(
@@ -483,10 +563,7 @@ class _PenerimaanBahanPendukungLabelListScreenState
     );
   }
 
-  String _fmtQty(double v) {
-    final s = v.toStringAsFixed(2);
-    return s.endsWith('.00') ? s.substring(0, s.length - 3) : s;
-  }
+  String _fmtQty(double v) => formatPcsQty(v);
 
   @override
   Widget build(BuildContext context) {
@@ -547,7 +624,11 @@ class _PenerimaanBahanPendukungLabelListScreenState
                                       : (c.maxWidth < 640 ? 3 : 4),
                                   crossAxisSpacing: 8,
                                   mainAxisSpacing: 8,
-                                  mainAxisExtent: 104,
+                                  // 104 pas untuk isi tanpa badge status
+                                  // pemakaian. Badge menambah ~19px, jadi
+                                  // dinaikkan supaya Column di dalam tile
+                                  // tidak overflow.
+                                  mainAxisExtent: 120,
                                 ),
                             itemCount: items.length,
                             itemBuilder: (context, i) =>
@@ -674,6 +755,15 @@ class _PenerimaanBahanPendukungLabelListScreenState
                           ),
                         ),
                       ],
+                    ),
+                  ],
+                  // Status pemakaian (terpakai sebagian / habis). Disembunyikan
+                  // untuk label yang belum dipakai supaya tile tidak ramai.
+                  if (item.usageStatus != LabelUsageStatus.belumDipakai) ...[
+                    const SizedBox(height: 3),
+                    ProductionUsageBadge(
+                      status: item.usageStatus,
+                      sisaQty: item.qtySisa,
                     ),
                   ],
                 ],

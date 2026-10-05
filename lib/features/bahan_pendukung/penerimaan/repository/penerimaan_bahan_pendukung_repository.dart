@@ -238,6 +238,33 @@ class PenerimaanBahanPendukungRepository {
   }
 
   // ==========================================
+  //  UBAH DATA 1 BARANG — hanya supplier + qty
+  //  PUT /api/labels/bahan-pendukung/:noBahanPendukung
+  //
+  //  Yang dikirim adalah `QtyAwal`, bukan `Qty`: QtyAwal = kuantitas dari
+  //  pembelian (dipakai layar penerimaan + PDF label), Qty = stok live yang
+  //  dipotong konsumsi parsial produksi.
+  //
+  //  Backend menolak (409) kalau label sudah dicetak / sudah dipakai /
+  //  sudah dipakai sebagian — itu penjaga terakhirnya. Sisi app hanya
+  //  mengecek `canEdit` supaya menu tidak menampilkan aksi yang pasti ditolak.
+  //  Nama barang & keterangan sengaja tidak dikirim: label fisik yang sudah
+  //  keluar menunjuk barang tertentu, jadi keduanya tidak bisa berubah.
+  // ==========================================
+  Future<void> updateItem({
+    required String noBahanPendukung,
+    required int idSupplier,
+    required double qty,
+  }) async {
+    await api.putJson(
+      '/api/labels/bahan-pendukung/$noBahanPendukung',
+      body: {
+        'header': {'IdSupplier': idSupplier, 'QtyAwal': qty},
+      },
+    );
+  }
+
+  // ==========================================
   //  DELETE 1 BARANG — DELETE /api/labels/bahan-pendukung/:noBahanPendukung
   // ==========================================
   Future<void> deleteItem(String noBahanPendukung) async {

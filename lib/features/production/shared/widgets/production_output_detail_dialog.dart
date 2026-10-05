@@ -29,6 +29,7 @@ class ProductionOutputDetailDialog extends StatefulWidget {
     required this.pdfUrl,
     required this.feature,
     this.markAsPrinted,
+    this.onEdit,
     this.onDelete,
     this.canPrint = true,
   });
@@ -52,6 +53,12 @@ class ProductionOutputDetailDialog extends StatefulWidget {
 
   /// When provided, a delete button is shown. Caller is responsible for confirm dialog + API call.
   final VoidCallback? onDelete;
+
+  /// When provided, an "Ubah Data" button is shown. Dipanggil SETELAH dialog ini
+  /// ditutup, sama seperti [onDelete] — supaya form edit tidak menumpuk di atas
+  /// dialog detail yang datanya sudah basi. Caller responsible for validation
+  /// boleh/tidaknya edit + API call.
+  final VoidCallback? onEdit;
 
   /// Bila `false` (produksi selesai/terkunci), tombol cetak disembunyikan.
   final bool canPrint;
@@ -260,12 +267,12 @@ class _ProductionOutputDetailDialogState
             // ── Print button ────────────────────────────────────────
             if (widget.canPrint)
               Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                14,
-                16,
-                widget.onDelete != null ? 8 : 16,
-              ),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  14,
+                  16,
+                  widget.onEdit != null || widget.onDelete != null ? 8 : 16,
+                ),
               child: FilledButton.icon(
                 onPressed: _isPrinting ? null : _handlePrint,
                 style: FilledButton.styleFrom(
@@ -300,30 +307,71 @@ class _ProductionOutputDetailDialogState
                 ),
               ),
             ),
-            // ── Delete button ───────────────────────────────────────
-            if (widget.onDelete != null)
+            // ── Edit / Delete buttons ──────────────────────────────
+            if (widget.onEdit != null || widget.onDelete != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: OutlinedButton.icon(
-                  onPressed: _isPrinting
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          widget.onDelete!();
-                        },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red.shade600,
-                    side: BorderSide(color: Colors.red.shade300),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text(
-                    'Hapus Label',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                  ),
+                child: Row(
+                  children: [
+                    if (widget.onEdit != null) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isPrinting
+                              ? null
+                              : () {
+                                  Navigator.of(context).pop();
+                                  widget.onEdit!();
+                                },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: widget.accentColor,
+                            side: BorderSide(
+                              color: widget.accentColor.withValues(alpha: 0.45),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: const Text(
+                            'Ubah Data',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (widget.onDelete != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isPrinting
+                              ? null
+                              : () {
+                                  Navigator.of(context).pop();
+                                  widget.onDelete!();
+                                },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade600,
+                            side: BorderSide(color: Colors.red.shade300),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          label: const Text(
+                            'Hapus Label',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
           ],

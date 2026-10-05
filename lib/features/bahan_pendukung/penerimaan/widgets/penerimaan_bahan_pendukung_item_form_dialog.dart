@@ -22,6 +22,7 @@ import '../../../../common/widgets/print_mode_selector.dart';
 import '../../../../common/widgets/success_status_dialog.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/endpoints.dart';
+import '../../../../core/utils/number_formatter.dart';
 import '../../../label/packing/widgets/bt_auto_print_dialog.dart';
 import '../../../production/shared/models/cabinet_material_item.dart';
 import '../../../supplier/widgets/supplier_dropdown.dart';
@@ -168,7 +169,7 @@ class _PenerimaanBahanPendukungItemFormDialogState
     final master = _masterQty!;
     final value = _qtyValue!;
     return 'Qty $value PCS berbeda dari isipcs master '
-        '(${_fmtQtyInput(master)} PCS). Multiple dan Quick hanya bisa dipakai '
+        '(${_fmtQty(master)} PCS). Multiple dan Quick hanya bisa dipakai '
         'kalau qty sama dengan master, supaya hanya satu label yang boleh '
         'berbeda dari master.';
   }
@@ -190,7 +191,7 @@ class _PenerimaanBahanPendukungItemFormDialogState
             child: Text(
               'Mode Multiple & Quick dinonaktifkan selama qty berbeda dari '
               'isipcs master, supaya hanya satu label yang menyimpang. '
-              'Kembalikan qty ke ${_fmtQtyInput(_masterQty!)} PCS untuk '
+              'Kembalikan qty ke ${_fmtQty(_masterQty!)} PCS untuk '
               'mengaktifkan lagi.',
               style: TextStyle(
                 fontSize: 11.5,
@@ -204,10 +205,13 @@ class _PenerimaanBahanPendukungItemFormDialogState
     );
   }
 
-  static String _fmtQtyInput(double v) {
-    if (v == v.roundToDouble() && v.abs() < 1e15) return v.toInt().toString();
-    return v.toString();
-  }
+  /// Teks untuk field qty — tanpa pemisah ribuan, karena "1.000" akan
+  /// ter-parse jadi 1.0 dan qty purchasing tersimpan 1, bukan 1000.
+  static String _fmtQtyInput(double v) => formatPcsQtyInput(v);
+
+  /// Teks untuk helper/notice yang hanya dibaca — memakai pemisah ribuan
+  /// supaya konsisten dengan tampilan di list.
+  static String _fmtQty(double v) => formatPcsQty(v);
 
   /// Isi field qty dari isipcs master. Nilai yang ditampilkan tetap master —
   /// bukan hasil pengisian label sebelumnya.
@@ -565,15 +569,15 @@ class _PenerimaanBahanPendukungItemFormDialogState
     if (locked) {
       helperText =
           'Terkunci — sudah ada ${deviating.length} label '
-          '(${_fmtQtyInput(deviating.first)} PCS) yang berbeda dari isipcs '
-          'master, jadi input berikutnya wajib ${_fmtQtyInput(master!)} PCS.';
+          '(${_fmtQty(deviating.first)} PCS) yang berbeda dari isipcs '
+          'master, jadi input berikutnya wajib ${_fmtQty(master!)} PCS.';
       fillColor = Colors.grey.shade100;
     } else if (_isLoadingSavedQty) {
       helperText = 'Memuat data label sebelumnya...';
       fillColor = Colors.grey.shade50;
     } else if (master != null) {
       helperText =
-          'Isipcs master: ${_fmtQtyInput(master)} PCS. Bebas diisi selama '
+          'Isipcs master: ${_fmtQty(master)} PCS. Bebas diisi selama '
           'semua label sama dengan master.';
       fillColor = _qtyDeviatesFromMaster
           ? Colors.amber.shade50

@@ -10,6 +10,8 @@
 // operator di modul ini.
 import 'package:intl/intl.dart';
 
+import '../../../production/shared/models/label_usage_status.dart';
+
 class PenerimaanBahanPendukung {
   final String noPenerimaan;
   final DateTime? tglPenerimaan;
@@ -103,9 +105,23 @@ class PenerimaanBahanPendukungItem {
   final String namaSupplier;
   final int idCabinetMaterial;
   final String namaBarang;
+
+  /// Qty dari pembelian — kolom `QtyAwal` di dbo.BahanPendukung, BUKAN `Qty`
+  /// (stok live yang dipotong konsumsi parsial produksi). Backend sudah
+  /// me-alias `Qty` ke `ISNULL(QtyAwal, Qty)` pada response detail. Stok
+  /// live tidak pernah ditampilkan di layar penerimaan.
   final double qty;
+
+  /// Stok live (`Qty` di DB). Berbeda dari [qty] kalau label sudah dipotong
+  /// oleh konsumsi parsial produksi — BahanPendukung memang bisa sampai
+  /// ke kondisi itu (lihat markUsage di produksi-input-mapping.config.js).
+  final double qtySisa;
   final String? keterangan;
   final int hasBeenPrinted;
+
+  /// `true` kalau baris ini sudah terpakai di proses lain (DateUsage terisi di
+  /// server). Menentukan boleh/tidaknya menu "Ubah Data".
+  final bool used;
 
   const PenerimaanBahanPendukungItem({
     required this.noPenerimaan,
@@ -114,10 +130,35 @@ class PenerimaanBahanPendukungItem {
     required this.namaSupplier,
     required this.idCabinetMaterial,
     required this.namaBarang,
-    required this.qty,
+required this.qty,
+    this.qtySisa = 0,
     this.keterangan,
     this.hasBeenPrinted = 0,
+    this.used = false,
   });
+
+  /// Data label masih boleh diubah selama BELUM dicetak dan BELUM dipakai
+  /// (termasuk belum dipakai sebagian). Server enforce hal yang sama
+  /// (BP_ALREADY_PRINTED / BP_ALREADY_USED / BP_ALREADY_PARTIAL), check ini
+  /// cuma supaya menu tidak pernah menampilkan aksi yang pasti gagal.
+  bool get canEdit =>
+      hasBeenPrinted <= 0 && usageStatus == LabelUsageStatus.belumDipakai;
+
+  /// Label yang sudah terpakai / habis tidak boleh dihapus — sisa dan
+  /// riwayatnya masih tercatat di proses produksi. Server enforce hal yang
+  /// sama (BP_ALREADY_USED / BP_ALREADY_PARTIAL).
+  ///
+  /// Berbeda dengan [canEdit]: label yang sudah dicetak masih BOLEH dihapus,
+  /// karena mencetak tidak memindahkan stok.
+  bool get canDelete => usageStatus == LabelUsageStatus.belumDipakai;
+
+  /// Badge status pemakaian. [qty] adalah QtyAwal (data pembelian),
+  /// [qtySisa] stok live — selisih keduanya menandakan konsumsi parsial.
+  LabelUsageStatus get usageStatus {
+    if (used) return LabelUsageStatus.habis;
+    if ((qty - qtySisa).abs() > 0.000001) return LabelUsageStatus.terpakai;
+    return LabelUsageStatus.belumDipakai;
+  }
 
   factory PenerimaanBahanPendukungItem.fromJson(Map<String, dynamic> j) {
     int toInt(dynamic v) {
@@ -132,6 +173,16 @@ class PenerimaanBahanPendukungItem {
       return double.tryParse(v.toString()) ?? 0;
     }
 
+    bool toBool(dynamic v) {
+      if (v is bool) return v;
+      if (v is num) return v != 0;
+      if (v is String) {
+        final s = v.trim().toLowerCase();
+        return s == 'true' || s == '1';
+      }
+      return false;
+    }
+
     return PenerimaanBahanPendukungItem(
       noPenerimaan: j['NoPenerimaan']?.toString() ?? '',
       noBahanPendukung: j['NoBahanPendukung']?.toString() ?? '',
@@ -140,8 +191,13 @@ class PenerimaanBahanPendukungItem {
       idCabinetMaterial: toInt(j['IdCabinetMaterial']),
       namaBarang: j['NamaCabinetMaterial']?.toString() ?? '',
       qty: toDouble(j['Qty']),
+      // QtySisa = stok live. Kalau server belum mengirimnya (mis. response
+      // lama), [qty] dianggap masih utuh supaya badge tidak salah bilang
+      // "terpakai".
+      qtySisa: j['QtySisa'] == null ? toDouble(j['Qty']) : toDouble(j['QtySisa']),
       keterangan: j['Keterangan']?.toString(),
       hasBeenPrinted: toInt(j['HasBeenPrinted']),
+      used: toBool(j['Used']),
     );
   }
 }

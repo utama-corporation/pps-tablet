@@ -296,8 +296,12 @@ class _PenerimaanBahanPendukungScreenState
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (_) =>
-            ErrorStatusDialog(title: 'Gagal Menghapus!', message: e.toString()),
+        builder: (_) => ErrorStatusDialog(
+          title: 'Gagal Menghapus!',
+          // friendlyMessage: backend menolak (409) kalau ada barang yang sudah
+          // terpakai / habis, dan pesan itu yang perlu dibaca user.
+          message: e is ApiException ? e.friendlyMessage : e.toString(),
+        ),
       );
     }
     _refreshAll();
