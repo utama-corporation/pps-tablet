@@ -638,22 +638,44 @@ class _PenerimaanBahanPendukungLabelListScreenState
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 4),
-                  // Metrics
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 2,
-                    children: [
-                      ProductionMiniMetric(
-                        icon: Icons.numbers_outlined,
-                        text: '${_fmtQty(item.qty)} PCS',
-                      ),
-                      if (item.namaSupplier.isNotEmpty)
-                        ProductionMiniMetric(
-                          icon: Icons.local_shipping_outlined,
-                          text: item.namaSupplier,
-                        ),
-                    ],
+                  // Qty — teks pendek, aman di Wrap.
+                  ProductionMiniMetric(
+                    icon: Icons.numbers_outlined,
+                    text: '${_fmtQty(item.qty)} PCS',
                   ),
+                  // Supplier — teks bebas dari server, bisa jauh lebih lebar
+                  // dari tile. ProductionMiniMetric tidak bisa dipakai di sini
+                  // karena Wrap memberi lebar tak terbatas ke child-nya, jadi
+                  // teks panjang meluber keluar kartu. Baris sendiri +
+                  // Expanded supaya memotong dengan ellipsis.
+                  if (item.namaSupplier.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.local_shipping_outlined,
+                          size: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Tooltip(
+                            message: item.namaSupplier,
+                            child: Text(
+                              item.namaSupplier,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
