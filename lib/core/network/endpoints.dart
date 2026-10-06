@@ -149,6 +149,15 @@ class ApiConstants {
     return 'http://$host:7500/api/labels/washing/$encoded/pdf/';
   }
 
+  /// Label QC washing (Density + Moisture rata). Dicetak dari menu
+  /// "Print QC" di WashingRowPopover — tidak lewat lock/count HasBeenPrinted,
+  /// sama seperti brokerQcPdf.
+  static String washingQcPdf(String noWashing) {
+    final host = Uri.parse(baseUrl).host;
+    final encoded = Uri.encodeComponent(noWashing);
+    return 'http://$host:7500/api/labels/washing/$encoded/qc/pdf';
+  }
+
   static String brokerLabelPdf(String noBroker) {
     final host = Uri.parse(baseUrl).host;
     final encoded = Uri.encodeComponent(noBroker);

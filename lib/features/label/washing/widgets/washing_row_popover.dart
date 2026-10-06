@@ -228,7 +228,7 @@ class _WashingRowPopoverState extends State<WashingRowPopover> {
               divider,
               LabelPopoverMenuTile(
                 icon: Icons.print_outlined,
-                label: 'Print',
+                label: 'Print Label',
                 enabled: true,
                 onTap: () => _runAndClose(() async {
                   final rootCtx = Navigator.of(
@@ -305,6 +305,37 @@ class _WashingRowPopoverState extends State<WashingRowPopover> {
                         }
                       }().ignore();
                     }
+                  }
+                }),
+              ),
+              divider,
+              LabelPopoverMenuTile(
+                icon: Icons.picture_as_pdf_outlined,
+                label: 'Print QC',
+                enabled: true,
+                onTap: () => _runAndClose(() async {
+                  final rootCtx = Navigator.of(
+                    context,
+                    rootNavigator: true,
+                  ).context;
+
+                  final noWashing = widget.header.noWashing;
+
+                  // Sengaja tanpa lock + tanpa markAsPrinted: yang menambah
+                  // HasBeenPrinted hanya cetak LABEL. Print QC hanya
+                  // mengambil ulang angka QC — pola sama dengan BrokerRowPopover.
+                  try {
+                    await PdfPrintService(defaultSystem: 'pps').previewFromUrl(
+                      context: rootCtx,
+                      pdfUrl: Uri.parse(ApiConstants.washingQcPdf(noWashing)),
+                      title: '$noWashing - QC',
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    final msg = e.toString().replaceFirst('Exception: ', '');
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(msg)));
                   }
                 }),
               ),
