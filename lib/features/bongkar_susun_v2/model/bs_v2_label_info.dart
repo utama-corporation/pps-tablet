@@ -1,3 +1,5 @@
+import '../utils/bs_v2_category_label.dart';
+
 class BsV2LabelSak {
   final int noSak;
   final double berat;
@@ -28,7 +30,7 @@ class BsV2LabelSak {
 
 class BsV2LabelInfo {
   final String labelCode;
-  final String category; // "washing" | "bonggolan"
+  final String category; // "washing" | "bonggolan" | "reject" | ...
   final int idJenis;
   final String namaJenis;
   final double totalBerat;
@@ -49,6 +51,15 @@ class BsV2LabelInfo {
   /// "9 / 15 pcs".
   final double? totalPcs;
 
+  /// Total berat yang sudah tercatat sebagai partial di label aslinya
+  /// (produksi / bongkar-susun sebelumnya). Hanya reject yang punya
+  /// konsep ini — dipakai untuk menampilkan sisa berat label.
+  final double totalPartialBerat;
+
+  /// Berat asli label sebelum dipecah. Dipakai bersama [totalBerat] (berat
+  /// terpakai) untuk menampilkan "20,29 / 27,29 kg" pada label reject parsial.
+  final double? totalBeratLabel;
+
   const BsV2LabelInfo({
     required this.labelCode,
     required this.category,
@@ -61,6 +72,8 @@ class BsV2LabelInfo {
     this.isPartial = false,
     this.noPartial,
     this.totalPcs,
+    this.totalPartialBerat = 0,
+    this.totalBeratLabel,
   });
 
   bool get isWashing => category == 'washing';
@@ -71,6 +84,7 @@ class BsV2LabelInfo {
   bool get isFurnitureWip => category == 'furnitureWip';
   bool get isBarangJadi => category == 'barangJadi';
   bool get isBahanBaku => category == 'bahanBaku';
+  bool get isReject => category == 'reject';
   bool get isPcsCategory => isFurnitureWip || isBarangJadi;
 
   static String _s(dynamic v) => v?.toString() ?? '';
@@ -91,13 +105,21 @@ class BsV2LabelInfo {
   }
 
   factory BsV2LabelInfo.fromJson(Map<String, dynamic> j) {
+    final labelCode = _s(j['labelCode']);
+    final category = bsV2NormalizeCategory(
+      _s(j['category']),
+      labelCode: labelCode,
+    );
+    final noRejectPartial = _s(
+      j['noRejectPartial'] ?? j['NoRejectPartial'],
+    ).trim();
     final raw = j['isPartial'];
-    final isPartial = raw == true || raw == 1;
-    final category = _s(j['category']);
+    final isPartial = raw == true || raw == 1 || noRejectPartial.isNotEmpty;
     final isGilingan = category == 'gilingan';
     final isFurnitureWip = category == 'furnitureWip';
     final isBarangJadi = category == 'barangJadi';
     final isBahanBaku = category == 'bahanBaku';
+    final isReject = category == 'reject';
     // GET label info uses 'details' (capitalized NoSak/BeratAct) + sakSisa/beratSisa
     // Detail response uses standard 'saks' (lowercase noSak/berat) + jumlahSak/totalBerat
     final detailsRaw = (j['details'] as List?) ?? [];
@@ -105,7 +127,7 @@ class BsV2LabelInfo {
     final bahanBakuSaksRaw = detailsRaw.isNotEmpty ? detailsRaw : saksRaw;
     final activeSaksRaw = isBahanBaku ? bahanBakuSaksRaw : saksRaw;
     return BsV2LabelInfo(
-      labelCode: _s(j['labelCode']),
+      labelCode: labelCode,
       category: category,
       isPartial: isPartial,
       noPartial: (() {
@@ -113,24 +135,29 @@ class BsV2LabelInfo {
         return v.isEmpty ? null : v;
       })(),
       totalPcs: j['totalPcs'] == null ? null : _d(j['totalPcs']),
+      totalPartialBerat: _d(j['totalPartialBerat'] ?? j['TotalPartialBerat']),
+      totalBeratLabel: j['totalBeratLabel'] == null
+          ? null
+          : _d(j['totalBeratLabel']),
       idJenis: isGilingan ? _i(j['idGilingan']) : _i(j['idJenis']),
       namaJenis: _s(j['namaJenis']),
       noBahanBaku: isBahanBaku
           ? _s(j['noBahanBaku']).isNotEmpty
-              ? _s(j['noBahanBaku'])
-              // fallback: derive from labelCode by stripping pallet suffix
-              : _s(j['labelCode']).contains('-')
-              ? _s(j['labelCode']).substring(
-                  0,
-                  _s(j['labelCode']).lastIndexOf('-'),
-                )
-              : null
+                ? _s(j['noBahanBaku'])
+                // fallback: derive from labelCode by stripping pallet suffix
+                : labelCode.contains('-')
+                ? labelCode.substring(0, labelCode.lastIndexOf('-'))
+                : null
           : null,
       totalBerat: (isFurnitureWip || isBarangJadi)
           ? _d(j['pcs'])
           : isBahanBaku
           // beratSisa = GET label info format; totalBerat = detail response format
           ? _d(j['beratSisa'] ?? j['totalBerat'] ?? j['berat'])
+          // reject tidak ber-sak: sisa berat di beratAct (label parsial) /
+          // beratSisa (GET label info), fallback ke berat total
+          : isReject
+          ? _d(j['beratAct'] ?? j['beratSisa'] ?? j['berat'] ?? j['totalBerat'])
           : (activeSaksRaw.isNotEmpty)
           ? activeSaksRaw.fold<double>(
               0.0,
@@ -138,34 +165,38 @@ class BsV2LabelInfo {
             )
           : _d(j['totalBerat'] ?? j['berat']),
       // sakSisa = GET label info format; jumlahSak = detail response format
-      jumlahSak: isBahanBaku
+      jumlahSak: isReject
+          ? 0
+          : isBahanBaku
           ? _i(j['sakSisa'] ?? j['jumlahSak'])
           : _i(j['jumlahSak']),
-      saks: isBahanBaku
+      saks: isReject
+          ? const []
+          : isBahanBaku
           ? (detailsRaw.isNotEmpty
-              // GET label info: capitalized NoSak/BeratAct
-              ? detailsRaw
-                    .map(
-                      (e) => BsV2LabelSak(
-                        noSak: _i((e as Map)['NoSak']),
-                        berat: _d(e['BeratAct']),
-                      ),
-                    )
-                    .toList()
-              // Detail response: standard noSak/berat
-              : saksRaw
-                    .map(
-                      (e) => BsV2LabelSak.fromJson(
-                        Map<String, dynamic>.from(e as Map),
-                      ),
-                    )
-                    .toList())
+                // GET label info: capitalized NoSak/BeratAct
+                ? detailsRaw
+                      .map(
+                        (e) => BsV2LabelSak(
+                          noSak: _i((e as Map)['NoSak']),
+                          berat: _d(e['BeratAct']),
+                        ),
+                      )
+                      .toList()
+                // Detail response: standard noSak/berat
+                : saksRaw
+                      .map(
+                        (e) => BsV2LabelSak.fromJson(
+                          Map<String, dynamic>.from(e as Map),
+                        ),
+                      )
+                      .toList())
           : activeSaksRaw
-              .map(
-                (e) =>
-                    BsV2LabelSak.fromJson(Map<String, dynamic>.from(e as Map)),
-              )
-              .toList(),
+                .map(
+                  (e) =>
+                      BsV2LabelSak.fromJson(Map<String, dynamic>.from(e as Map)),
+                )
+                .toList(),
     );
   }
 }

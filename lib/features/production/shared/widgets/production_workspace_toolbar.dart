@@ -90,13 +90,8 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
     final now = DateTime.now();
     final hStart = (hourStart ?? '').trim();
     final hEnd = (hourEnd ?? '').trim();
-    if (tglProduksi == null) return false;
-
-    final isToday =
-        tglProduksi!.year == now.year &&
-        tglProduksi!.month == now.month &&
-        tglProduksi!.day == now.day;
-    if (!isToday) return false;
+    final tgl = tglProduksi;
+    if (tgl == null) return false;
     if (hStart.isEmpty && hEnd.isEmpty) return false;
 
     int toMin(String hhmm) {
@@ -108,12 +103,38 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
       return h * 60 + m;
     }
 
-    final nowMin = now.hour * 60 + now.minute;
     final startMin = hStart.isNotEmpty ? toMin(hStart) : 0;
     final endMin = hEnd.isNotEmpty ? toMin(hEnd) : 23 * 60 + 59;
     if (startMin < 0 || endMin < 0) return false;
-    if (endMin < startMin) return nowMin >= startMin || nowMin <= endMin;
-    return nowMin >= startMin && nowMin <= endMin;
+
+    // Shift boleh melewati tengah malam. Dalam kasus itu tanggal produksi adalah
+    // tanggal AWAL shift, jadi jam mulai bisa jatuh di hari berikutnya.
+    //
+    // Dua kondisi harus ditangani:
+    //  1. hourStart > hourEnd (mis. 23:00-07:00) — shiftEnd digeser +1 hari.
+    //  2. hourStart di rentang pagi (00:00-06:00) pada shift malam — jam itu
+    //     milik hari BERIKUTNYA, jadi anchor digeser +1 hari lebih dulu.
+    //
+    // Aturan (2) harus sama dengan backend `buildQcBuckets`; kalau berbeda,
+    // produksi dengan tglProduksi 7 Okt dan hourStart 01:41 dianggap sudah
+    // "selesai" padahal masih berjalan di 8 Okt.
+    final startsInMorningWindow = startMin >= 0 && startMin <= 360;
+    var anchor = DateTime(tgl.year, tgl.month, tgl.day);
+    if (shift == 3 && startsInMorningWindow) {
+      anchor = anchor.add(const Duration(days: 1));
+    }
+
+    final shiftStart = anchor.add(Duration(minutes: startMin));
+    var shiftEnd = anchor.add(Duration(minutes: endMin));
+    if (!shiftEnd.isAfter(shiftStart)) {
+      shiftEnd = shiftEnd.add(const Duration(days: 1));
+    }
+
+    // Toleransi kecil supaya operator tidak kehilangan tombol tepat di detik
+    // pertama/l terakhir window.
+    const grace = Duration(minutes: 5);
+    return !now.isBefore(shiftStart.subtract(grace)) &&
+        !now.isAfter(shiftEnd.add(grace));
   }
 
   @override

@@ -71,6 +71,11 @@ class BsV2CreateViewModel extends ChangeNotifier {
   bool isLookingUp = false;
   String? lookupError;
 
+  /// Override berat yang benar-benar dipakai untuk satu label input (kg),
+  /// hanya untuk kategori reject. Kalau tidak ada, seluruh sisa berat label
+  /// dipakai. Dikirim ke backend sebagai `inputsPartial`.
+  final Map<String, double> inputPartialQty = {};
+
   // === Output state ===
   final List<OutputEntry> outputs = [];
 
@@ -91,6 +96,7 @@ class BsV2CreateViewModel extends ChangeNotifier {
   bool get isFurnitureWip => category == 'furnitureWip';
   bool get isBarangJadi => category == 'barangJadi';
   bool get isBahanBaku => category == 'bahanBaku';
+  bool get isReject => category == 'reject';
   bool get isPcsCategory => isFurnitureWip || isBarangJadi;
   String get quantityUnit => isPcsCategory ? 'pcs' : 'kg';
 
@@ -113,7 +119,8 @@ class BsV2CreateViewModel extends ChangeNotifier {
   Map<int, double> get inputBeratByJenis {
     final m = <int, double>{};
     for (final lbl in inputs) {
-      m[lbl.idJenis] = (m[lbl.idJenis] ?? 0.0) + lbl.totalBerat;
+      m[lbl.idJenis] =
+          (m[lbl.idJenis] ?? 0.0) + inputUsedBerat(lbl);
     }
     return m;
   }
@@ -150,7 +157,7 @@ class BsV2CreateViewModel extends ChangeNotifier {
     final result = <BsV2InputAllocation>[];
 
     for (final lbl in inputs) {
-      final total = lbl.totalBerat;
+      final total = inputUsedBerat(lbl);
       var outstanding = need[lbl.idJenis] ?? 0.0;
       final take = outstanding > 0
           ? (outstanding < total ? outstanding : total)
@@ -251,9 +258,32 @@ class BsV2CreateViewModel extends ChangeNotifier {
     return true;
   }
 
-  // === Actions ===
+// === Actions ===
 
-  Future<void> lookupLabel(String labelCode) async {
+/// Berat yang benar-benar dipakai untuk satu label input: override partial
+/// dari operator kalau ada, kalau tidak seluruh sisa berat label.
+double inputUsedBerat(BsV2LabelInfo lbl) =>
+    inputPartialQty[lbl.labelCode] ?? lbl.totalBerat;
+
+/// Set override berat terpakai untuk satu label reject. Nilai di-clamp ke
+/// rentang (0, sisa berat];qty == sisa berat berarti pakai penuh, jadi
+/// override-nya dibuang (backend tidak butuh partial untuk itu).
+void setInputPartialQty(String labelCode, double? qty) {
+  final label = inputs.where((l) => l.labelCode == labelCode).firstOrNull;
+  if (label == null) return;
+  if (qty == null || !qty.isFinite || qty <= 0 || qty >= label.totalBerat) {
+    inputPartialQty.remove(labelCode);
+  } else {
+    inputPartialQty[labelCode] = qty;
+  }
+  notifyListeners();
+}
+
+void clearInputPartialQty(String labelCode) {
+  if (inputPartialQty.remove(labelCode) != null) notifyListeners();
+}
+
+Future<void> lookupLabel(String labelCode) async {
     final code = labelCode.trim();
     if (code.isEmpty) return;
 
@@ -303,6 +333,7 @@ class BsV2CreateViewModel extends ChangeNotifier {
 
   void removeInput(String labelCode) {
     inputs.removeWhere((l) => l.labelCode == labelCode);
+    inputPartialQty.remove(labelCode);
     if (inputs.isEmpty) outputs.clear();
     notifyListeners();
   }
@@ -456,6 +487,11 @@ class BsV2CreateViewModel extends ChangeNotifier {
         note: note,
         inputs: inputCodes,
         outputs: outputsJson,
+        inputsPartial: inputPartialQty.isEmpty
+            ? null
+            : inputPartialQty.entries
+                  .map((e) => {'labelCode': e.key, 'qty': e.value})
+                  .toList(),
       );
       lastResult = result;
       _reset();
@@ -472,6 +508,7 @@ class BsV2CreateViewModel extends ChangeNotifier {
   void _reset() {
     inputs.clear();
     outputs.clear();
+    inputPartialQty.clear();
     note = '';
     lookupError = null;
     submitError = null;

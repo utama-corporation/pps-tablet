@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../../../jenis_bonggolan/model/jenis_bonggolan_model.dart';
-import '../../../jenis_bonggolan/view_model/jenis_bonggolan_view_model.dart';
-import '../../../reject_type/model/reject_type_model.dart';
-import '../../../reject_type/view_model/reject_type_view_model.dart';
 import '../model/inject_batch_model.dart';
 import '../model/inject_production_model.dart' show InjectOutputJenis;
 import '../repository/inject_production_repository.dart';
 import 'counter_picker_dialog.dart';
+import 'sisa_jenis_editor.dart';
 
 class InjectTerminateDialog extends StatefulWidget {
   const InjectTerminateDialog({
@@ -37,12 +33,11 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
   final Map<int, TextEditingController> _jenisCtrl = {};
   final _beratCtrl = TextEditingController();
   final _cycleCtrl = TextEditingController();
-  final _beratBonggolanCtrl = TextEditingController();
-  final _beratRejectCtrl = TextEditingController();
+
+  /// Sisa akhir shift — bisa banyak jenis bonggolan & reject.
+  final SisaJenisDraft _sisa = SisaJenisDraft();
 
   int? _counterValue;
-  JenisBonggolan? _bonggolanJenis;
-  RejectType? _rejectJenis;
 
   InjectPcsPerLabelResult? _pplData;
   late String _selectedHourEnd;
@@ -96,8 +91,7 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
     for (final ctrl in _jenisCtrl.values) { ctrl.dispose(); }
     _beratCtrl.dispose();
     _cycleCtrl.dispose();
-    _beratBonggolanCtrl.dispose();
-    _beratRejectCtrl.dispose();
+    _sisa.dispose();
     super.dispose();
   }
 
@@ -110,36 +104,22 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
     ));
   }
 
-  Future<JenisBonggolan?> _showBonggolanPicker() async {
-    final vm = context.read<JenisBonggolanViewModel>();
-    await vm.ensureLoaded();
-    if (!mounted) return null;
-    return showDialog<JenisBonggolan>(
-      context: context,
-      builder: (_) => _ListPickerDialog<JenisBonggolan>(
-        title: 'Jenis Bonggolan',
-        icon: Icons.recycling_outlined,
-        items: vm.list,
-        labelOf: (e) => e.namaBonggolan,
-        subtitleOf: (_) => null,
-      ),
-    );
-  }
-
-  Future<RejectType?> _showRejectPicker() async {
-    final vm = context.read<RejectTypeViewModel>();
-    await vm.ensureLoaded();
-    if (!mounted) return null;
-    return showDialog<RejectType>(
-      context: context,
-      builder: (_) => _ListPickerDialog<RejectType>(
-        title: 'Jenis Reject',
-        icon: Icons.recycling_outlined,
-        items: vm.list,
-        labelOf: (e) => e.namaReject,
-        subtitleOf: (e) => (e.itemCode ?? '').trim().isEmpty ? null : e.itemCode,
-      ),
-    );
+  /// Normalisasi jam ke "HH:mm:ss" — satu-satunya format yang pasti diterima
+  /// backend (`CAST(@HourStart AS time(7))` plus regex split-time).
+  /// Mengembalikan null kalau input tidak bisa diparse sebagai jam 24 jam.
+  static String? _normalizeHour(String? raw) {
+    final s = (raw ?? '').trim();
+    if (s.isEmpty) return null;
+    final m = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$').firstMatch(s);
+    if (m == null) return null;
+    final hh = int.tryParse(m.group(1)!);
+    final mm = int.tryParse(m.group(2)!);
+    final ss = int.tryParse(m.group(3) ?? '0') ?? 0;
+    if (hh == null || hh < 0 || hh > 23) return null;
+    if (mm == null || mm < 0 || mm > 59) return null;
+    if (ss < 0 || ss > 59) return null;
+    String p2(int v) => v.toString().padLeft(2, '0');
+    return '${p2(hh)}:${p2(mm)}:${p2(ss)}';
   }
 
   Future<void> _submit() async {
@@ -192,28 +172,32 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
       if (!mounted || proceed != true) return;
     }
 
-    // Bonggolan / Reject pick
-    final beratBonggolan = double.tryParse(_beratBonggolanCtrl.text.replaceAll(',', '.'));
-    final beratReject = double.tryParse(_beratRejectCtrl.text.replaceAll(',', '.'));
-
-    if (beratBonggolan != null && beratBonggolan > 0 && _bonggolanJenis == null) {
-      final picked = await _showBonggolanPicker();
-      if (!mounted) return;
-      if (picked == null) return;
-      setState(() => _bonggolanJenis = picked);
-    }
-    if (beratReject != null && beratReject > 0 && _rejectJenis == null) {
-      final picked = await _showRejectPicker();
-      if (!mounted) return;
-      if (picked == null) return;
-      setState(() => _rejectJenis = picked);
-    }
-
     setState(() { _isSaving = true; _error = null; });
     try {
-      final hourEndFull = _selectedHourEnd.length == 5
-          ? '$_selectedHourEnd:00'
-          : _selectedHourEnd;
+      // Backend hanya menerima "HH:mm" atau "HH:mm:ss" (lihat validasi
+      // timeRegex di inject-production-controller.js untuk split-time).
+      // Terminate sebelumnya hanya normalizeTime() tanpa cek format, jadi
+      // nilai Odd seperti "9:5" lolos ke SQL dan gagal di CAST sebagai 500.
+      final hourStartFull = _normalizeHour(widget.hourStart);
+      if (hourStartFull == null) {
+        setState(() {
+          _isSaving = false;
+          _error =
+              'Format jam mulai tidak valid (${widget.hourStart}). '
+              'Gunakan HH:mm atau HH:mm:ss.';
+        });
+        return;
+      }
+      final hourEndFull = _normalizeHour(_selectedHourEnd);
+      if (hourEndFull == null) {
+        setState(() {
+          _isSaving = false;
+          _error =
+              'Format jam berhenti tidak valid ($_selectedHourEnd). '
+              'Gunakan HH:mm atau HH:mm:ss.';
+        });
+        return;
+      }
 
       // Build items (one per jenis; terminate = last bucket so carryOverOut = 0)
       final outputs = widget.outputJenisList;
@@ -243,9 +227,6 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
         }).toList();
       }
 
-      final hourStartFull = widget.hourStart.length == 5
-          ? '${widget.hourStart}:00'
-          : widget.hourStart;
       await InjectProductionRepository().terminate(
         noProduksi: widget.noProduksi,
         hourStart: hourStartFull,
@@ -254,10 +235,8 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
         cycleTime: cycleTime,
         counter: counter,
         items: items,
-        idBonggolan: _bonggolanJenis?.idBonggolan,
-        beratBonggolan: beratBonggolan,
-        idReject: _rejectJenis?.idReject,
-        beratReject: beratReject,
+        bonggolanItems: _sisa.bonggolanPayload,
+        rejectItems: _sisa.rejectPayload,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -425,46 +404,9 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
                           const SizedBox(height: 10),
                           const Divider(height: 1, color: Color(0xFFFFE4E4)),
                           const SizedBox(height: 10),
-                          const Text(
-                            'SISA AKHIR SHIFT (OPSIONAL)',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF6B7280), letterSpacing: 1.0),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                            Expanded(flex: 3, child: _JenisPicker(
-                              label: 'Jenis Bonggolan',
-                              selectedName: _bonggolanJenis?.namaBonggolan,
-                              onTap: () async {
-                                final picked = await _showBonggolanPicker();
-                                if (picked != null && mounted) setState(() => _bonggolanJenis = picked);
-                              },
-                            )),
-                            const SizedBox(width: 8),
-                            Expanded(flex: 2, child: _InputField(
-                              label: 'Berat (kg)',
-                              ctrl: _beratBonggolanCtrl,
-                              hint: '0.0', decimal: true,
-                              enabled: _bonggolanJenis != null,
-                            )),
-                          ]),
-                          const SizedBox(height: 8),
-                          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                            Expanded(flex: 3, child: _JenisPicker(
-                              label: 'Jenis Reject',
-                              selectedName: _rejectJenis?.namaReject,
-                              onTap: () async {
-                                final picked = await _showRejectPicker();
-                                if (picked != null && mounted) setState(() => _rejectJenis = picked);
-                              },
-                            )),
-                            const SizedBox(width: 8),
-                            Expanded(flex: 2, child: _InputField(
-                              label: 'Berat (kg)',
-                              ctrl: _beratRejectCtrl,
-                              hint: '0.0', decimal: true,
-                              enabled: _rejectJenis != null,
-                            )),
-                          ]),
+
+                          // Boleh lebih dari satu jenis bonggolan & reject
+                          SisaJenisEditor(draft: _sisa, accent: accent),
 
                           // ── Berat / Cycle / Counter ──────────────────────
                           const SizedBox(height: 10),
@@ -936,7 +878,6 @@ class _InputField extends StatelessWidget {
   const _InputField({
     required this.label,
     required this.ctrl,
-    this.enabled = true,
     this.hint = '0.0',
     this.decimal = true,
     this.isError = false,
@@ -944,7 +885,6 @@ class _InputField extends StatelessWidget {
   });
   final String label;
   final TextEditingController ctrl;
-  final bool enabled;
   final String hint;
   final bool decimal;
   final bool isError;
@@ -954,9 +894,8 @@ class _InputField extends StatelessWidget {
   Widget build(BuildContext context) {
     const accent = Color(0xFFDC2626);
     const errorColor = Color(0xFFDC2626);
-    final borderColor = isError
-        ? errorColor
-        : enabled ? accent.withValues(alpha: 0.30) : accent.withValues(alpha: 0.15);
+    final borderColor =
+        isError ? errorColor : accent.withValues(alpha: 0.30);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -964,14 +903,13 @@ class _InputField extends StatelessWidget {
       children: [
         Text(label, style: TextStyle(
           fontSize: 10, fontWeight: FontWeight.w600,
-          color: isError ? errorColor : enabled ? const Color(0xFF374151) : const Color(0xFF9CA3AF),
+          color: isError ? errorColor : const Color(0xFF374151),
         )),
         const SizedBox(height: 3),
         SizedBox(
           height: 32,
           child: TextField(
             controller: ctrl,
-            enabled: enabled,
             keyboardType: TextInputType.numberWithOptions(decimal: decimal),
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
@@ -984,7 +922,7 @@ class _InputField extends StatelessWidget {
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: borderColor, width: isError ? 1.5 : 1.0)),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: isError ? errorColor : accent, width: 1.5)),
               filled: true,
-              fillColor: isError ? const Color(0xFFFEF2F2) : enabled ? Colors.white : const Color(0xFFF3F4F6),
+              fillColor: isError ? const Color(0xFFFEF2F2) : Colors.white,
             ),
           ),
         ),
@@ -1037,115 +975,6 @@ class _CounterField extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _JenisPicker extends StatelessWidget {
-  const _JenisPicker({required this.label, required this.selectedName, required this.onTap});
-  final String label;
-  final String? selectedName;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFF92400E);
-    final hasValue = selectedName != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
-        const SizedBox(height: 3),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: hasValue ? accent : accent.withValues(alpha: 0.30), width: hasValue ? 1.5 : 1.0),
-            ),
-            child: Row(children: [
-              Expanded(child: Text(
-                hasValue ? selectedName! : 'Pilih...',
-                style: TextStyle(fontSize: 11, fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400, color: hasValue ? accent : Colors.grey.shade400),
-                overflow: TextOverflow.ellipsis,
-              )),
-              Icon(Icons.expand_more, size: 14, color: hasValue ? accent : Colors.grey.shade400),
-            ]),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ListPickerDialog<T> extends StatelessWidget {
-  const _ListPickerDialog({required this.title, required this.icon, required this.items, required this.labelOf, required this.subtitleOf});
-  final String title;
-  final IconData icon;
-  final List<T> items;
-  final String Function(T) labelOf;
-  final String? Function(T) subtitleOf;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFF92400E);
-    return Dialog(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 480),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Row(children: [
-                Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: accent.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 16, color: accent)),
-                const SizedBox(width: 10),
-                Expanded(child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1F2937)))),
-                IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close, size: 18, color: Color(0xFF9CA3AF)), visualDensity: VisualDensity.compact),
-              ]),
-            ),
-            const Divider(height: 1, color: Color(0xFFE2E6EA)),
-            if (items.isEmpty)
-              const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Tidak ada data', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)))))
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE2E6EA), indent: 16, endIndent: 16),
-                  itemBuilder: (ctx, i) {
-                    final item = items[i];
-                    final sub = subtitleOf(item);
-                    return InkWell(
-                      onTap: () => Navigator.of(ctx).pop(item),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(children: [
-                          Container(width: 26, height: 26, alignment: Alignment.center, decoration: BoxDecoration(color: accent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)), child: Text('${i + 1}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent))),
-                          const SizedBox(width: 12),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(labelOf(item), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF1F2937))),
-                            if (sub != null && sub.isNotEmpty) Text(sub, style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
-                          ])),
-                          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9CA3AF)),
-                        ]),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -15,6 +15,7 @@ import '../../label/furniture_wip/repository/furniture_wip_repository.dart';
 import '../../label/gilingan/repository/gilingan_repository.dart';
 import '../../label/mixer/repository/mixer_repository.dart';
 import '../../label/packing/repository/packing_repository.dart';
+import '../../label/reject/repository/reject_repository.dart';
 import '../../label/washing/repository/washing_repository.dart';
 import '../model/bs_v2_label_info.dart';
 import '../model/bs_v2_transaction.dart';
@@ -808,7 +809,9 @@ class _BsV2InputTile extends StatelessWidget {
                         ? (lbl.isPartial && lbl.totalPcs != null
                               ? '${lbl.totalBerat.toInt()} / ${lbl.totalPcs!.toInt()} pcs'
                               : '${lbl.totalBerat.toInt()} pcs')
-                        : '${nf.format(lbl.totalBerat)} kg',
+                        : (lbl.isPartial && lbl.totalBeratLabel != null
+                              ? '${nf.format(lbl.totalBerat)} / ${nf.format(lbl.totalBeratLabel!)} kg'
+                              : '${nf.format(lbl.totalBerat)} kg'),
                   ),
                 ],
               ),
@@ -928,6 +931,7 @@ class _OutputsCardState extends State<_OutputsCard>
     final isBahanBaku = labelCode.startsWith('A');
     final isPacking = labelCode.startsWith('BA');
     final isFurnitureWip = labelCode.startsWith('BB');
+    final isReject = labelCode.startsWith('BF');
     final isBroker = labelCode.startsWith('D');
     final isCrusher = labelCode.startsWith('F');
     final isMixer = labelCode.startsWith('H');
@@ -947,6 +951,8 @@ class _OutputsCardState extends State<_OutputsCard>
         ? 'packing'
         : isFurnitureWip
         ? 'furniture_wip'
+        : isReject
+        ? 'reject'
         : isBroker
         ? 'broker'
         : isCrusher
@@ -965,6 +971,8 @@ class _OutputsCardState extends State<_OutputsCard>
         ? ApiConstants.packingLabelPdf(labelCode)
         : isFurnitureWip
         ? ApiConstants.furnitureWipLabelPdf(labelCode)
+        : isReject
+        ? ApiConstants.rejectLabelPdf(labelCode)
         : isBroker
         ? ApiConstants.brokerLabelPdf(labelCode)
         : isCrusher
@@ -985,6 +993,7 @@ class _OutputsCardState extends State<_OutputsCard>
     final bahanBakuVm = isBahanBaku ? context.read<BahanBakuViewModel>() : null;
     final packingRepo = isPacking ? PackingRepository(api: ApiClient()) : null;
     final furnitureWipRepo = isFurnitureWip ? FurnitureWipRepository() : null;
+    final rejectRepo = isReject ? RejectRepository(api: ApiClient()) : null;
     final brokerRepo = isBroker ? BrokerRepository(api: ApiClient()) : null;
     final crusherRepo = isCrusher ? CrusherRepository() : null;
     final mixerRepo = isMixer ? MixerRepository() : null;
@@ -994,6 +1003,7 @@ class _OutputsCardState extends State<_OutputsCard>
         (isBahanBaku ||
             isPacking ||
             isFurnitureWip ||
+            isReject ||
             isBroker ||
             isCrusher ||
             isMixer ||
@@ -1019,6 +1029,7 @@ class _OutputsCardState extends State<_OutputsCard>
         }
         if (isPacking) return packingRepo!.markAsPrinted(labelCode);
         if (isFurnitureWip) return furnitureWipRepo!.markAsPrinted(labelCode);
+        if (isReject) return rejectRepo!.markAsPrinted(labelCode);
         if (isBroker) return brokerRepo!.markAsPrinted(labelCode);
         if (isCrusher) return crusherRepo!.markAsPrinted(labelCode);
         if (isMixer) return mixerRepo!.markAsPrinted(labelCode);

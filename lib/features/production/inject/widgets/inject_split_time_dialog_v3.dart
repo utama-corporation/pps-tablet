@@ -1,21 +1,55 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../../cetakan/model/mst_cetakan_model.dart';
 import '../../../cetakan/repository/cetakan_repository.dart';
 import '../../../furniture_material/model/furniture_material_lookup_model.dart';
-import '../../../jenis_bonggolan/model/jenis_bonggolan_model.dart';
-import '../../../jenis_bonggolan/view_model/jenis_bonggolan_view_model.dart';
-import '../../../reject_type/model/reject_type_model.dart';
-import '../../../reject_type/view_model/reject_type_view_model.dart';
 import '../../../warna/model/warna_model.dart';
 import '../model/inject_batch_model.dart' show InjectBatchSubmitResult;
 import '../model/inject_production_model.dart' show InjectOutputJenis;
 import '../repository/inject_production_repository.dart';
 import 'cetakan_warna_material_picker.dart';
 import 'counter_picker_dialog.dart';
+import 'sisa_jenis_editor.dart';
+
+/// Ubah "HH:mm" menjadi DateTime absolut di dalam window shift.
+///
+/// API split-time hanya menerima jam (HH:mm:ss) tanpa tanggal, sehingga
+/// tanggalnya harus dipastikan di sisi pemanggil. Untuk shift yang melewati
+/// tengah malam (mis. shift 3 23:00-07:00), jam yang lebih kecil dari jam
+/// awal shift otomatis ditempatkan di tanggal berikutnya: input "00:30"
+/// dengan window 01 Sep 23:00 - 02 Sep 07:00 menjadi 02 Sep 00:30.
+///
+/// Kandidat boleh berada di luar window (mis. jam yang tidak ada dalam shift);
+/// pemanggil yang memutuskan menolak atau menerima.
+DateTime? resolveSplitDateTime({
+  required String hhmm,
+  required DateTime windowStart,
+  required DateTime? windowEnd,
+  required DateTime fallbackDate,
+}) {
+  final parts = hhmm.trim().split(':');
+  if (parts.length < 2) return null;
+  final hour = int.tryParse(parts[0].trim());
+  final minute = int.tryParse(parts[1].trim());
+  if (hour == null || minute == null) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  final minutes = (hour * 60) + minute;
+
+  if (windowEnd == null || windowEnd.isBefore(windowStart)) {
+    return DateTime(fallbackDate.year, fallbackDate.month, fallbackDate.day)
+        .add(Duration(minutes: minutes));
+  }
+
+  var candidate =
+      DateTime(windowStart.year, windowStart.month, windowStart.day)
+          .add(Duration(minutes: minutes));
+  while (candidate.isBefore(windowStart)) {
+    candidate = candidate.add(const Duration(days: 1));
+  }
+  return candidate;
+}
 
 class InjectSplitTimeDialogV3 extends StatefulWidget {
   const InjectSplitTimeDialogV3({
@@ -34,6 +68,8 @@ class InjectSplitTimeDialogV3 extends StatefulWidget {
     this.outputJenisList = const [],
     this.noProduksi,
     this.lastBucketHourStart,
+    this.splitWindowStart,
+    this.splitWindowEnd,
   });
 
   final int idMesin;
@@ -51,6 +87,14 @@ class InjectSplitTimeDialogV3 extends StatefulWidget {
   final String? noProduksi;
   final String? lastBucketHourStart;
 
+  /// Window shift sebagai DateTime absolut (sudah memperhitungkan rollover
+  /// tengah malam, mis. shift 3 = 01 Sep 23:00 → 02 Sep 07:00). Dipakai untuk
+  /// menerjemahkan jam yang dipilih operator menjadi tanggal yang benar —
+  /// API split-time hanya menerima jam, tanggalnya diturunkan backend dari
+  /// tglProduksi + window shift.
+  final DateTime? splitWindowStart;
+  final DateTime? splitWindowEnd;
+
   @override
   State<InjectSplitTimeDialogV3> createState() => _InjectSplitTimeDialogV3State();
 }
@@ -60,8 +104,6 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
   final _pcsCtrl = TextEditingController();
   final _beratCtrl = TextEditingController();
   final _cycleCtrl = TextEditingController();
-  final _beratBonggolanCtrl = TextEditingController();
-  final _beratRejectCtrl = TextEditingController();
 
   int? _counterValue;
   InjectOutputJenis? _pickedJenis;
@@ -71,23 +113,112 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
   FurnitureMaterialLookupResult? _material;
   bool _loadingCetakan = false;
 
-  JenisBonggolan? _bonggolanJenis;
-  RejectType? _rejectJenis;
+  /// Sisa akhir shift — bisa banyak jenis bonggolan & reject.
+  final SisaJenisDraft _sisa = SisaJenisDraft();
 
   bool _isSaving = false;
   String? _error;
   bool _timeManuallyChanged = false;  // ignore: prefer_final_fields
   Timer? _clockTimer;
 
+  static int? _parseHhmm(String raw) {
+    final parts = raw.trim().split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0].trim());
+    final minute = int.tryParse(parts[1].trim());
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return (hour * 60) + minute;
+  }
+
+  static String _formatHhmm(DateTime value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  static String _formatTanggal(DateTime value) {
+    const bulan = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    final d = value.day.toString().padLeft(2, '0');
+    final y = value.year.toString();
+    return '$d ${bulan[value.month - 1]} $y';
+  }
+
+  static const _namaBulanPanjang = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+
+  static String _formatTanggalPanjang(DateTime value) {
+    final d = value.day.toString().padLeft(2, '0');
+    final y = value.year.toString();
+    return '$d ${_namaBulanPanjang[value.month - 1]} $y';
+  }
+
+  DateTime? get _windowStart => widget.splitWindowStart;
+  DateTime? get _windowEnd => widget.splitWindowEnd;
+
+  /// Ubah "HH:mm" menjadi DateTime absolut di dalam window shift.
+  DateTime? _resolveSplitAt(String hhmm) {
+    final ws = _windowStart;
+    final we = _windowEnd;
+    final tgl = widget.tglProduksi;
+    final base = ws ?? DateTime(tgl.year, tgl.month, tgl.day);
+    return resolveSplitDateTime(
+      hhmm: hhmm,
+      windowStart: base,
+      windowEnd: ws == null ? null : we,
+      fallbackDate: tgl,
+    );
+  }
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// True kalau tanggal hasil resolusi berbeda dari tglProduksi — artinya
+  /// split terjadi di tanggal berikutnya (shift lewat tengah malam).
+  bool get _crossesMidnight {
+    final resolved = _resolveSplitAt(_hourCtrl.text);
+    if (resolved == null) return false;
+    return !_sameDay(resolved, widget.tglProduksi);
+  }
+
+  /// Jam split hasil resolusi, untuk ditampilkan ke operator.
+  DateTime? get _resolvedSplitAt => _resolveSplitAt(_hourCtrl.text);
+
   String _nowHHmm() {
-    final now = TimeOfDay.now();
-    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    final ws = _windowStart;
+    final we = _windowEnd;
+    if (ws == null || we == null) return _formatHhmm(now);
+
+    // Bulatkan ke menit ke atas saat meng-clamp ke batas window. Tanpa ini,
+    // window yang mulai di 01:23:01 akan diformat jadi "01:23" — nilai yang
+    // sama dengan HourStart produksi dan pasti ditolak backend
+    // ("Jam Mulai harus lebih besar dari ...").
+    DateTime clampUp(DateTime t) {
+      final floored = DateTime(t.year, t.month, t.day, t.hour, t.minute);
+      if (floored.isBefore(t)) {
+        return floored.add(const Duration(minutes: 1));
+      }
+      return floored;
+    }
+
+    if (now.isBefore(ws)) return _formatHhmm(clampUp(ws));
+    if (now.isAfter(we)) return _formatHhmm(we);
+    return _formatHhmm(now);
   }
 
   @override
   void initState() {
     super.initState();
     _hourCtrl.text = _nowHHmm();
+    _hourCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
     _pcsCtrl.addListener(() { if (mounted) setState(() {}); });
     if (widget.lockedIdCetakan != null) _prefetchLockedCetakan();
     _startClock();
@@ -127,45 +258,33 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
     _pcsCtrl.dispose();
     _beratCtrl.dispose();
     _cycleCtrl.dispose();
-    _beratBonggolanCtrl.dispose();
-    _beratRejectCtrl.dispose();
+    _sisa.dispose();
     super.dispose();
   }
 
-  Future<JenisBonggolan?> _showBonggolanPicker() async {
-    final vm = context.read<JenisBonggolanViewModel>();
-    await vm.ensureLoaded();
-    if (!mounted) return null;
-    return showDialog<JenisBonggolan>(
-      context: context,
-      builder: (ctx) => _JenisListDialog<JenisBonggolan>(
-        title: 'Jenis Bonggolan',
-        icon: Icons.recycling_outlined,
-        items: vm.list,
-        labelOf: (e) => e.namaBonggolan,
-        subtitleOf: (_) => null,
-      ),
-    );
-  }
-
-  Future<RejectType?> _showRejectPicker() async {
-    final vm = context.read<RejectTypeViewModel>();
-    await vm.ensureLoaded();
-    if (!mounted) return null;
-    return showDialog<RejectType>(
-      context: context,
-      builder: (ctx) => _JenisListDialog<RejectType>(
-        title: 'Jenis Reject',
-        icon: Icons.recycling_outlined,
-        items: vm.list,
-        labelOf: (e) => e.namaReject,
-        subtitleOf: (e) => (e.itemCode ?? '').trim().isEmpty ? null : e.itemCode,
-      ),
-    );
+  /// Pesan validasi jam split, atau null kalau jamnya sudah benar.
+  String? get _splitTimeError {
+    final raw = _hourCtrl.text.trim();
+    if (raw.isEmpty) return null;
+    if (_parseHhmm(raw) == null) return 'Format jam harus HH:MM (24 jam).';
+    final splitAt = _resolveSplitAt(raw);
+    if (splitAt == null) return null;
+    final ws = _windowStart;
+    final we = _windowEnd;
+    if (ws != null && we != null) {
+      if (splitAt.isBefore(ws) || splitAt.isAfter(we)) {
+        return 'Di luar rentang shift: ${_formatTanggalPanjang(ws)} '
+            '${_formatHhmm(ws)} - ${_formatTanggalPanjang(we)} ${_formatHhmm(we)}.';
+      }
+    }
+    return null;
   }
 
   bool get _canSave =>
-      _hourCtrl.text.trim().isNotEmpty && _cetakan != null && _warna != null;
+      _hourCtrl.text.trim().isNotEmpty &&
+      _splitTimeError == null &&
+      _cetakan != null &&
+      _warna != null;
 
   Future<void> _pickCetakan() async {
     setState(() => _loadingCetakan = true);
@@ -201,10 +320,13 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
   }
 
   Future<void> _pickTime() async {
-    final now = TimeOfDay.now();
+    final current = _resolvedSplitAt;
+    final initial = current != null
+        ? TimeOfDay(hour: current.hour, minute: current.minute)
+        : TimeOfDay.now();
     final picked = await showTimePicker(
       context: context,
-      initialTime: now,
+      initialTime: initial,
       builder: (ctx, child) => MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
         child: child!,
@@ -301,46 +423,72 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
     final timeText = _hourCtrl.text.trim();
     if (timeText.isEmpty || _cetakan == null || _warna == null) return;
 
-    final pcsInput = int.tryParse(_pcsCtrl.text.trim());
-    final berat = double.tryParse(_beratCtrl.text.replaceAll(',', '.'));
-    final cycleTime = double.tryParse(_cycleCtrl.text.replaceAll(',', '.'));
-    final beratBonggolan = double.tryParse(_beratBonggolanCtrl.text.replaceAll(',', '.'));
-    final beratReject = double.tryParse(_beratRejectCtrl.text.replaceAll(',', '.'));
+    if (_parseHhmm(timeText) == null) {
+      setState(() => _error = 'Format jam tidak valid. Gunakan HH:MM (24 jam).');
+      return;
+    }
 
-    // Pick jenis output if needed
-    InjectOutputJenis? jenis = _pickedJenis;
-    final outputs = widget.outputJenisList;
-    if (pcsInput != null && pcsInput >= 0 && jenis == null && outputs.isNotEmpty) {
-      final totalPcs = widget.carryOverIn + pcsInput;
-      final needPick = totalPcs > 0;
-      if (needPick) {
-        if (outputs.length == 1) {
-          jenis = outputs.first;
-        } else {
-          jenis = await showDialog<InjectOutputJenis>(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => _OutputJenisPickerDialog(options: outputs),
-          );
-          if (!mounted) return;
-          if (jenis == null) return;
-        }
-        setState(() => _pickedJenis = jenis);
+    // Jam yang dikirim ke API hanya HH:mm:ss, jadi tanggalnya harus benar
+    // sejak sisi operator — terutama untuk shift yang melewati tengah malam
+    // (mis. shift 3 23:00-07:00, jam 00:30 berarti tanggal esok).
+    final splitAt = _resolveSplitAt(timeText);
+    final ws = _windowStart;
+    final we = _windowEnd;
+    if (splitAt == null) {
+      setState(() => _error = 'Jam split tidak bisa ditentukan.');
+      return;
+    }
+    if (ws != null && we != null) {
+      if (splitAt.isBefore(ws) || splitAt.isAfter(we)) {
+        setState(() {
+          _error = 'Jam split di luar rentang yang boleh diganti '
+              '(${_formatTanggalPanjang(ws)} ${_formatHhmm(ws)} - '
+              '${_formatTanggalPanjang(we)} ${_formatHhmm(we)}).';
+        });
+        return;
       }
     }
 
-    // Require jenis bonggolan/reject if berat diisi
-    if (beratBonggolan != null && beratBonggolan > 0 && _bonggolanJenis == null) {
-      final picked = await _showBonggolanPicker();
-      if (!mounted) return;
-      if (picked == null) return;
-      setState(() => _bonggolanJenis = picked);
+    final pcsInput = int.tryParse(_pcsCtrl.text.trim());
+    final berat = double.tryParse(_beratCtrl.text.replaceAll(',', '.'));
+    final cycleTime = double.tryParse(_cycleCtrl.text.replaceAll(',', '.'));
+
+    // Pick jenis output if needed.
+    //
+    // Syaratnya bukan cuma "user mengisi pcs" — carry-over dari bucket
+    // sebelumnya juga tetap dikirim ke server dan bisa cukup untuk membentuk 1
+    // label. Kalau idJenis tidak ikut terkirim, backend menolak dengan
+    // "idJenis wajib diisi jika totalPcs sudah cukup minimal 1 label" /
+    // "idJenis wajib diisi pada batch terakhir jika masih ada sisa pcs".
+    InjectOutputJenis? jenis = _pickedJenis;
+    final outputs = widget.outputJenisList;
+    final totalPcs = widget.carryOverIn + (pcsInput ?? 0);
+    if (jenis == null && outputs.isNotEmpty && totalPcs > 0) {
+      if (outputs.length == 1) {
+        jenis = outputs.first;
+      } else {
+        jenis = await showDialog<InjectOutputJenis>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _OutputJenisPickerDialog(options: outputs),
+        );
+        if (!mounted) return;
+        if (jenis == null) return;
+      }
+      setState(() => _pickedJenis = jenis);
     }
-    if (beratReject != null && beratReject > 0 && _rejectJenis == null) {
-      final picked = await _showRejectPicker();
-      if (!mounted) return;
-      if (picked == null) return;
-      setState(() => _rejectJenis = picked);
+
+    // Kalau masih ada pcs (carry-over atau input) tapi jenis output tidak
+    // tersedia sama sekali, backend pasti menolak — lebih baik berhenti di
+    // sisi klien daripada membiarkan split gagal di server setelah produksi
+    // baru sudah tercatat.
+    if (totalPcs > 0 && jenis == null) {
+      setState(() {
+        _error =
+            'Pilih jenis output dulu. Ada $totalPcs pcs (carry-over/input) '
+            'yang harus dilabelkan, tapi jenis output tidak tersedia.';
+      });
+      return;
     }
 
     setState(() { _isSaving = true; _error = null; });
@@ -360,6 +508,7 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
           'carryOverIn': widget.carryOverIn,
           'pcsInput': pcsInput ?? 0,
           'carryOverOut': carryOverOut,
+          // idJenis wajib selama masih ada pcs — backend menolak kalau null.
           if (jenis != null && jenis.idJenis > 0) 'idJenis': jenis.idJenis,
         };
         batchPayload = <String, dynamic>{
@@ -369,16 +518,9 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
           if (berat != null) 'berat': berat,
           if (cycleTime != null) 'cycleTime': cycleTime,
           if (_counterValue != null) 'counter': _counterValue,
-          if (_bonggolanJenis != null && beratBonggolan != null && beratBonggolan > 0)
-            'bonggolan': {
-              'idBonggolan': _bonggolanJenis!.idBonggolan,
-              'berat': beratBonggolan,
-            },
-          if (_rejectJenis != null && beratReject != null && beratReject > 0)
-            'reject': {
-              'idReject': _rejectJenis!.idReject,
-              'berat': beratReject,
-            },
+          if (_sisa.bonggolanPayload.isNotEmpty)
+            'bonggolan': _sisa.bonggolanPayload,
+          if (_sisa.rejectPayload.isNotEmpty) 'reject': _sisa.rejectPayload,
         };
       }
 
@@ -621,60 +763,9 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
                             ),
 
                             const SizedBox(height: 14),
-                            const _SubSectionLabel(label: 'SISA AKHIR SHIFT (OPSIONAL)'),
-                            const SizedBox(height: 8),
 
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: _JenisPicker(
-                                    label: 'Jenis Bonggolan',
-                                    selectedName: _bonggolanJenis?.namaBonggolan,
-                                    onTap: () async {
-                                      final picked = await _showBonggolanPicker();
-                                      if (picked != null && mounted) setState(() => _bonggolanJenis = picked);
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  flex: 2,
-                                  child: _BeratField(
-                                    label: 'Berat (kg)',
-                                    ctrl: _beratBonggolanCtrl,
-                                    enabled: _bonggolanJenis != null,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: _JenisPicker(
-                                    label: 'Jenis Reject',
-                                    selectedName: _rejectJenis?.namaReject,
-                                    onTap: () async {
-                                      final picked = await _showRejectPicker();
-                                      if (picked != null && mounted) setState(() => _rejectJenis = picked);
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  flex: 2,
-                                  child: _BeratField(
-                                    label: 'Berat (kg)',
-                                    ctrl: _beratRejectCtrl,
-                                    enabled: _rejectJenis != null,
-                                  ),
-                                ),
-                              ],
-                            ),
+                            // Sisa akhir shift — bisa banyak jenis
+                            SisaJenisEditor(draft: _sisa, accent: accent),
                           ],
                         ),
                       ),
@@ -787,6 +878,21 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
                                             ),
                                           ),
                                         ),
+                                        if (_resolvedSplitAt != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 3),
+                                            child: Text(
+                                              '${_formatTanggal(_resolvedSplitAt!)}'
+                                              '${_crossesMidnight ? ' · keesokan hari' : ''}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: _crossesMidnight
+                                                    ? const Color(0xFFB45309)
+                                                    : accent.withValues(alpha: 0.7),
+                                              ),
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   ),
@@ -799,6 +905,25 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
                                 ],
                               ),
                             ),
+
+                            // Validasi jam split (inline, sebelum footer error)
+                            if (_splitTimeError != null) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  const Icon(Icons.error_outline,
+                                      size: 14, color: Color(0xFFDC2626)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      _splitTimeError!,
+                                      style: const TextStyle(
+                                          fontSize: 11, color: Color(0xFFDC2626)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
 
                             const SizedBox(height: 14),
                             const _SubSectionLabel(label: 'CETAKAN, WARNA & MATERIAL'),
@@ -917,21 +1042,22 @@ class _SubSectionLabel extends StatelessWidget {
   }
 }
 
-class _JenisPicker extends StatelessWidget {
-  const _JenisPicker({
+class _BeratField extends StatelessWidget {
+  const _BeratField({
     required this.label,
-    required this.selectedName,
-    required this.onTap,
+    required this.ctrl,
+    this.hint = '0.0',
+    this.decimal = true,
   });
 
   final String label;
-  final String? selectedName;
-  final VoidCallback onTap;
+  final TextEditingController ctrl;
+  final String hint;
+  final bool decimal;
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF92400E);
-    final hasValue = selectedName != null;
+    const accent = Color(0xFF0F766E);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -945,82 +1071,10 @@ class _JenisPicker extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 3),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: hasValue ? accent : accent.withValues(alpha: 0.30),
-                width: hasValue ? 1.5 : 1.0,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    hasValue ? selectedName! : 'Pilih...',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400,
-                      color: hasValue ? accent : Colors.grey.shade400,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(
-                  Icons.expand_more,
-                  size: 14,
-                  color: hasValue ? accent : Colors.grey.shade400,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _BeratField extends StatelessWidget {
-  const _BeratField({
-    required this.label,
-    required this.ctrl,
-    this.enabled = true,
-    this.hint = '0.0',
-    this.decimal = true,
-  });
-
-  final String label;
-  final TextEditingController ctrl;
-  final bool enabled;
-  final String hint;
-  final bool decimal;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFF0F766E);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: enabled ? const Color(0xFF374151) : const Color(0xFF9CA3AF),
-          ),
-        ),
-        const SizedBox(height: 3),
         SizedBox(
           height: 32,
           child: TextField(
             controller: ctrl,
-            enabled: enabled,
             keyboardType: TextInputType.numberWithOptions(decimal: decimal),
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
@@ -1041,50 +1095,9 @@ class _BeratField extends StatelessWidget {
                 borderSide: const BorderSide(color: accent),
               ),
               filled: true,
-              fillColor: enabled ? Colors.white : const Color(0xFFF3F4F6),
+              fillColor: Colors.white,
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SimpleCounterDialog extends StatefulWidget {
-  const _SimpleCounterDialog({required this.initial});
-  final int initial;
-
-  @override
-  State<_SimpleCounterDialog> createState() => _SimpleCounterDialogState();
-}
-
-class _SimpleCounterDialogState extends State<_SimpleCounterDialog> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.initial == 0 ? '' : '${widget.initial}');
-  }
-
-  @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Counter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-      content: TextField(
-        controller: _ctrl,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(hintText: 'Masukkan counter...', border: OutlineInputBorder()),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Batal')),
-        ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(int.tryParse(_ctrl.text.trim()) ?? widget.initial),
-          child: const Text('OK'),
         ),
       ],
     );
@@ -1146,153 +1159,6 @@ class _OutputJenisPickerDialog extends StatelessWidget {
                 if (i < options.length - 1) const Divider(height: 1, color: Color(0xFFE2E6EA), indent: 16, endIndent: 16),
               ]);
             }),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _JenisListDialog<T> extends StatelessWidget {
-  const _JenisListDialog({
-    required this.title,
-    required this.icon,
-    required this.items,
-    required this.labelOf,
-    required this.subtitleOf,
-  });
-
-  final String title;
-  final IconData icon;
-  final List<T> items;
-  final String Function(T) labelOf;
-  final String? Function(T) subtitleOf;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFF92400E);
-    return Dialog(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 480),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(icon, size: 16, color: accent),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1F2937),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close, size: 18, color: Color(0xFF9CA3AF)),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Color(0xFFE2E6EA)),
-            if (items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'Tidak ada data',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
-                  ),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(
-                    height: 1,
-                    color: Color(0xFFE2E6EA),
-                    indent: 16,
-                    endIndent: 16,
-                  ),
-                  itemBuilder: (ctx, i) {
-                    final item = items[i];
-                    final sub = subtitleOf(item);
-                    return InkWell(
-                      onTap: () => Navigator.of(ctx).pop(item),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 26,
-                              height: 26,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: accent.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${i + 1}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: accent,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    labelOf(item),
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: Color(0xFF1F2937),
-                                    ),
-                                  ),
-                                  if (sub != null && sub.isNotEmpty)
-                                    Text(
-                                      sub,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Color(0xFF9CA3AF),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9CA3AF)),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
             const SizedBox(height: 8),
           ],
         ),

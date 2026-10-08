@@ -8,7 +8,9 @@ class BsV2Repository {
   BsV2Repository({ApiClient? apiClient}) : _api = apiClient ?? ApiClient();
 
   Future<BsV2LabelInfo> fetchLabelInfo(String labelCode) async {
-    final body = await _api.getJson('/api/bongkar-susun-v2/label/$labelCode');
+    final body = await _api.getJson(
+      '/api/bongkar-susun-v2/label/${Uri.encodeComponent(labelCode)}',
+    );
     final data = body['data'] as Map<String, dynamic>?;
     if (data == null) throw Exception('Response tidak mengandung data label');
     return BsV2LabelInfo.fromJson(data);
@@ -63,11 +65,14 @@ class BsV2Repository {
     required String note,
     required List<String> inputs,
     required List<Map<String, dynamic>> outputs,
+    List<Map<String, dynamic>>? inputsPartial,
   }) async {
     final reqBody = <String, dynamic>{
       'note': note,
       'inputs': inputs,
       'outputs': outputs,
+      if (inputsPartial != null && inputsPartial.isNotEmpty)
+        'inputsPartial': inputsPartial,
     };
 
     final jsonResp = await _api.postJson(

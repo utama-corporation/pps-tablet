@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import '../utils/bs_v2_category_label.dart';
 import 'bs_v2_label_info.dart';
 
 class BsV2SakItem {
@@ -61,6 +62,7 @@ class BsV2OutputLabel {
   bool get isFurnitureWip => category == 'furnitureWip';
   bool get isBarangJadi => category == 'barangJadi';
   bool get isBahanBaku => category == 'bahanBaku';
+  bool get isReject => category == 'reject';
   bool get isPcsCategory => isFurnitureWip || isBarangJadi;
 
   static String _s(dynamic v) => v?.toString() ?? '';
@@ -82,21 +84,11 @@ class BsV2OutputLabel {
 
   factory BsV2OutputLabel.fromJson(Map<String, dynamic> j) {
     final saksRaw = (j['saks'] ?? []) as List;
-    final category = _s(j['category']);
-    final isGilingan = category == 'gilingan';
-    final isFurnitureWip = category == 'furnitureWip';
-    final isBarangJadi = category == 'barangJadi';
-    final isBahanBaku = category == 'bahanBaku';
-    final isPcsCategory = isFurnitureWip || isBarangJadi;
     final rawNoPallet = j['noPallet'] ?? j['NoPallet'];
     final rawNoBahanBaku = j['noBahanBaku'] ?? j['NoBahanBaku'];
-    final noPallet = rawNoPallet == null ? null : _s(rawNoPallet);
-    final noBahanBaku = rawNoBahanBaku == null
-        ? (noPallet != null && noPallet.contains('-')
-              ? noPallet.substring(0, noPallet.lastIndexOf('-'))
-              : null)
-        : _s(rawNoBahanBaku);
-    // labelCode: noPallet, noWashing, noBonggolan, noBroker, noCrusher, noGilingan, noMixer, noFurnitureWIP, noBJ, noBahanBaku, or labelCode
+    // labelCode: noPallet, noWashing, noBonggolan, noBroker, noCrusher,
+    // noGilingan, noMixer, noFurnitureWIP, noBJ, noReject, noBahanBaku,
+    // atau labelCode
     final labelCode =
         j['labelCode'] ??
         rawNoPallet ??
@@ -108,7 +100,24 @@ class BsV2OutputLabel {
         j['noMixer'] ??
         j['noFurnitureWIP'] ??
         j['noBJ'] ??
+        j['noReject'] ??
         rawNoBahanBaku;
+    final category = bsV2NormalizeCategory(
+      _s(j['category']),
+      labelCode: labelCode == null ? '' : _s(labelCode),
+    );
+    final isGilingan = category == 'gilingan';
+    final isFurnitureWip = category == 'furnitureWip';
+    final isBarangJadi = category == 'barangJadi';
+    final isBahanBaku = category == 'bahanBaku';
+    final isReject = category == 'reject';
+    final isPcsCategory = isFurnitureWip || isBarangJadi;
+    final noPallet = rawNoPallet == null ? null : _s(rawNoPallet);
+    final noBahanBaku = rawNoBahanBaku == null
+        ? (noPallet != null && noPallet.contains('-')
+              ? noPallet.substring(0, noPallet.lastIndexOf('-'))
+              : null)
+        : _s(rawNoBahanBaku);
     final totalBerat = isPcsCategory
         ? _d(j['pcs'] ?? j['totalPcs'])
         : _d(j['totalBerat'] ?? j['berat']);
@@ -126,10 +135,15 @@ class BsV2OutputLabel {
       namaJenis: _s(j['namaJenis']),
       totalBerat: totalBerat,
       category: category,
-      jumlahSak: _i(j['jumlahSak']),
-      saks: saksRaw
-          .map((e) => BsV2SakItem.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList(),
+      jumlahSak: isReject ? 0 : _i(j['jumlahSak']),
+      saks: isReject
+          ? const []
+          : saksRaw
+                .map(
+                  (e) =>
+                      BsV2SakItem.fromJson(Map<String, dynamic>.from(e as Map)),
+                )
+                .toList(),
       berat: j['berat'] == null ? null : _d(j['berat']),
       printCount: _i(j['printCount'] ?? j['hasBeenPrinted'] ?? j['HasBeenPrinted']),
     );
@@ -186,6 +200,14 @@ class BsV2Transaction {
     if (categoryRaw.isEmpty && inputsRaw.isNotEmpty && inputsRaw.first is Map) {
       categoryRaw = _s((inputsRaw.first as Map)['category']);
     }
+    categoryRaw = bsV2NormalizeCategory(
+      categoryRaw,
+      labelCode: inputsRaw.isNotEmpty && inputsRaw.first is String
+          ? inputsRaw.first as String
+          : (inputsRaw.isNotEmpty && inputsRaw.first is Map
+                ? _s((inputsRaw.first as Map)['labelCode'])
+                : null),
+    );
 
     // inputs can be List<String> (submit response) or List<Map> (detail response)
     final inputs = inputsRaw.map<BsV2LabelInfo>((e) {
@@ -265,6 +287,8 @@ class BsV2Transaction {
         return 'Barang Jadi';
       case 'bahanBaku':
         return 'Bahan Baku';
+      case 'reject':
+        return 'Reject';
       default:
         return cat != null ? 'Bonggolan' : '-';
     }

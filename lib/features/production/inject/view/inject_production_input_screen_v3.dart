@@ -23,6 +23,9 @@ import '../repository/inject_production_repository.dart';
 import '../view_model/inject_production_input_view_model.dart';
 
 import '../model/inject_formula_model.dart';
+import '../model/inject_output_model.dart';
+import '../widgets/sisa_label_editable_section.dart';
+import '../../shared/widgets/production_output_detail_dialog.dart';
 import '../view_model/inject_formula_view_model.dart';
 import '../widgets/inject_shift_timeline_dialog.dart';
 import '../widgets/counter_picker_dialog.dart';
@@ -31,10 +34,7 @@ import '../../shared/widgets/bahan_pendukung_qty_dialog.dart';
 import '../widgets/inject_lookup_label_partial_dialog.dart';
 import '../widgets/inject_split_time_dialog_v3.dart';
 import '../widgets/inject_terminate_dialog.dart';
-import '../../../../features/reject_type/model/reject_type_model.dart';
-import '../../../../features/reject_type/view_model/reject_type_view_model.dart';
-import '../../../../features/jenis_bonggolan/model/jenis_bonggolan_model.dart';
-import '../../../../features/jenis_bonggolan/view_model/jenis_bonggolan_view_model.dart';
+import '../widgets/sisa_jenis_editor.dart';
 import '../../../label/bonggolan/repository/bonggolan_repository.dart';
 import '../../../label/furniture_wip/repository/furniture_wip_repository.dart';
 import '../../../label/reject/repository/reject_repository.dart';
@@ -139,6 +139,92 @@ class _InjectProductionInputScreenState
     return lastStatus != _HourlyBucketStatus.submitted;
   }
 
+  // ── Window split (ganti produksi) ──────────────────────────────────────────
+  //
+  // API split-time hanya menerima jam (HH:mm:ss) tanpa tanggal, jadi tanggal
+  // split diturunkan backend dari tglProduksi + window shift. Agar operator
+  // tidak salah baca di shift yang melewati tengah malam (mis. shift 3
+  // 23:00-07:00 → jam 00:30 jatuh di tanggal esok), semua batas di sini
+  // memakai DateTime absolut hasil bucket, bukan jam device.
+
+  DateTime? get _shiftStartAt =>
+      _bucketLabelOrder.isEmpty ? null : _bucketStartTimes[_bucketLabelOrder.first];
+
+  DateTime? get _shiftEndAt =>
+      _bucketLabelOrder.isEmpty ? null : _bucketEndTimes[_bucketLabelOrder.last];
+
+  /// Awal bucket pertama yang belum ditutup (belum submitted & belum
+  /// expired). Split tidak boleh lebih awal dari sini karena bucket-bucket
+  /// sebelumnya sudah final. Bucket yang masih terkunci di masa depan juga
+  /// dihitung, jadi yang dipakai adalah bucket PERTAMA yang belum final —
+  /// bukan bucket terakhir.
+  DateTime? get _splitAnchorBucketStart {
+    for (final label in _bucketLabelOrder) {
+      final status = _bucketStates[label]?.status;
+      if (status == _HourlyBucketStatus.submitted ||
+          status == _HourlyBucketStatus.expired) {
+        continue;
+      }
+      return _bucketStartTimes[label];
+    }
+    return null;
+  }
+
+  /// Batas shift dalam DateTime absolut, sudah menangani shift yang melewati
+  /// tengah malam. Semua validasi gunakan nilai ini — bukan
+  /// `_shiftStartAt`/`_shiftEndAt` mentah, karena bucket selalu di-anchor ke
+  /// tanggal produksi sehingga shift 23:00-07:00 punya `shiftEnd` di tanggal
+  /// yang sama dan terlihat "sudah lewat" sepanjang paruh kedua shift.
+  ({DateTime min, DateTime max})? get _absoluteShiftWindow {
+    final shiftStart = _shiftStartAt;
+    final shiftEnd = _shiftEndAt;
+    if (shiftStart == null || shiftEnd == null) return null;
+    var end = shiftEnd;
+    if (!end.isAfter(shiftStart)) {
+      end = end.add(const Duration(days: 1));
+    }
+    return (min: shiftStart, max: end);
+  }
+
+  /// Batas valid split: di dalam window shift, dan tidak sebelum bucket
+  /// terakhir yang sedang berjalan. Kalau bucket anchor belum ada (semua
+  /// bucket sudah submitted), split hanya boleh tepat di akhir shift.
+  ({DateTime min, DateTime max})? get _splitWindow {
+    final window = _absoluteShiftWindow;
+    if (window == null) return null;
+    final shiftStart = window.min;
+    final anchor = _splitAnchorBucketStart;
+    final base = (anchor != null && anchor.isAfter(shiftStart)) ? anchor : shiftStart;
+    // Backend menolak hourStart yang <= HourStart produksi asal
+    // ("Jam Mulai harus lebih besar dari ..."), jadi batas bawah window harus
+    // eksklusif — kalau min == HourStart, dialog akan mengirim nilai yang pasti
+    // ditolak.
+    final min = base.add(const Duration(minutes: 1));
+    return (min: min, max: window.max);
+  }
+
+  /// Alasan Ganti dinonaktifkan karena di luar window shift — mis. operator
+  /// membuka layar produksi sudah lewat beberapa jam setelah shift berakhir.
+  String? get _splitWindowBlockedReason {
+    if (_bucketLabelOrder.isEmpty) return null;
+    final window = _splitWindow;
+    if (window == null) {
+      return 'Tidak dapat ganti produksi: window shift tidak valid.';
+    }
+    final now = DateTime.now();
+    if (now.isAfter(window.max)) {
+      return 'Tidak dapat ganti produksi: sudah lewat akhir shift '
+          '(${_formatHourMinute(window.max)}).';
+    }
+    if (now.isBefore(window.min)) {
+      return 'Tidak dapat ganti produksi: belum masuk window shift '
+          '(${_formatHourMinute(window.min)}).';
+    }
+    return null;
+  }
+
+  bool get _canSplit => _canTerminate && _splitWindowBlockedReason == null;
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
@@ -163,6 +249,8 @@ class _InjectProductionInputScreenState
           !vm.isInputsLoading(widget.noProduksi)) {
         vm.loadInputs(widget.noProduksi);
       }
+      vm.loadBonggolanOutputs(widget.noProduksi);
+      vm.loadRejectOutputs(widget.noProduksi);
 
       context.read<InjectFormulaViewModel>().load(widget.noProduksi);
     });
@@ -296,12 +384,6 @@ class _InjectProductionInputScreenState
         }
       }
 
-      final bonggolanLabel = batch.labels.bonggolan.isNotEmpty
-          ? batch.labels.bonggolan.first
-          : null;
-      final rejectLabel = batch.labels.reject.isNotEmpty
-          ? batch.labels.reject.first
-          : null;
       _bucketStates[bucketLabel] = _HourlyBucketData(
         status: _HourlyBucketStatus.submitted,
         carryOverIn: batch.carryOverIn,
@@ -314,15 +396,6 @@ class _InjectProductionInputScreenState
         berat: batch.berat,
         cycleTime: batch.cycleTime,
         counter: batch.counter,
-        beratBonggolan: bonggolanLabel?.berat,
-        namaBonggolan:
-            bonggolanLabel != null && bonggolanLabel.namaJenis.isNotEmpty
-            ? bonggolanLabel.namaJenis
-            : null,
-        beratReject: rejectLabel?.berat,
-        namaReject: rejectLabel != null && rejectLabel.namaJenis.isNotEmpty
-            ? rejectLabel.namaJenis
-            : null,
         keterangan: batch.keterangan,
         isDowntime: batch.isDowntime,
         labelsFwip: batch.labels.furnitureWip,
@@ -346,9 +419,25 @@ class _InjectProductionInputScreenState
     if (durationMinutes <= 0) return [];
 
     final tgl = header.tglProduksi;
-    final anchorDate = tgl != null
+    var anchorDate = tgl != null
         ? DateTime(tgl.year, tgl.month, tgl.day)
         : DateTime.now();
+
+    // Shift yang melewati tengah malam: TglProduksi adalah tanggal AWAL shift.
+    // Kalau jam mulai jatuh di rentang pagi (00:00-06:00), jam itu sebenarnya
+    // milik hari BERIKUTNYA — produksi dengan tglProduksi 7 Okt dan hourStart
+    // 01:41 berjalan mulai 8 Okt 01:41, bukan 7 Okt.
+    //
+    // Aturan ini harus sama dengan backend `buildQcBuckets`
+    // (inject-production-service.js) — kalau berbeda, bucket yang dihitung
+    // frontend jatuh satu hari dan tombol Ganti/Terminate ikut hilang karena
+    // jam perangkat dianggap sudah lewat akhir shift.
+    final shift = header.shift;
+    final startsInMorningWindow = startMinutes >= 0 && startMinutes <= 360;
+    if (shift == 3 && startsInMorningWindow) {
+      anchorDate = anchorDate.add(const Duration(days: 1));
+    }
+
     final startDateTime = anchorDate.add(Duration(minutes: startMinutes));
 
     final labels = <String>[];
@@ -530,12 +619,7 @@ class _InjectProductionInputScreenState
     double? berat,
     double? cycleTime,
     int? counter,
-    double? beratBonggolan,
-    double? beratReject,
-    int? idRejectBonggolan,
-    int? idRejectReject, {
-    String? namaBonggolan,
-    String? namaReject,
+    SisaJenisDraft? sisa, {
     String? keterangan,
     bool isLastBucket = false,
     bool isDowntime = false,
@@ -613,13 +697,12 @@ class _InjectProductionInputScreenState
       if (cycleTime != null) 'cycleTime': cycleTime,
       if (counter != null) 'counter': counter,
       'items': itemsPayload,
-      if (isLastBucket && idRejectBonggolan != null && beratBonggolan != null)
-        'bonggolan': {
-          'idBonggolan': idRejectBonggolan,
-          'berat': beratBonggolan,
-        },
-      if (isLastBucket && idRejectReject != null && beratReject != null)
-        'reject': {'idReject': idRejectReject, 'berat': beratReject},
+      // Sisa akhir shift hanya untuk bucket terakhir. Boleh banyak jenis,
+      // dikirim sebagai array of {id, berat}.
+      if (isLastBucket && (sisa?.bonggolanPayload.isNotEmpty ?? false))
+        'bonggolan': sisa!.bonggolanPayload,
+      if (isLastBucket && (sisa?.rejectPayload.isNotEmpty ?? false))
+        'reject': sisa!.rejectPayload,
       if (keterangan != null && keterangan.trim().isNotEmpty)
         'keterangan': keterangan.trim(),
     };
@@ -633,6 +716,15 @@ class _InjectProductionInputScreenState
       return;
     }
     if (!mounted) return;
+
+    // Kalau response tidak membawa label (mis. backend versi lama), tetap
+    // tampilkan input user supaya bucket tetap terbaca.
+    final savedBonggolan = result.bonggolanList.isNotEmpty
+        ? result.bonggolanList
+        : _fallbackSisaLabels(sisa, isBonggolan: true);
+    final savedReject = result.rejectList.isNotEmpty
+        ? result.rejectList
+        : _fallbackSisaLabels(sisa, isBonggolan: false);
 
     setState(() {
       _initialTargetConsumedJenis.addAll(newlyConsumedJenis);
@@ -652,19 +744,11 @@ class _InjectProductionInputScreenState
         berat: berat,
         cycleTime: cycleTime,
         counter: counter,
-        beratBonggolan: result.bonggolan?.berat ?? beratBonggolan,
-        namaBonggolan: (result.bonggolan?.namaJenis.isNotEmpty == true)
-            ? result.bonggolan!.namaJenis
-            : namaBonggolan,
-        beratReject: result.reject?.berat ?? beratReject,
-        namaReject: (result.reject?.namaJenis.isNotEmpty == true)
-            ? result.reject!.namaJenis
-            : namaReject,
         keterangan: result.keterangan ?? keterangan,
         labelsFwip: result.furnitureWIP,
         labelsBarangJadi: result.barangJadi,
-        labelsBonggolan: result.bonggolan != null ? [result.bonggolan!] : [],
-        labelsReject: result.reject != null ? [result.reject!] : [],
+        labelsBonggolan: savedBonggolan,
+        labelsReject: savedReject,
       );
       _recomputeBucketStatuses();
     });
@@ -682,6 +766,36 @@ class _InjectProductionInputScreenState
     } else {
       _showSnack('✅ Data tersimpan', backgroundColor: Colors.green);
     }
+  }
+
+  /// Rekonstruksi label sisa akhir shift dari input user, dipakai kalau
+  /// response server tidak menyertakan label yang baru dibuat.
+  List<InjectBatchLabelItem> _fallbackSisaLabels(
+    SisaJenisDraft? sisa, {
+    required bool isBonggolan,
+  }) {
+    if (sisa == null) return const [];
+    if (isBonggolan) {
+      return [
+        for (final r in sisa.bonggolan)
+          if (r.jenis != null &&
+              (SisaJenisDraft.beratOf(r.beratCtrl) ?? 0) > 0)
+            InjectBatchLabelItem(
+              code: '',
+              namaJenis: r.jenis!.namaBonggolan,
+              berat: SisaJenisDraft.beratOf(r.beratCtrl),
+            ),
+      ];
+    }
+    return [
+      for (final r in sisa.reject)
+        if (r.jenis != null && (SisaJenisDraft.beratOf(r.beratCtrl) ?? 0) > 0)
+          InjectBatchLabelItem(
+            code: '',
+            namaJenis: r.jenis!.namaReject,
+            berat: SisaJenisDraft.beratOf(r.beratCtrl),
+          ),
+    ];
   }
 
   void _updateBreadcrumb() {
@@ -875,26 +989,44 @@ class _InjectProductionInputScreenState
     Map<int, int> carryOverInByJenis;
     String terminateHourStart;
 
+    // Bucket terakhir yang punya data pcs (submitted atau expired) — dipakai
+    // sebagai fallback kalau tidak ada bucket available maupun submitted, mis.
+    // saat operator membuka layar setelah seluruh window bucket lewat.
+    final lastFilled = _bucketLabelOrder.reversed.firstWhere((l) {
+      final s = _bucketStates[l]?.status;
+      return s == _HourlyBucketStatus.submitted ||
+          s == _HourlyBucketStatus.expired;
+    }, orElse: () => '');
+
+    // Fallback terakhir: jam mulai produksi dari header. Selalu ada selama
+    // bucket terhitung, jadi terminate tidak pernah jalan dengan hourStart kosong.
+    final headerHourStart = _normalizeHourString(h.hourStart);
+
     if (lastAvailable.isNotEmpty) {
       carryOverIn = _bucketStates[lastAvailable]?.carryOverIn ?? 0;
       carryOverInByJenis =
           _bucketStates[lastAvailable]?.carryOverInByJenis ??
           const <int, int>{};
       terminateHourStart = lastAvailable.split(' - ').first.trim();
-    } else {
-      // Fallback: langsung dari carryOverOut bucket submitted terakhir
-      final lastSubmitted = _bucketLabelOrder.reversed.firstWhere(
-        (l) => _bucketStates[l]?.status == _HourlyBucketStatus.submitted,
-        orElse: () => '',
-      );
-      carryOverIn = _bucketStates[lastSubmitted]?.carryOverOut ?? 0;
+    } else if (lastFilled.isNotEmpty) {
+      carryOverIn = _bucketStates[lastFilled]?.carryOverOut ?? 0;
       carryOverInByJenis =
-          _bucketStates[lastSubmitted]?.carryOverOutByJenis ??
+          _bucketStates[lastFilled]?.carryOverOutByJenis ??
           const <int, int>{};
-      // hourStart = ujung akhir dari bucket submitted terakhir (= awal bucket berikutnya)
-      terminateHourStart = lastSubmitted.isNotEmpty
-          ? lastSubmitted.split(' - ').last.trim()
-          : '';
+      // hourStart = ujung akhir dari bucket terisi terakhir (= awal bucket berikutnya)
+      terminateHourStart = lastFilled.split(' - ').last.trim();
+    } else {
+      carryOverIn = 0;
+      carryOverInByJenis = const <int, int>{};
+      terminateHourStart = headerHourStart ?? '';
+    }
+
+    if (terminateHourStart.trim().isEmpty) {
+      _showSnack(
+        'Tidak dapat terminate: jam mulai produksi tidak diketahui.',
+        backgroundColor: Colors.red,
+      );
+      return;
     }
 
     final result = await showDialog<bool>(
@@ -924,6 +1056,12 @@ class _InjectProductionInputScreenState
   Future<void> _openSplitTimeDialog() async {
     final h = _header;
     if (h == null || h.idMesin == 0 || h.tglProduksi == null) return;
+
+    final blockedReason = _splitWindowBlockedReason;
+    if (blockedReason != null) {
+      _showSnack(blockedReason, backgroundColor: Colors.red);
+      return;
+    }
 
     // Tampilkan menu pilih mode ganti
     final mode = await showDialog<_GantiMode>(
@@ -970,6 +1108,8 @@ class _InjectProductionInputScreenState
         outputJenisList: h.outputs,
         noProduksi: widget.noProduksi,
         lastBucketHourStart: lastBucketHourStart,
+        splitWindowStart: _splitWindow?.min,
+        splitWindowEnd: _splitWindow?.max,
       ),
     );
     if (!mounted) return;
@@ -2251,6 +2391,7 @@ class _InjectProductionInputScreenState
         ),
       );
     }
+
     for (final c in data.labelsBarangJadi) {
       entries.add(
         _PrintableLabelEntry(
@@ -2292,6 +2433,61 @@ class _InjectProductionInputScreenState
               RejectRepository(api: ApiClient()).markAsPrinted(c.code),
           berat: c.berat,
           hasBeenPrinted: c.hasBeenPrinted,
+        ),
+      );
+    }
+    entries.addAll(
+      _buildProductionSisaEntries(
+        label,
+        excludeCodes: entries.map((e) => e.code).toSet(),
+      ),
+    );
+    return entries;
+  }
+
+  /// Bucket terakhir ikut memuat seluruh label bonggolan/reject produksi, bukan
+  /// hanya yang terikat ke `hourStart` batch — supaya semua label bisa dicetak
+  /// sekaligus dari satu tempat. Label ini tetap tercatat di level produksi
+  /// (lihat catatan di `SisaLabelEditableSection`).
+  List<_PrintableLabelEntry> _buildProductionSisaEntries(
+    String label, {
+    Set<String> excludeCodes = const {},
+  }) {
+    if (_bucketLabelOrder.isEmpty || _bucketLabelOrder.last != label) {
+      return const [];
+    }
+    final entries = <_PrintableLabelEntry>[];
+    final vm = context.read<InjectProductionInputViewModel>();
+    final seen = {...excludeCodes};
+
+    for (final o in vm.bonggolanOutputsOf(widget.noProduksi) ?? const <InjectBonggolanOutputItem>[]) {
+      if (o.noBonggolan.isEmpty || !seen.add(o.noBonggolan)) continue;
+      entries.add(
+        _PrintableLabelEntry(
+          code: o.noBonggolan,
+          namaJenis: o.namaBonggolan,
+          category: 'Bonggolan',
+          pdfUrl: ApiConstants.bonggolanLabelPdf(o.noBonggolan),
+          feature: 'bonggolan',
+          markAsPrinted: () => BonggolanRepository().markAsPrinted(o.noBonggolan),
+          berat: o.berat,
+          hasBeenPrinted: o.hasBeenPrinted,
+        ),
+      );
+    }
+    for (final o in vm.rejectOutputsOf(widget.noProduksi) ?? const <InjectRejectOutputItem>[]) {
+      if (o.noReject.isEmpty || !seen.add(o.noReject)) continue;
+      entries.add(
+        _PrintableLabelEntry(
+          code: o.noReject,
+          namaJenis: o.namaJenis,
+          category: 'Reject',
+          pdfUrl: ApiConstants.rejectLabelPdf(o.noReject),
+          feature: 'reject',
+          markAsPrinted: () =>
+              RejectRepository(api: ApiClient()).markAsPrinted(o.noReject),
+          berat: o.berat,
+          hasBeenPrinted: o.hasBeenPrinted,
         ),
       );
     }
@@ -2470,6 +2666,88 @@ class _InjectProductionInputScreenState
 
   // ── Output panel ───────────────────────────────────────────────────────────
 
+  /// Seksi label "Sisa Akhir Shift" di bucket terakhir. Bonggolan & reject
+  /// dikelola sebagai label mandiri (sama seperti tab Output), jadi user bebas
+  /// menambah atau menghapus kapan saja — bukan sekali input_batch.
+  ///
+  /// Setelah produksi terkunci bagian ini tetap ditampilkan (dengan aksi
+  /// tambah/hapus dimatikan) supaya label yang sudah terlanjur dibuat tetap
+  /// terlihat.
+  Widget _buildSisaLabelsSection(Color accent) {
+    final vm = context.read<InjectProductionInputViewModel>();
+    final locked = _isLockedOrComplete;
+    return SisaLabelEditableSection(
+      accent: accent,
+      locked: locked,
+      bonggolan: vm.bonggolanOutputsOf(widget.noProduksi) ?? [],
+      reject: vm.rejectOutputsOf(widget.noProduksi) ?? [],
+      onAddBonggolan: locked ? null : _openAddBonggolanOutputDialog,
+      onAddReject: locked ? null : _openAddRejectOutputDialog,
+      onDeleteBonggolan: locked ? null : (code) {
+        final item =
+            (vm.bonggolanOutputsOf(widget.noProduksi) ?? [])
+                .where((e) => e.noBonggolan == code)
+                .firstOrNull;
+        if (item != null) _deleteBonggolanOutput(item);
+      },
+      onDeleteReject: locked ? null : (code) {
+        final item =
+            (vm.rejectOutputsOf(widget.noProduksi) ?? [])
+                .where((e) => e.noReject == code)
+                .firstOrNull;
+        if (item != null) _deleteRejectOutput(item);
+      },
+      onTapBonggolan: (o) => _openBonggolanDetail(o),
+      onTapReject: (o) => _openRejectDetail(o),
+    );
+  }
+
+  void _openBonggolanDetail(InjectBonggolanOutputItem o) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => ProductionOutputDetailDialog(
+        labelCode: o.noBonggolan,
+        namaJenis: o.namaBonggolan,
+        printCount: o.hasBeenPrinted,
+        accentColor: _kInjectOutput,
+        pdfUrl: ApiConstants.bonggolanLabelPdf(o.noBonggolan),
+        feature: 'bonggolan',
+        canPrint: !_isLockedOrComplete,
+        markAsPrinted: () => BonggolanRepository().markAsPrinted(o.noBonggolan),
+        onDelete: _isLockedOrComplete ? null : () => _deleteBonggolanOutput(o),
+        metrics: [
+          ProductionMetric(icon: Icons.scale_outlined, text: '${o.berat} kg'),
+        ],
+      ),
+    );
+  }
+
+  void _openRejectDetail(InjectRejectOutputItem o) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => ProductionOutputDetailDialog(
+        labelCode: o.noReject,
+        namaJenis: o.namaJenis,
+        printCount: o.hasBeenPrinted,
+        accentColor: _kInjectOutput,
+        pdfUrl: ApiConstants.rejectLabelPdf(o.noReject),
+        feature: 'reject',
+        canPrint: !_isLockedOrComplete,
+        markAsPrinted: () =>
+            RejectRepository(api: ApiClient()).markAsPrinted(o.noReject),
+        onDelete: _isLockedOrComplete ? null : () => _deleteRejectOutput(o),
+        metrics: [
+          ProductionMetric(icon: Icons.scale_outlined, text: '${o.berat} kg'),
+          if (o.pcs != null)
+            ProductionMetric(
+              icon: Icons.inventory_2_outlined,
+              text: '${o.pcs} pcs',
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildOutputPanel() {
     return Container(
       decoration: productionPanelDecoration(
@@ -2510,6 +2788,167 @@ class _InjectProductionInputScreenState
     );
   }
 
+  /// Reload daftar output + bucket setelah tambah/hapus label. Fire-and-forget
+  /// dulu bikin daftar di samping jam tidak ikut ter-refresh, jadi sekarang
+  /// ditunggu sampai selesai sebelum rebuild.
+  Future<void> _refreshOutputTabs() async {
+    final vm = context.read<InjectProductionInputViewModel>();
+    await Future.wait([
+      vm.loadBonggolanOutputs(widget.noProduksi, force: true),
+      vm.loadRejectOutputs(widget.noProduksi, force: true),
+    ]);
+    if (!mounted) return;
+    await _reloadBatches();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _reloadBatches() async {
+    try {
+      final batches = await _prodRepo.fetchBatch(widget.noProduksi);
+      if (!mounted) return;
+      final ppl = _pcsPerLabelData;
+      if (ppl == null) return;
+      setState(() {
+        _restoreBucketStatesFromBatches(batches, ppl);
+        _pruneDeletedSisaLabels();
+      });
+    } catch (_) {}
+  }
+
+  /// Buang label bonggolan/reject yang sudah dihapus dari cache bucket.
+  ///
+  /// Backend mencocokkan label ke batch lewat `DateTimeCreate`, jadi label yang
+  /// dihapus bisa masih nempel di `_bucketStates` kalau `GET /batch`-balik
+  /// sesión sebelum DELETE selesai surge. Bandingkan dengan daftar output
+  /// terkini: kode yang tidak ada lagi berarti sudah dihapus.
+  void _pruneDeletedSisaLabels() {
+    final vm = context.read<InjectProductionInputViewModel>();
+    final liveBonggolan = {
+      for (final o in vm.bonggolanOutputsOf(widget.noProduksi) ?? const [])
+        o.noBonggolan,
+    };
+    final liveReject = {
+      for (final o in vm.rejectOutputsOf(widget.noProduksi) ?? const [])
+        o.noReject,
+    };
+
+    for (final label in _bucketLabelOrder) {
+      final data = _bucketStates[label];
+      if (data == null) continue;
+      final bonggolan =
+          data.labelsBonggolan
+              .where((c) => liveBonggolan.contains(c.code))
+              .toList();
+      final reject =
+          data.labelsReject.where((c) => liveReject.contains(c.code)).toList();
+      if (bonggolan.length == data.labelsBonggolan.length &&
+          reject.length == data.labelsReject.length) {
+        continue;
+      }
+      _bucketStates[label] = _HourlyBucketData(
+        status: data.status,
+        carryOverIn: data.carryOverIn,
+        pcsInput: data.pcsInput,
+        labelsCreated: data.labelsCreated,
+        carryOverOut: data.carryOverOut,
+        isOverdue: data.isOverdue,
+        windowOpensAt: data.windowOpensAt,
+        windowClosesAt: data.windowClosesAt,
+        berat: data.berat,
+        cycleTime: data.cycleTime,
+        counter: data.counter,
+        keterangan: data.keterangan,
+        isDowntime: data.isDowntime,
+        carryOverInByJenis: data.carryOverInByJenis,
+        pcsInputByJenis: data.pcsInputByJenis,
+        carryOverOutByJenis: data.carryOverOutByJenis,
+        labelsFwip: data.labelsFwip,
+        labelsBarangJadi: data.labelsBarangJadi,
+        labelsBonggolan: bonggolan,
+        labelsReject: reject,
+      );
+    }
+  }
+
+  Future<void> _deleteBonggolanOutput(InjectBonggolanOutputItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ConfirmDialog(
+        title: 'Hapus Label Bonggolan?',
+        message:
+            'Yakin ingin menghapus ${item.noBonggolan}?\nAksi ini tidak dapat dibatalkan.',
+        confirmLabel: 'Hapus',
+        confirmIcon: Icons.delete_outline,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await BonggolanRepository().deleteBonggolan(item.noBonggolan);
+      if (!mounted) return;
+      _showSnack(
+        '✅ ${item.noBonggolan} berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+      await _refreshOutputTabs();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Gagal menghapus: $e', backgroundColor: Colors.red);
+    }
+  }
+
+  Future<void> _deleteRejectOutput(InjectRejectOutputItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ConfirmDialog(
+        title: 'Hapus Label Reject?',
+        message:
+            'Yakin ingin menghapus ${item.noReject}?\nAksi ini tidak dapat dibatalkan.',
+        confirmLabel: 'Hapus',
+        confirmIcon: Icons.delete_outline,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await RejectRepository(api: ApiClient()).deleteReject(item.noReject);
+      if (!mounted) return;
+      _showSnack(
+        '✅ ${item.noReject} berhasil dihapus',
+        backgroundColor: Colors.green,
+      );
+      await _refreshOutputTabs();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Gagal menghapus: $e', backgroundColor: Colors.red);
+    }
+  }
+
+  Future<void> _openAddBonggolanOutputDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ProductionBonggolanOutputFormDialog(
+        noProduksi: widget.noProduksi,
+        tglProduksi: _header?.tglProduksi,
+        accentColor: _kInjectOutput,
+      ),
+    );
+    if (result == true) await _refreshOutputTabs();
+  }
+
+  Future<void> _openAddRejectOutputDialog() async {
+    final result = await showDialog<dynamic>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ProductionRejectOutputFormDialog(
+        noProduksi: widget.noProduksi,
+        tglProduksi: _header?.tglProduksi,
+        accentColor: _kInjectOutput,
+      ),
+    );
+    if (result != null && result != false) await _refreshOutputTabs();
+  }
+
   Widget _buildBucketOutputList() {
     if (_bucketLabelOrder.isEmpty) {
       return const Center(
@@ -2527,9 +2966,14 @@ class _InjectProductionInputScreenState
         final codes = <String>[
           ...?data?.labelsFwip.map((c) => c.code),
           ...?data?.labelsBarangJadi.map((c) => c.code),
-          ...?data?.labelsBonggolan.map((c) => c.code),
-          ...?data?.labelsReject.map((c) => c.code),
         ];
+        // Bucket terakhir juga menampilkan seluruh label bonggolan/reject
+        // produksi supaya operator bisa mencetak semuanya dari satu tempat.
+        codes.addAll(
+          _buildProductionSisaEntries(label)
+              .map((e) => e.code)
+              .where((c) => !codes.contains(c)),
+        );
         return _HourlyTimelineGroup<_BucketLabelEntry>(
           label: label,
           items: const [],
@@ -2552,18 +2996,18 @@ class _InjectProductionInputScreenState
           initialPplByJenis: _effectiveInitialPplByJenis,
           consumedInitialJenis: _initialTargetConsumedJenis,
           isLastBucket: isLastBucket,
+          // Tetap pakai builder yang sama setelah produksi terkunci — label sisa
+          // dibuat sebagai label produksi (bukan terikat hourStart batch), jadi
+          // tidak ada di `batch.labels` untuk dipakai sebagai fallback. Aksi
+          // tambah/hapus sudah dimatikan di dalam builder saat locked.
+          sisaLabelsBuilder: isLastBucket ? _buildSisaLabelsSection : null,
           onSubmit:
               (
                 jenisItems,
                 berat,
                 cycleTime,
                 counter,
-                beratBonggolan,
-                beratReject,
-                idRejectBonggolan,
-                idRejectReject,
-                namaBonggolan,
-                namaReject,
+                sisa,
                 keterangan,
                 isDowntime,
               ) => _onBucketSubmit(
@@ -2572,12 +3016,7 @@ class _InjectProductionInputScreenState
                 berat,
                 cycleTime,
                 counter,
-                beratBonggolan,
-                beratReject,
-                idRejectBonggolan,
-                idRejectReject,
-                namaBonggolan: namaBonggolan,
-                namaReject: namaReject,
+                sisa,
                 keterangan: keterangan,
                 isLastBucket: isLastBucket,
                 isDowntime: isDowntime,
@@ -2674,10 +3113,11 @@ class _InjectProductionInputScreenState
                     showTimeInfo: false,
                     primaryColor: _kInjectPrimary,
                     produksiStatus: _header?.produksiStatus,
-                    onGanti: _canTerminate ? _openSplitTimeDialog : null,
-                    gantiDisabledReason: _canTerminate
+                    onGanti: _canSplit ? _openSplitTimeDialog : null,
+                    gantiDisabledReason: _canSplit
                         ? null
-                        : 'Tidak dapat ganti produksi: data pada jam saat ini sudah diinput. Tunggu jam berikutnya.',
+                        : (_splitWindowBlockedReason ??
+                            'Tidak dapat ganti produksi: data pada jam saat ini sudah diinput. Tunggu jam berikutnya.'),
                     onTerminate: _canTerminate ? _openTerminateDialog : null,
                     terminateDisabledReason: _canTerminate
                         ? null
@@ -3120,6 +3560,23 @@ String _formatHourMinute(DateTime value) {
   return '$hour:$minute';
 }
 
+/// Normalisasi string jam dari server ("HH:mm:ss", "HH:mm", atau satu digit)
+/// menjadi "HH:mm:ss". Mengembalikan null kalau tidak bisa diparse.
+String? _normalizeHourString(String? raw) {
+  final s = (raw ?? '').trim();
+  if (s.isEmpty) return null;
+  final m = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$').firstMatch(s);
+  if (m == null) return null;
+  final hh = int.tryParse(m.group(1)!);
+  final mm = int.tryParse(m.group(2)!);
+  final ss = int.tryParse(m.group(3) ?? '0') ?? 0;
+  if (hh == null || hh < 0 || hh > 23) return null;
+  if (mm == null || mm < 0 || mm > 59) return null;
+  if (ss < 0 || ss > 59) return null;
+  String p2(int v) => v.toString().padLeft(2, '0');
+  return '${p2(hh)}:${p2(mm)}:${p2(ss)}';
+}
+
 Widget _buildHourlyOutputTimeline<T>({
   required List<_HourlyTimelineGroup<T>> groups,
   required String emptyRangeMessage,
@@ -3496,10 +3953,6 @@ class _HourlyBucketData {
     this.berat,
     this.cycleTime,
     this.counter,
-    this.beratBonggolan,
-    this.namaBonggolan,
-    this.beratReject,
-    this.namaReject,
     this.keterangan,
     this.isDowntime = false,
     this.carryOverInByJenis = const {},
@@ -3528,10 +3981,6 @@ class _HourlyBucketData {
   final double? berat;
   final double? cycleTime;
   final int? counter;
-  final double? beratBonggolan;
-  final String? namaBonggolan;
-  final double? beratReject;
-  final String? namaReject;
   final String? keterangan;
   // true = batch ini menandai mesin berhenti (tanpa produksi), bukan input pcs normal.
   final bool isDowntime;
@@ -3566,6 +4015,7 @@ class _HourlyPcsSection extends StatefulWidget {
     this.initialPplByJenis = const {},
     this.consumedInitialJenis = const {},
     this.isLastBucket = false,
+    this.sisaLabelsBuilder,
     this.onPrint,
     this.counterCurrent,
     this.standarBerat,
@@ -3583,6 +4033,12 @@ class _HourlyPcsSection extends StatefulWidget {
   /// idJenis yang target awalnya sudah terpakai di sesi ini.
   final Set<int> consumedInitialJenis;
   final bool isLastBucket;
+
+  /// Builder untuk seksi label "Sisa Akhir Shift" (bonggolan & reject).
+  /// Kalau null, bucket pakai editor inline bawaan. Dipasang supaya label
+  /// sisa bisa dikelola bebas (tambah/hapus) seperti tab Output.
+  final Widget Function(Color accent)? sisaLabelsBuilder;
+
   final void Function(BuildContext ctx)? onPrint;
   final int? counterCurrent;
   final double? standarBerat;
@@ -3592,12 +4048,7 @@ class _HourlyPcsSection extends StatefulWidget {
     double? berat,
     double? cycleTime,
     int? counter,
-    double? beratBonggolan,
-    double? beratReject,
-    int? idRejectBonggolan,
-    int? idRejectReject,
-    String? namaBonggolan,
-    String? namaReject,
+    SisaJenisDraft? sisa,
     String? keterangan,
     bool isDowntime,
   )
@@ -3611,12 +4062,12 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
   final Map<int, TextEditingController> _jenisCtrl = {};
   final _beratCtrl = TextEditingController();
   final _cycleCtrl = TextEditingController();
-  final _beratBonggolanCtrl = TextEditingController();
-  final _beratRejectCtrl = TextEditingController();
   final _keteranganCtrl = TextEditingController();
+
+  /// Sisa akhir shift — bisa banyak jenis bonggolan & reject.
+  final SisaJenisDraft _sisa = SisaJenisDraft();
+
   int? _counterValue;
-  JenisBonggolan? _bonggolanJenis;
-  RejectType? _rejectJenis;
   bool _isSubmitting = false;
   bool _beratError = false;
   bool _cycleError = false;
@@ -3660,8 +4111,7 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
     for (final ctrl in _jenisCtrl.values) ctrl.dispose();
     _beratCtrl.dispose();
     _cycleCtrl.dispose();
-    _beratBonggolanCtrl.dispose();
-    _beratRejectCtrl.dispose();
+    _sisa.dispose();
     _keteranganCtrl.dispose();
     super.dispose();
   }
@@ -3691,11 +4141,6 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
     try {
       await widget.onSubmit(
         const [],
-        null,
-        null,
-        null,
-        null,
-        null,
         null,
         null,
         null,
@@ -3793,33 +4238,6 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
       if (!mounted || proceed != true) return;
     }
 
-    final beratBonggolan = widget.isLastBucket
-        ? double.tryParse(_beratBonggolanCtrl.text.replaceAll(',', '.'))
-        : null;
-    final beratReject = widget.isLastBucket
-        ? double.tryParse(_beratRejectCtrl.text.replaceAll(',', '.'))
-        : null;
-
-    int? idRejectBonggolan;
-    int? idRejectReject;
-    if (widget.isLastBucket) {
-      if (beratBonggolan != null && beratBonggolan > 0) {
-        final picked = _bonggolanJenis ?? await _showBonggolanJenisPicker();
-        if (!mounted) return;
-        if (picked == null) return;
-        setState(() => _bonggolanJenis = picked);
-        idRejectBonggolan = picked.idBonggolan;
-      }
-      if (beratReject != null && beratReject > 0) {
-        final picked =
-            _rejectJenis ?? await _showRejectTypePicker('Jenis Reject');
-        if (!mounted) return;
-        if (picked == null) return;
-        setState(() => _rejectJenis = picked);
-        idRejectReject = picked.idReject;
-      }
-    }
-
     setState(() => _isSubmitting = true);
     try {
       await widget.onSubmit(
@@ -3827,12 +4245,7 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
         berat,
         cycleTime,
         counter,
-        beratBonggolan,
-        beratReject,
-        idRejectBonggolan,
-        idRejectReject,
-        _bonggolanJenis?.namaBonggolan,
-        _rejectJenis?.namaReject,
+        widget.isLastBucket ? _sisa : null,
         null,
         false,
       );
@@ -3853,26 +4266,6 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
       case _HourlyBucketStatus.expired:
         return _buildExpired();
     }
-  }
-
-  Future<JenisBonggolan?> _showBonggolanJenisPicker() async {
-    final vm = context.read<JenisBonggolanViewModel>();
-    await vm.ensureLoaded();
-    if (!mounted) return null;
-    return showDialog<JenisBonggolan>(
-      context: context,
-      builder: (ctx) => _BonggolanJenisPickerDialog(vm: vm),
-    );
-  }
-
-  Future<RejectType?> _showRejectTypePicker(String title) async {
-    final vm = context.read<RejectTypeViewModel>();
-    await vm.ensureLoaded();
-    if (!mounted) return null;
-    return showDialog<RejectType>(
-      context: context,
-      builder: (ctx) => _RejectTypePickerDialog(title: title, vm: vm),
-    );
   }
 
   Widget _readonlyChip({
@@ -4417,71 +4810,14 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
               buildJenisRow(outputs[i], showLabel: multiJenis),
             ],
             // ── Sisa Akhir Shift (last bucket only) ──────────────────
+            // Label bonggolan/reject dikelola terpisah lewat tab Output,
+            // jadi di form bucket hanya ada penunjuk + aksi tambah/hapus.
             if (widget.isLastBucket) ...[
               const SizedBox(height: 10),
-              // Bonggolan: jenis (flex 3) + berat (flex 2) — pilih jenis dulu
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: _buildJenisPicker(
-                      label: 'Jenis Bonggolan',
-                      selectedName: _bonggolanJenis?.namaBonggolan,
-                      onTap: () async {
-                        final picked = await _showBonggolanJenisPicker();
-                        if (picked != null && mounted) {
-                          setState(() => _bonggolanJenis = picked);
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    flex: 2,
-                    child: _qcField(
-                      label: 'Berat Bonggolan (kg)',
-                      ctrl: _beratBonggolanCtrl,
-                      hint: '0.0',
-                      decimal: true,
-                      enabled: _bonggolanJenis != null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              // Reject: jenis (flex 3) + berat (flex 2) — pilih jenis dulu
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: _buildJenisPicker(
-                      label: 'Jenis Reject',
-                      selectedName: _rejectJenis?.namaReject,
-                      onTap: () async {
-                        final picked = await _showRejectTypePicker(
-                          'Jenis Reject',
-                        );
-                        if (picked != null && mounted) {
-                          setState(() => _rejectJenis = picked);
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    flex: 2,
-                    child: _qcField(
-                      label: 'Berat Reject (kg)',
-                      ctrl: _beratRejectCtrl,
-                      hint: '0.0',
-                      decimal: true,
-                      enabled: _rejectJenis != null,
-                    ),
-                  ),
-                ],
-              ),
+              if (widget.sisaLabelsBuilder != null)
+                widget.sisaLabelsBuilder!(accent)
+              else
+                SisaJenisEditor(draft: _sisa, accent: accent),
             ],
             const SizedBox(height: 10),
             Row(
@@ -4808,117 +5144,6 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
     );
   }
 
-  Widget _buildJenisPickerDisabled({
-    required String label,
-    required String? namaJenis,
-  }) {
-    const accent = Color(0xFF92400E);
-    final hasValue = namaJenis != null && namaJenis.isNotEmpty;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF9CA3AF),
-          ),
-        ),
-        const SizedBox(height: 3),
-        Container(
-          height: 30,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: hasValue
-                  ? accent.withValues(alpha: 0.30)
-                  : const Color(0xFFE5E7EB),
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  hasValue ? namaJenis : '-',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400,
-                    color: hasValue ? accent : Colors.grey.shade400,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Icon(Icons.expand_more, size: 14, color: Colors.grey.shade400),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildJenisPicker({
-    required String label,
-    required String? selectedName,
-    required VoidCallback onTap,
-  }) {
-    const accent = Color(0xFF92400E);
-    final hasValue = selectedName != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF374151),
-          ),
-        ),
-        const SizedBox(height: 3),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(
-                color: hasValue ? accent : accent.withValues(alpha: 0.30),
-                width: hasValue ? 1.5 : 1.0,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    hasValue ? selectedName : 'Pilih...',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400,
-                      color: hasValue ? accent : Colors.grey.shade400,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(
-                  Icons.expand_more,
-                  size: 14,
-                  color: hasValue ? accent : Colors.grey.shade400,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildSubmittedDowntime() {
     final data = widget.data;
     const amber = Color(0xFFB45309);
@@ -5133,64 +5358,28 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
             if (i > 0) const SizedBox(height: 10),
             buildJenisRowDisabled(outputs[i]),
           ],
-          // Sisa Akhir Shift — same layout as _buildAvailable but disabled
-          if (widget.isLastBucket) ...[
+          // Sisa Akhir Shift — label bonggolan/reject. Builder aktif baik
+          // sebelum maupun sesudah produksi terkunci; setelah terkunci tombol
+          // tambah/hapus dimatikan di dalam builder, tapi daftarnya tetap
+          // tampil supaya label yang sudah dibuat tidak ikut hilang.
+          if (widget.isLastBucket &&
+              (widget.sisaLabelsBuilder != null ||
+                  data.labelsBonggolan.isNotEmpty ||
+                  data.labelsReject.isNotEmpty)) ...[
             const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: _buildJenisPickerDisabled(
-                    label: 'Jenis Bonggolan',
-                    namaJenis: data.namaBonggolan,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  flex: 2,
-                  child: _qcField(
-                    label: 'Berat Bonggolan (kg)',
-                    ctrl: TextEditingController(
-                      text: data.beratBonggolan != null
-                          ? data.beratBonggolan!.toStringAsFixed(1)
-                          : '',
-                    ),
-                    hint: '-',
-                    decimal: true,
-                    enabled: false,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: _buildJenisPickerDisabled(
-                    label: 'Jenis Reject',
-                    namaJenis: data.namaReject,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  flex: 2,
-                  child: _qcField(
-                    label: 'Berat Reject (kg)',
-                    ctrl: TextEditingController(
-                      text: data.beratReject != null
-                          ? data.beratReject!.toStringAsFixed(1)
-                          : '',
-                    ),
-                    hint: '-',
-                    decimal: true,
-                    enabled: false,
-                  ),
-                ),
-              ],
-            ),
+            if (widget.sisaLabelsBuilder != null)
+              widget.sisaLabelsBuilder!(greenAccent)
+            else
+              SisaJenisReadOnlyList(
+                bonggolan: [
+                  for (final c in data.labelsBonggolan)
+                    (namaJenis: c.namaJenis, berat: c.berat),
+                ],
+                reject: [
+                  for (final c in data.labelsReject)
+                    (namaJenis: c.namaJenis, berat: c.berat),
+                ],
+              ),
           ],
           const SizedBox(height: 8),
           const Divider(height: 1, color: Color(0xFFD1FAE5)),
@@ -5916,315 +6105,6 @@ class _LabelCheckTile extends StatelessWidget {
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Bucket label row ──────────────────────────────────────────────────────────
-
-// ── Reject Type Picker Dialog ─────────────────────────────────────────────────
-
-class _BonggolanJenisPickerDialog extends StatelessWidget {
-  const _BonggolanJenisPickerDialog({required this.vm});
-
-  final JenisBonggolanViewModel vm;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFF92400E);
-    final items = vm.list;
-
-    return Dialog(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 480),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.recycling_outlined,
-                      size: 16,
-                      color: accent,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Jenis Bonggolan',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1F2937),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
-                      Icons.close,
-                      size: 18,
-                      color: Color(0xFF9CA3AF),
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Color(0xFFE2E6EA)),
-            if (vm.isLoading)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'Tidak ada data jenis bonggolan',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
-                  ),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(
-                    height: 1,
-                    color: Color(0xFFE2E6EA),
-                    indent: 16,
-                    endIndent: 16,
-                  ),
-                  itemBuilder: (ctx, i) {
-                    final jb = items[i];
-                    return InkWell(
-                      onTap: () => Navigator.of(ctx).pop(jb),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 26,
-                              height: 26,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: accent.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${i + 1}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: accent,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                jb.namaBonggolan,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFF1F2937),
-                                ),
-                              ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right,
-                              size: 18,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RejectTypePickerDialog extends StatelessWidget {
-  const _RejectTypePickerDialog({required this.title, required this.vm});
-
-  final String title;
-  final RejectTypeViewModel vm;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFF92400E);
-    final items = vm.list;
-
-    return Dialog(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 480),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.recycling_outlined,
-                      size: 16,
-                      color: accent,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1F2937),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
-                      Icons.close,
-                      size: 18,
-                      color: Color(0xFF9CA3AF),
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Color(0xFFE2E6EA)),
-            if (vm.isLoading)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'Tidak ada data jenis',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
-                  ),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(
-                    height: 1,
-                    color: Color(0xFFE2E6EA),
-                    indent: 16,
-                    endIndent: 16,
-                  ),
-                  itemBuilder: (ctx, i) {
-                    final rt = items[i];
-                    final code = (rt.itemCode ?? '').trim();
-                    return InkWell(
-                      onTap: () => Navigator.of(ctx).pop(rt),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 26,
-                              height: 26,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: accent.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${i + 1}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: accent,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    rt.namaReject,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: Color(0xFF1F2937),
-                                    ),
-                                  ),
-                                  if (code.isNotEmpty)
-                                    Text(
-                                      code,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Color(0xFF9CA3AF),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right,
-                              size: 18,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 8),
           ],
         ),
       ),

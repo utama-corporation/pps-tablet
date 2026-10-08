@@ -494,10 +494,8 @@ class InjectProductionRepository {
     double? cycleTime,
     int? counter,
     required List<Map<String, dynamic>> items,
-    int? idBonggolan,
-    double? beratBonggolan,
-    int? idReject,
-    double? beratReject,
+    List<Map<String, dynamic>>? bonggolanItems,
+    List<Map<String, dynamic>>? rejectItems,
   }) async {
     final encoded = Uri.encodeComponent(noProduksi.trim());
     final body = <String, dynamic>{
@@ -507,10 +505,11 @@ class InjectProductionRepository {
       if (cycleTime != null) 'cycleTime': cycleTime,
       if (counter != null) 'counter': counter,
       'items': items,
-      if (idBonggolan != null && beratBonggolan != null)
-        'bonggolan': {'idBonggolan': idBonggolan, 'berat': beratBonggolan},
-      if (idReject != null && beratReject != null)
-        'reject': {'idReject': idReject, 'berat': beratReject},
+      // Sisa akhir shift: array of {id, berat}. Kirim sebagai array supaya
+      // backend bisa membuat lebih dari satu label bonggolan/reject.
+      if (bonggolanItems != null && bonggolanItems.isNotEmpty)
+        'bonggolan': bonggolanItems,
+      if (rejectItems != null && rejectItems.isNotEmpty) 'reject': rejectItems,
     };
     try {
       await api.postJson('/api/production/inject/$encoded/terminate', body: body);

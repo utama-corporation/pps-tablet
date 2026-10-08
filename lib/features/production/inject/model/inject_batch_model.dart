@@ -106,20 +106,22 @@ class InjectBatchLabelItem {
   });
 
   factory InjectBatchLabelItem.fromJson(Map<String, dynamic> j) {
-    final code = (j['noFurnitureWIP'] ??
-            j['noBarangJadi'] ??
-            j['noBonggolan'] ??
-            j['noReject'] ??
-            j['code'] ??
-            '')
-        .toString();
+    final code =
+        (j['noFurnitureWIP'] ??
+                j['noBarangJadi'] ??
+                j['noBonggolan'] ??
+                j['noReject'] ??
+                j['code'] ??
+                '')
+            .toString();
     return InjectBatchLabelItem(
       code: code,
-      namaJenis: (j['namaJenis'] ??
-              j['namaBarang'] ??
-              j['namaBonggolan'] ??
-              j['namaReject'])
-          ?.toString() ??
+      namaJenis:
+          (j['namaJenis'] ??
+                  j['namaBarang'] ??
+                  j['namaBonggolan'] ??
+                  j['namaReject'])
+              ?.toString() ??
           '',
       pcs: (j['pcs'] as num?)?.toInt(),
       berat: (j['berat'] as num?)?.toDouble(),
@@ -305,8 +307,12 @@ class InjectBatchSubmitResult {
   final String hourStart;
   final List<InjectBatchLabelItem> furnitureWIP;
   final List<InjectBatchLabelItem> barangJadi;
-  final InjectBatchLabelItem? bonggolan;
-  final InjectBatchLabelItem? reject;
+
+  /// Semua label sisa akhir shift yang tercipta pada batch ini — satu batch
+  /// boleh berisi banyak jenis bonggolan maupun reject.
+  final List<InjectBatchLabelItem> bonggolanList;
+  final List<InjectBatchLabelItem> rejectList;
+
   final String? keterangan;
   final bool isDowntime;
 
@@ -315,13 +321,28 @@ class InjectBatchSubmitResult {
     required this.hourStart,
     required this.furnitureWIP,
     required this.barangJadi,
-    this.bonggolan,
-    this.reject,
+    this.bonggolanList = const [],
+    this.rejectList = const [],
     this.keterangan,
     this.isDowntime = false,
   });
 
-  factory InjectBatchSubmitResult.fromJson(Map<String, dynamic> j) {
+  /// Kode label bonggolan pertama — dipakai untuk backward compatibility.
+  InjectBatchLabelItem? get bonggolan =>
+      bonggolanList.isEmpty ? null : bonggolanList.first;
+
+  /// Kode label reject pertama — dipakai untuk backward compatibility.
+  InjectBatchLabelItem? get reject =>
+      rejectList.isEmpty ? null : rejectList.first;
+
+  factory InjectBatchSubmitResult.fromJson(Map<String, dynamic> raw) {
+    // Endpoint Returning body lengkap `{ success, message, data: {...} }`,
+    // sedangkan isi payload ada di `data`. Kalau `raw` sudah berupa payload
+    // langsung (tanpa pembungkus), dipakai apa adanya.
+    final j =
+        (raw['data'] is Map<String, dynamic>)
+            ? (raw['data'] as Map<String, dynamic>)
+            : raw;
     final batch = (j['batch'] as Map<String, dynamic>?) ?? {};
 
     List<InjectBatchLabelItem> parseList(dynamic v) =>
@@ -338,13 +359,26 @@ class InjectBatchSubmitResult {
       return s.isEmpty ? null : InjectBatchLabelItem.codeOnly(s);
     }
 
+    // Backend lama hanya mengirim key skalar (elemen pertama) — synthesize
+    // list satu elemen supaya pemanggil baru tetap bisa membaca.
+    List<InjectBatchLabelItem> parseListOrSingle(
+      dynamic list,
+      dynamic single,
+    ) {
+      if (list is List && list.isNotEmpty) return parseList(list);
+      final item = parseSingle(single);
+      return item == null
+          ? <InjectBatchLabelItem>[]
+          : <InjectBatchLabelItem>[item];
+    }
+
     return InjectBatchSubmitResult(
       batchId: (batch['id'] as num?)?.toInt() ?? 0,
       hourStart: batch['hourStart']?.toString() ?? '',
       furnitureWIP: parseList(j['furnitureWIP']),
       barangJadi: parseList(j['barangJadi']),
-      bonggolan: parseSingle(j['bonggolan']),
-      reject: parseSingle(j['reject']),
+      bonggolanList: parseListOrSingle(j['bonggolanList'], j['bonggolan']),
+      rejectList: parseListOrSingle(j['rejectList'], j['reject']),
       keterangan: batch['keterangan']?.toString(),
       isDowntime: batch['isDowntime'] == true,
     );
