@@ -319,11 +319,37 @@ class _ReportListViewState extends State<_ReportListView> {
   ) async {
     final vm = context.read<ReportListViewModel>();
 
+    // showDialog() default-nya useRootNavigator: true, jadi LoadingDialog
+    // di-push ke ROOT navigator. ReportPdfViewerScreen.push juga memakai
+    // rootNavigator: true.
+    //
+    // Navigator.of(context) tanpa rootNavigator memakai navigator TERDEKAT,
+    // yaitu shell navigator milik AppShell - dan shell navigator itu selalu
+    // hanya punya SATU route (home_sidebar memakai pushNamedAndRemoveUntil
+    // dengan (r) => false), sehingga pop() di sana tidak pernah mengubah
+    // apa pun. Akibatnya LoadingDialog tidak pernah tertutup: ia hanya
+    // tersembunyi di belakang PDF viewer, lalu muncul lagi begitu viewer
+    // ditutup.
+    //
+    // Karena itu popup DAN penutupannya harus memakai root navigator yang
+    // sama. Ditangkap di sini (sebelum await) supaya tetap aman kalau
+    // widget-nya ke-unmount saat download berjalan.
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const LoadingDialog(message: 'Mengunduh laporan...'),
     );
+
+    var loaderClosed = false;
+    void closeLoader() {
+      if (loaderClosed) return;
+      loaderClosed = true;
+      if (rootNavigator.mounted && rootNavigator.canPop()) {
+        rootNavigator.pop();
+      }
+    }
 
     try {
       final bytes = await vm.generateReport(
@@ -333,7 +359,9 @@ class _ReportListViewState extends State<_ReportListView> {
       );
 
       if (!mounted) return;
-      Navigator.pop(context); // close loading
+
+      closeLoader();
+
       await ReportPdfViewerScreen.push(
         context: context,
         title: item.title,
@@ -345,7 +373,7 @@ class _ReportListViewState extends State<_ReportListView> {
             vm.generateReport(item: item, startDate: s, endDate: e),
       );
     } catch (e) {
-      if (mounted) Navigator.pop(context); // close loading
+      closeLoader();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -365,6 +393,8 @@ class _ReportListViewState extends State<_ReportListView> {
           duration: const Duration(seconds: 4),
         ),
       );
+    } finally {
+      closeLoader();
     }
   }
 }

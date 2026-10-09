@@ -244,6 +244,13 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
     );
 
     if (detailVM.isInitialLoading || beforeVM.isInitialLoading) {
+      // showDialog default-nya push ke root Navigator (useRootNavigator:
+      // true), sementara layar ini sendiri hidup di nested shell Navigator
+      // milik AppShell yang hanya punya SATU route - Navigator.pop(context)
+      // polos bakal nge-pop shell Navigator (no-op) sehingga dialog loading
+      // ini tidak pernah tertutup dan menimpa ringkasan di bawahnya.
+      final rootNavigator = Navigator.of(context, rootNavigator: true);
+
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -254,7 +261,9 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
         await Future.delayed(const Duration(milliseconds: 100));
       }
 
-      Navigator.of(context).pop();
+      if (rootNavigator.mounted && rootNavigator.canPop()) {
+        rootNavigator.pop();
+      }
     }
 
     showDialog(

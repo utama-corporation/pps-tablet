@@ -282,8 +282,12 @@ class _BrokerScreenState extends State<BrokerScreen> {
       builder: (_) => BrokerDeleteDialog(
         header: header,
         onConfirm: () async {
-          // Tutup dialog dahulu
-          Navigator.of(context).pop();
+          // Tutup dialog dahulu. showDialog di-push ke root Navigator
+          // (default useRootNavigator: true), sedangkan layar ini hidup di
+          // shell Navigator milik AppShell yang hanya punya SATU route -
+          // Navigator.of(context).pop() polos resolve ke shell Navigator dan
+          // jadi no-op, sehingga dialog konfirmasi tidak pernah tertutup.
+          Navigator.of(context, rootNavigator: true).pop();
 
           // Lanjut eksekusi delete
           await _handleDelete(header);

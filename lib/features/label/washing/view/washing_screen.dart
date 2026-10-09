@@ -255,7 +255,11 @@ class _WashingTableScreenState extends State<WashingTableScreen> {
       builder: (_) => WashingDeleteDialog(
         header: header,
         onConfirm: () async {
-          Navigator.of(context).pop();
+          // showDialog di-push ke root Navigator (default useRootNavigator: true),
+          // sedangkan layar ini hidup di shell Navigator milik AppShell yang hanya
+          // punya SATU route - Navigator.of(context).pop() polos resolve ke shell
+          // Navigator dan jadi no-op, sehingga dialog konfirmasi tidak pernah tertutup.
+          Navigator.of(context, rootNavigator: true).pop();
           await _handleDelete(header);
         },
       ),
