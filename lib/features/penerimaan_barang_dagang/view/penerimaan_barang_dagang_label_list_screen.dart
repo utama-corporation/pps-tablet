@@ -323,14 +323,6 @@ class _PenerimaanBarangDagangLabelListScreenState
             icon: Icons.numbers_outlined,
             text: '${_fmtQty(item.qty)} PCS',
           ),
-          // Sisa hanya relevan kalau label sudah dipotong oleh konsumsi
-          // parsial — kalau masih utuh, angka ini cuma mengulang Qty.
-          if (item.usageStatus == LabelUsageStatus.terpakai)
-            ProductionMetric(
-              label: 'Sisa',
-              icon: Icons.inventory_2_outlined,
-              text: '${_fmtQty(item.qtySisa)} PCS',
-            ),
           ProductionMetric(
             label: 'Status',
             icon: Icons.verified_outlined,
@@ -736,14 +728,11 @@ if (item.namaSupplier.isNotEmpty)
                           ),
                     ],
                   ),
-                  // Status pemakaian (terpakai sebagian / habis). Disembunyikan
-                  // untuk label yang belum dipakai supaya tile tidak ramai.
+                  // Status pemakaian (habis). Disembunyikan untuk label yang
+                  // belum dipakai supaya tile tidak ramai.
                   if (item.usageStatus != LabelUsageStatus.belumDipakai) ...[
                     const SizedBox(height: 3),
-                    ProductionUsageBadge(
-                      status: item.usageStatus,
-                      sisaQty: item.qtySisa,
-                    ),
+                    ProductionUsageBadge(status: item.usageStatus),
                   ],
                 ],
               ),
