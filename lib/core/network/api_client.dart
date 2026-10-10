@@ -13,11 +13,43 @@ class ApiException implements Exception {
   final String message;
   final String? responseBody;
 
-  ApiException(this.statusCode, this.message, {this.responseBody});
+  /// Pesan yang sudah enak dibaca user, diwujudkan lewat [friendly]. Kalau
+  /// null, [apiErrorMessage] jatuh ke pemetaan berdasarkan status code.
+  final String? friendly;
+
+  ApiException(
+    this.statusCode,
+    this.message, {
+    this.responseBody,
+    this.friendly,
+  });
+
+  /// "25 detik" / "10 menit" untuk pesan timeout.
+  static String _humanDuration(Duration d) {
+    if (d.inMinutes >= 1) {
+      final s = d.inSeconds % 60;
+      return s == 0 ? '${d.inMinutes} menit' : '${d.inMinutes} menit $s detik';
+    }
+    return '${d.inSeconds} detik';
+  }
+
+  /// Timeout yang sudah dibungkus pesan ramah, untuk operasi yang memang
+  /// lama di server (mis. render PDF laporan). Tanpa ini yang tampil ke
+  /// operator adalah "TimeoutException after ..." yang tidak berguna.
+  ApiException.timeout(Duration limit, {required String what})
+    : statusCode = 408,
+      message = '$what timeout setelah ${_humanDuration(limit)}',
+      responseBody = null,
+      friendly =
+          '$what belum selesai dalam ${_humanDuration(limit)}. '
+          'Coba perkecil rentang tanggal, atau coba lagi beberapa saat lagi.';
 
   // Pesan ramah untuk ditampilkan ke user — ambil field "message" dari body JSON
   // server jika ada (mis. pesan validasi), fallback ke [message] teknis.
   String get friendlyMessage {
+    final f = friendly;
+    if (f != null && f.trim().isNotEmpty) return f.trim();
+
     final body = responseBody;
     if (body == null || body.isEmpty) return message;
     try {
@@ -234,22 +266,40 @@ class ApiClient {
   Future<Uint8List> getPdfBytesForPath(
     String path, {
     Map<String, dynamic>? query,
+    Duration? timeout,
   }) {
-    return getPdfBytes(_buildUri(path, query));
+    return getPdfBytes(_buildUri(path, query), timeout: timeout);
   }
 
   /// Download PDF dengan auth header. Validasi signature %PDF.
-  Future<Uint8List> getPdfBytes(Uri uri) async {
+  ///
+  /// [timeout]_override untuk laporan yang render-nya lama di server (mis.
+  /// 10 menit di [ReportListViewModel.generateReport]). Default-nya tetap
+  /// [_timeout] supaya request lain tidak ikut melonggar.
+  Future<Uint8List> getPdfBytes(Uri uri, {Duration? timeout}) async {
+    final limit = timeout ?? _timeout;
     final headers = await _headers();
     final pdfHeaders = Map<String, String>.from(headers)
       ..['Accept'] = 'application/pdf'
       ..remove('Content-Type');
 
-    final resp = await _client.get(uri, headers: pdfHeaders).timeout(_timeout);
+    // PDF laporan dirender di server dan tidak streaming, jadi timeout di sini
+    // normal terjadi saat server lambat - bukan hanya saat server mati.
+    // Bungkus jadi ApiException(408) supaya apiErrorMessage() menampilkan
+    // pesan yang jelas, bukan "TimeoutException after ..." mentah.
+    final resp = await _client
+        .get(uri, headers: pdfHeaders)
+        .timeout(
+          limit,
+          onTimeout: () {
+            throw ApiException.timeout(limit, what: 'Download PDF');
+          },
+        );
 
     if (resp.statusCode != 200) {
-      final preview =
-          resp.body.length > 300 ? resp.body.substring(0, 300) : resp.body;
+      final preview = resp.body.length > 300
+          ? resp.body.substring(0, 300)
+          : resp.body;
       throw ApiException(
         resp.statusCode,
         'PDF download failed',

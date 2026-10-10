@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/network/api_client.dart';
+
 class ReportPdfService {
   ReportPdfService({
     http.Client? client,
@@ -17,9 +19,15 @@ class ReportPdfService {
   final http.Client _client;
   final Map<String, String> Function()? _getAuthHeader;
 
+  /// Batas waktu download PDF. Default 30 detik; laporan yang render-nya
+  /// lama di server bisa meng-oper [timeout] sendiri (lihat
+  /// [ReportListViewModel.generateReport]).
+  static const Duration _defaultTimeout = Duration(seconds: 30);
+
   Future<void> downloadSaveAndOpenPdf({
     required Uri uri,
     required String filename,
+    Duration? timeout,
   }) async {
     final headers = <String, String>{
       'Accept': 'application/pdf',
@@ -28,7 +36,13 @@ class ReportPdfService {
 
     final resp = await _client
         .get(uri, headers: headers)
-        .timeout(const Duration(seconds: 30));
+        .timeout(
+          timeout ?? _defaultTimeout,
+          onTimeout: () => throw ApiException.timeout(
+            timeout ?? _defaultTimeout,
+            what: 'Download PDF',
+          ),
+        );
 
     final ct = resp.headers['content-type'] ?? '';
     if (resp.statusCode != 200) {
@@ -56,20 +70,29 @@ class ReportPdfService {
   }
 
   /// Hanya download dan kembalikan bytes — tanpa simpan/buka.
-  Future<Uint8List> downloadPdfBytes({required Uri uri}) async {
+  Future<Uint8List> downloadPdfBytes({
+    required Uri uri,
+    Duration? timeout,
+  }) async {
     final headers = <String, String>{
       'Accept': 'application/pdf',
       if (_getAuthHeader != null) ..._getAuthHeader(),
     };
 
+    final limit = timeout ?? _defaultTimeout;
     final resp = await _client
         .get(uri, headers: headers)
-        .timeout(const Duration(seconds: 30));
+        .timeout(
+          limit,
+          onTimeout: () =>
+              throw ApiException.timeout(limit, what: 'Download PDF'),
+        );
 
     final ct = resp.headers['content-type'] ?? '';
     if (resp.statusCode != 200) {
-      final preview =
-          resp.body.length > 300 ? resp.body.substring(0, 300) : resp.body;
+      final preview = resp.body.length > 300
+          ? resp.body.substring(0, 300)
+          : resp.body;
       throw Exception('HTTP ${resp.statusCode}\n$preview');
     }
 

@@ -10,6 +10,14 @@ import '../model/report_item.dart';
 import '../service/report_pdf_service.dart';
 
 class ReportListViewModel extends ChangeNotifier {
+  /// Batas waktu download PDF laporan. PDF laporan dirender di sisi server
+  /// (Crystal Report / Puppeteer) dan server tidak mengirim satu byte pun
+  /// sampai selesai, jadi untuk rentang tanggal lebar prosesnya bisa jauh
+  /// melewati default 25-30 detik. 10 menit dipakai HANYA untuk request
+  /// laporan di [generateReport] - request lain (termasuk cetak label)
+  /// tetap memakai default masing-masing.
+  static const Duration pdfTimeout = Duration(minutes: 10);
+
   ReportListViewModel({
     required List<ReportItem> initialReports,
     required ReportPdfService pdfService,
@@ -88,11 +96,14 @@ class ReportListViewModel extends ChangeNotifier {
         final reportDate = DateFormat('dd-MM-yyyy').format(startDate);
         uri = ReportEndpoints.ppsApiPdf(item.ppsApiPath!, reportDate);
         debugPrint('[REPORT] URL => $uri');
-        return await _apiClient.getPdfBytes(uri);
+        return await _apiClient.getPdfBytes(uri, timeout: pdfTimeout);
       } else {
         uri = _buildCrystalUri(item.reportName, startDate, endDate);
         debugPrint('[REPORT] URL => $uri');
-        return await _pdfService.downloadPdfBytes(uri: uri);
+        return await _pdfService.downloadPdfBytes(
+          uri: uri,
+          timeout: pdfTimeout,
+        );
       }
     } catch (e) {
       debugPrint('[REPORT] Error: $e');

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../common/widgets/loading_dialog.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_error.dart';
 import '../model/report_item.dart';
 import '../service/report_pdf_service.dart';
 import '../view_model/report_list_view_model.dart';
@@ -382,7 +383,7 @@ class _ReportListViewState extends State<_ReportListView> {
             children: [
               const Icon(Icons.error_outline, color: Colors.white),
               const SizedBox(width: 12),
-              Expanded(child: Text('Gagal membuka PDF: ${e.toString()}')),
+              Expanded(child: Text('Gagal membuka PDF: ${apiErrorMessage(e)}')),
             ],
           ),
           backgroundColor: Colors.red[700],
