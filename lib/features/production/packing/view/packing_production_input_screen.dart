@@ -968,7 +968,7 @@ class _PackingProductionInputScreenState
     if (materialAll.isEmpty) {
       return const Center(
         child: Text(
-          'Belum ada material kabinet.\nTambah dengan tombol + di bawah.',
+          'Tidak ada data',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
         ),

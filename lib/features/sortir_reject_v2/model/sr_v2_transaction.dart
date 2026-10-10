@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'sr_v2_label_info.dart';
+
 class SrV2InputLabel {
   final String noBJ;
   final DateTime? dateCreate;
@@ -7,6 +9,11 @@ class SrV2InputLabel {
   final String namaJenis;
   final int pcs;
   final String? createBy;
+  final String? category;
+
+  /// Qty asli label. Backend mengirim `pcs`; untuk bahan pendukung nilainya
+  /// berasal dari `dbo.BahanPendukung.Qty` yang bisa pecahan.
+  final double qty;
 
   const SrV2InputLabel({
     required this.noBJ,
@@ -15,6 +22,8 @@ class SrV2InputLabel {
     required this.namaJenis,
     required this.pcs,
     this.createBy,
+    this.category,
+    this.qty = 0,
   });
 
   static String _s(dynamic v) => v?.toString() ?? '';
@@ -28,6 +37,9 @@ class SrV2InputLabel {
           j['NoFurnitureWIPPartial'] ??
           j['noFurnitureWIPPartial'] ??
           j['noFurnitureWipPartial'] ??
+          j['NoBahanPendukung'] ??
+          j['noBahanPendukung'] ??
+          j['noBahanPendukungPartial'] ??
           j['NoReject'] ??
           j['noReject'] ??
           j['labelCode'],
@@ -42,7 +54,15 @@ class SrV2InputLabel {
     return 0;
   }
 
+  static double _d(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim()) ?? 0;
+    return 0;
+  }
+
   factory SrV2InputLabel.fromJson(Map<String, dynamic> j) {
+    final rawQty = j['qty'] ?? j['Qty'] ?? j['pcs'] ?? j['Pcs'];
     return SrV2InputLabel(
       noBJ: _labelCode(j),
       dateCreate: j['DateCreate'] != null
@@ -56,8 +76,16 @@ class SrV2InputLabel {
           : j['CreateBy'] != null
           ? _s(j['CreateBy'])
           : null,
+      category: j['category'] != null ? _s(j['category']) : null,
+      qty: _d(rawQty),
     );
   }
+
+  SrV2Category get parsedCategory =>
+      SrV2Category.fromRaw(category, labelCode: noBJ);
+
+  bool get isBahanPendukung =>
+      parsedCategory == SrV2Category.bahanPendukung;
 }
 
 class SrV2OutputLabel {
@@ -256,4 +284,9 @@ class SrV2Transaction {
     if (tanggal == null) return '-';
     return DateFormat('dd MMM yyyy', 'id_ID').format(tanggal!.toLocal());
   }
+
+  SrV2Category get parsedCategory => SrV2Category.fromRaw(category);
+
+  bool get isBahanPendukung =>
+      parsedCategory == SrV2Category.bahanPendukung;
 }

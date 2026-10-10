@@ -128,10 +128,11 @@ class _SrV2CreateScreenState extends State<SrV2CreateScreen> {
           await vm.lookupLabel(code);
           return vm.lookupError;
         },
-        manualHint: 'BA / BB / BF.0000000001',
+        manualHint: 'BA / BB / BP / BF.0000000001',
         acceptedLabels: const [
           (prefix: 'BB', label: 'Furniture WIP'),
           (prefix: 'BA', label: 'Barang Jadi'),
+          (prefix: 'BP', label: 'Bahan Pendukung'),
         ],
       ),
     );
@@ -394,6 +395,13 @@ class _InputLabelTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bahan pendukung memakai qty dari dbo.BahanPendukung.Qty yang bisa
+    // pecahan, jadi ditampilkan apa adanya; label lain tetap pcs bulat.
+    final qtyText = lbl.isBahanPendukung
+        ? NumberFormat('#,##0.##', 'id_ID').format(lbl.qty)
+        : nf.format(lbl.pcs);
+    final unit = lbl.isBahanPendukung ? '' : ' pcs';
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -413,6 +421,8 @@ class _InputLabelTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   lbl.namaJenis,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                 ),
               ],
@@ -420,7 +430,7 @@ class _InputLabelTile extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            '${nf.format(lbl.pcs)} pcs',
+            '$qtyText$unit',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -1174,11 +1184,15 @@ class _PcsSummaryCard extends StatelessWidget {
               .clamp(0.0, 1.0)
         : 0.0;
     final barColor = over ? Colors.red : (balanced ? _kGreen : _kPrimary);
-    final inputPcsText = nf.format(vm.totalPcsInput);
-    final rejectKgText = NumberFormat(
-      '#,##0.##',
-      'id_ID',
-    ).format(vm.totalBeratReject);
+    // Bahan pendukung: output selalu reject (berat), input diukur qty dari
+    // label BP.-modul lain tetap pcs.
+    final isBahanPendukung = vm.isBahanPendukungInput;
+    final qtyNf = NumberFormat('#,##0.##', 'id_ID');
+    final inputText = isBahanPendukung
+        ? qtyNf.format(vm.totalQtyInput)
+        : nf.format(vm.totalPcsInput);
+    final inputUnit = isBahanPendukung ? '' : ' pcs';
+    final rejectKgText = qtyNf.format(vm.totalBeratReject);
 
     return Container(
       decoration: _cardDecoration(),
@@ -1207,7 +1221,7 @@ class _PcsSummaryCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 hasReject
-                    ? '$inputPcsText pcs -> $rejectKgText kg'
+                    ? '$inputText$inputUnit -> $rejectKgText kg'
                     : balanced
                     ? 'Seimbang'
                     : over
@@ -1236,7 +1250,7 @@ class _PcsSummaryCard extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             hasReject
-                ? 'Input: $inputPcsText pcs  -  Reject: $rejectKgText kg'
+                ? 'Input: $inputText$inputUnit  -  Reject: $rejectKgText kg'
                 : 'Input: ${nf.format(vm.totalPcsInput)} pcs  -  Output: ${nf.format(vm.totalPcsOutput)} pcs',
             style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
           ),

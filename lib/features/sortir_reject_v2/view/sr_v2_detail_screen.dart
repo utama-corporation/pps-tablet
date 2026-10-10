@@ -12,6 +12,7 @@ import '../../../core/utils/pdf_print_service.dart';
 import '../../../core/view_model/label_print_lock_socket_manager.dart';
 import '../../label/packing/repository/packing_repository.dart';
 import '../../label/reject/repository/reject_repository.dart';
+import '../model/sr_v2_label_info.dart';
 import '../model/sr_v2_transaction.dart';
 import '../repository/sr_v2_repository.dart';
 import '../../production/shared/shared.dart';
@@ -270,8 +271,12 @@ class _BalanceBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isBahanPendukung =
+        SrV2Category.fromRaw(category) == SrV2Category.bahanPendukung;
     final isReject =
-        balance == false || (balance == null && category == 'reject');
+        isBahanPendukung ||
+        balance == false ||
+        (balance == null && category == 'reject');
 
     final badgeColor = isReject ? Colors.red : Colors.green;
     final icon = isReject
@@ -478,6 +483,15 @@ class _InputsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalPcs = inputs.fold(0, (s, e) => s + e.pcs);
+    final totalQty = inputs.fold<double>(0, (s, e) => s + e.qty);
+    // Label BP. menyimpan qty di kolom `pcs` (dari dbo.BahanPendukung.Qty)
+    // yang boleh pecahan, jadi ditotalkan sebagai qty.
+    final isBahanPendukung =
+        inputs.isNotEmpty && inputs.every((e) => e.isBahanPendukung);
+    final qtyNf = NumberFormat('#,##0.##', 'id_ID');
+    final totalLabel = isBahanPendukung ? 'Total Qty Input' : 'Total Pcs Input';
+    final totalText =
+        isBahanPendukung ? qtyNf.format(totalQty) : '${nf.format(totalPcs)} pcs';
 
     return Container(
       decoration: _cardDecoration(),
@@ -574,9 +588,9 @@ class _InputsCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Text(
-                    'Total Pcs Input',
-                    style: TextStyle(
+                  Text(
+                    totalLabel,
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: _kPrimary,
@@ -584,7 +598,7 @@ class _InputsCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    '${nf.format(totalPcs)} pcs',
+                    totalText,
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -648,7 +662,12 @@ class _SrV2InputTile extends StatelessWidget {
               children: [
                 ProductionMiniMetric(
                   icon: Icons.inventory_2_outlined,
-                  text: '${nf.format(lbl.pcs)} pcs',
+                  text: lbl.isBahanPendukung
+                      ? NumberFormat(
+                          '#,##0.##',
+                          'id_ID',
+                        ).format(lbl.qty)
+                      : '${nf.format(lbl.pcs)} pcs',
                 ),
                 if (lbl.createBy != null)
                   ProductionMiniMetric(

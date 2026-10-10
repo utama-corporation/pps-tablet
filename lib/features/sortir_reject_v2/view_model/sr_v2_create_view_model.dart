@@ -52,6 +52,7 @@ class SrV2CreateViewModel extends ChangeNotifier {
 
   // === Derived ===
   int get totalPcsInput => inputs.fold(0, (s, l) => s + l.pcs);
+  double get totalQtyInput => inputs.fold(0.0, (s, l) => s + l.qty);
   int get totalPcsOutput =>
       outputs.fold(0, (s, o) => s + (o.isBarangJadi ? o.pcs : 0));
   double get totalBeratReject =>
@@ -59,9 +60,17 @@ class SrV2CreateViewModel extends ChangeNotifier {
   int get remainingPcs => totalPcsInput - totalPcsOutput;
   bool get hasRejectOutput => outputs.any((o) => o.isReject);
 
+  bool get isBahanPendukungInput =>
+      inputs.isNotEmpty && inputs.every((l) => l.isBahanPendukung);
+
+  /// Label yang backend hanya izinkan jadi output reject: furniture WIP
+  /// (`BB.`), reject (`BF.`), dan bahan pendukung (`BP.`). Backend menolak
+  /// output pcs untuk bahan pendukung
+  /// ("outputs reject (berat) wajib diisi untuk input bahanPendukung").
   bool get isRejectPrefixInput =>
       inputs.isNotEmpty &&
       inputs.every((l) {
+        if (l.isBahanPendukung) return true;
         final code = l.labelCode.toUpperCase();
         return code.startsWith('BF') || code.startsWith('BB');
       });
@@ -91,6 +100,7 @@ class SrV2CreateViewModel extends ChangeNotifier {
     if (code.startsWith('BA')) return 'BA';
     if (code.startsWith('BB')) return 'BB';
     if (code.startsWith('BF')) return 'BF';
+    if (code.startsWith('BP')) return 'BP';
     return '';
   }
 
