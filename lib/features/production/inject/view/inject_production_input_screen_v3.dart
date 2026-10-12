@@ -641,9 +641,13 @@ class _InjectProductionInputScreenState
 
     final pplData = _pcsPerLabelData;
 
-    final itemsToSubmit = jenisItems
-        .where((i) => i.pcs > 0 || i.carryOverIn > 0)
-        .toList();
+    // Bucket terakhir boleh disimpan dengan item bagus 0 — carry-over sudah
+    // wajib habis di bucket ini, jadi tidak ada lagi pcs yang perlu
+    // dilabelkan pada bucket penutup. Bucket selain itu tetap menyaring
+    // jenis bernilai 0 supaya tidak mengirim batch kosong.
+    final itemsToSubmit = isLastBucket
+        ? jenisItems
+        : jenisItems.where((i) => i.pcs > 0 || i.carryOverIn > 0).toList();
     if (itemsToSubmit.isEmpty) return;
 
     final carryOutByJenis = <int, int>{};
