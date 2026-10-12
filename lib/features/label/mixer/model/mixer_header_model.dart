@@ -39,6 +39,7 @@ class MixerHeader {
   final double? mfi; // MFI
   final double? moisture2; // Moisture2
   final double? moisture3; // Moisture3
+  final String? visualNote; // VisualNote
 
   // ==== OUTPUT GENERIC (baru, mengikuti Furniture WIP) ====
   /// Contoh: 'MIXER_PRODUKSI', 'BONGKAR_SUSUN'
@@ -84,6 +85,7 @@ class MixerHeader {
     this.mfi,
     this.moisture2,
     this.moisture3,
+    this.visualNote,
     this.outputType,
     this.outputCode,
     this.outputNamaMesin,
@@ -183,6 +185,7 @@ class MixerHeader {
       mfi: _toDouble(json['MFI']),
       moisture2: _toDouble(json['Moisture2']),
       moisture3: _toDouble(json['Moisture3']),
+      visualNote: json['VisualNote']?.toString(),
 
       // generic output
       outputType: effOutputType,
@@ -218,6 +221,7 @@ class MixerHeader {
     'MFI': mfi,
     'Moisture2': moisture2,
     'Moisture3': moisture3,
+    'VisualNote': visualNote,
 
     // Generic output (utama)
     'OutputType': outputType,
@@ -250,6 +254,7 @@ class MixerHeader {
     double? mfi,
     double? moisture2,
     double? moisture3,
+    String? visualNote,
     String? outputType,
     String? outputCode,
     String? outputNamaMesin,
@@ -276,6 +281,7 @@ class MixerHeader {
       mfi: mfi ?? this.mfi,
       moisture2: moisture2 ?? this.moisture2,
       moisture3: moisture3 ?? this.moisture3,
+      visualNote: visualNote ?? this.visualNote,
       outputType: outputType ?? this.outputType,
       outputCode: outputCode ?? this.outputCode,
       outputNamaMesin: outputNamaMesin ?? this.outputNamaMesin,

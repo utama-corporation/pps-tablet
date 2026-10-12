@@ -261,6 +261,7 @@ class MixerRepository {
     required double? minMeltTemp,
     required double? maxMeltTemp,
     required double? mfi,
+    required String? visualNote,
   }) async {
     final token = await TokenStorage.getToken();
     final url = Uri.parse("${ApiConstants.baseUrl}/api/labels/mixer/$noMixer");
@@ -273,6 +274,7 @@ class MixerRepository {
         "MinMeltTemp": minMeltTemp,
         "MaxMeltTemp": maxMeltTemp,
         "MFI": mfi,
+        "VisualNote": visualNote,
       },
     };
 

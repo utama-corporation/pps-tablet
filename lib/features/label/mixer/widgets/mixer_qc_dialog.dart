@@ -10,6 +10,7 @@ class MixerQcResult {
   final double? minMeltTemp;
   final double? maxMeltTemp;
   final double? mfi;
+  final String? visualNote;
 
   const MixerQcResult({
     required this.moisture1,
@@ -18,6 +19,7 @@ class MixerQcResult {
     required this.minMeltTemp,
     required this.maxMeltTemp,
     required this.mfi,
+    required this.visualNote,
   });
 }
 
@@ -31,6 +33,8 @@ class MixerQcDialog extends StatefulWidget {
 }
 
 class _MixerQcDialogState extends State<MixerQcDialog> {
+  static const int _maxVisualNoteLength = 150;
+
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _moisture1Ctrl;
@@ -39,6 +43,7 @@ class _MixerQcDialogState extends State<MixerQcDialog> {
   late final TextEditingController _minMeltCtrl;
   late final TextEditingController _maxMeltCtrl;
   late final TextEditingController _mfiCtrl;
+  late final TextEditingController _visualNoteCtrl;
 
   @override
   void initState() {
@@ -59,6 +64,9 @@ class _MixerQcDialogState extends State<MixerQcDialog> {
       text: _toText(widget.header.maxMeltTemp),
     );
     _mfiCtrl = TextEditingController(text: _toText(widget.header.mfi));
+    _visualNoteCtrl = TextEditingController(
+      text: widget.header.visualNote ?? '',
+    );
   }
 
   @override
@@ -69,6 +77,7 @@ class _MixerQcDialogState extends State<MixerQcDialog> {
     _minMeltCtrl.dispose();
     _maxMeltCtrl.dispose();
     _mfiCtrl.dispose();
+    _visualNoteCtrl.dispose();
     super.dispose();
   }
 
@@ -92,6 +101,8 @@ class _MixerQcDialogState extends State<MixerQcDialog> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
+    final visualNote = _visualNoteCtrl.text.trim();
+
     Navigator.of(context).pop(
       MixerQcResult(
         moisture1: _parseNullableDecimal(_moisture1Ctrl.text),
@@ -100,6 +111,7 @@ class _MixerQcDialogState extends State<MixerQcDialog> {
         minMeltTemp: _parseNullableDecimal(_minMeltCtrl.text),
         maxMeltTemp: _parseNullableDecimal(_maxMeltCtrl.text),
         mfi: _parseNullableDecimal(_mfiCtrl.text),
+        visualNote: visualNote.isEmpty ? null : visualNote,
       ),
     );
   }
@@ -200,6 +212,19 @@ class _MixerQcDialogState extends State<MixerQcDialog> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _visualNoteCtrl,
+                    minLines: 2,
+                    maxLines: 3,
+                    maxLength: _maxVisualNoteLength,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: QcDialogPalette.text,
+                    ),
+                    decoration: qcInputDecoration(label: 'Visual Note'),
                   ),
                 ],
               ),

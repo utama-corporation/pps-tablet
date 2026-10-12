@@ -247,6 +247,7 @@ class MixerViewModel extends ChangeNotifier {
     required double? minMeltTemp,
     required double? maxMeltTemp,
     required double? mfi,
+    required String? visualNote,
   }) async {
     try {
       isLoading = true;
@@ -261,6 +262,7 @@ class MixerViewModel extends ChangeNotifier {
         minMeltTemp: minMeltTemp,
         maxMeltTemp: maxMeltTemp,
         mfi: mfi,
+        visualNote: visualNote,
       );
 
       await fetchHeaders(search: _search);

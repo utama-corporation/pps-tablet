@@ -130,6 +130,7 @@ class _MixerScreenState extends State<MixerScreen> {
       minMeltTemp: qc.minMeltTemp,
       maxMeltTemp: qc.maxMeltTemp,
       mfi: qc.mfi,
+      visualNote: qc.visualNote,
     );
 
     DialogService.instance.hideLoading();

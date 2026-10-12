@@ -212,7 +212,11 @@ class _MixerRowPopoverState extends State<MixerRowPopover> {
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [_buildQCDataCard()],
+                  children: [
+                    _buildQCDataCard(),
+                    const SizedBox(height: 6),
+                    _buildVisualNoteItem(widget.header.visualNote),
+                  ],
                 ),
               ),
               divider,
@@ -379,6 +383,43 @@ class _MixerRowPopoverState extends State<MixerRowPopover> {
               const SizedBox(width: 8),
               _buildQcDataItem('MFI', widget.header.mfi),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVisualNoteItem(String? note) {
+    final displayValue = (note ?? '').trim().isEmpty ? '-' : note!.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8F9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFEBECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Visual Note',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B778C),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            displayValue,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF172B4D),
+            ),
           ),
         ],
       ),
