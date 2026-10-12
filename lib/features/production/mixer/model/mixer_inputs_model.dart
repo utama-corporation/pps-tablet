@@ -5,6 +5,7 @@ import '../../shared/models/bb_item.dart';
 import '../../shared/models/washing_item.dart';
 import '../../shared/models/gilingan_item.dart';
 import '../../shared/models/mixer_item.dart';
+import '../../shared/models/crusher_item.dart';
 import '../../../../core/utils/model_helpers.dart';
 
 export '../../shared/models/broker_item.dart';
@@ -12,6 +13,7 @@ export '../../shared/models/bb_item.dart';
 export '../../shared/models/washing_item.dart';
 export '../../shared/models/gilingan_item.dart';
 export '../../shared/models/mixer_item.dart';
+export '../../shared/models/crusher_item.dart';
 
 /* ===================== ROOT AGGREGATOR ===================== */
 
@@ -21,6 +23,7 @@ class MixerInputs {
   final List<WashingItem> washing;
   final List<GilinganItem> gilingan;
   final List<MixerItem> mixer;
+  final List<CrusherItem> crusher;
 
   final Map<String, int> summary;
 
@@ -30,6 +33,7 @@ class MixerInputs {
     required this.washing,
     required this.gilingan,
     required this.mixer,
+    required this.crusher,
     required this.summary,
   });
 
@@ -50,6 +54,7 @@ class MixerInputs {
       washing: _listOf(j['washing'], (m) => WashingItem.fromJson(m)),
       gilingan: _listOf(j['gilingan'], (m) => GilinganItem.fromJson(m)),
       mixer: _listOf(j['mixer'], (m) => MixerItem.fromJson(m)),
+      crusher: _listOf(j['crusher'], (m) => CrusherItem.fromJson(m)),
       summary: _toSummary(j['summary']),
     );
   }
@@ -59,23 +64,31 @@ class MixerInputs {
   double totalBeratWashing() => washing.fold(0.0, (s, it) => s + (it.berat ?? 0));
   double totalBeratGilingan() => gilingan.fold(0.0, (s, it) => s + (it.berat ?? 0));
   double totalBeratMixer() => mixer.fold(0.0, (s, it) => s + (it.berat ?? 0));
+  double totalBeratCrusher() => crusher.fold(0.0, (s, it) => s + (it.berat ?? 0));
 
   double totalBerat() =>
       totalBeratBroker() +
       totalBeratBb() +
       totalBeratWashing() +
       totalBeratGilingan() +
-      totalBeratMixer();
+      totalBeratMixer() +
+      totalBeratCrusher();
 
   int totalItems() =>
-      broker.length + bb.length + washing.length + gilingan.length + mixer.length;
+      broker.length +
+      bb.length +
+      washing.length +
+      gilingan.length +
+      mixer.length +
+      crusher.length;
 
   bool get isEmpty =>
       broker.isEmpty &&
       bb.isEmpty &&
       washing.isEmpty &&
       gilingan.isEmpty &&
-      mixer.isEmpty;
+      mixer.isEmpty &&
+      crusher.isEmpty;
 
   bool get isNotEmpty => !isEmpty;
 
@@ -85,6 +98,7 @@ class MixerInputs {
     List<WashingItem>? washing,
     List<GilinganItem>? gilingan,
     List<MixerItem>? mixer,
+    List<CrusherItem>? crusher,
     Map<String, int>? summary,
   }) {
     return MixerInputs(
@@ -93,6 +107,7 @@ class MixerInputs {
       washing: washing ?? this.washing,
       gilingan: gilingan ?? this.gilingan,
       mixer: mixer ?? this.mixer,
+      crusher: crusher ?? this.crusher,
       summary: summary ?? this.summary,
     );
   }
@@ -104,6 +119,7 @@ class MixerInputs {
       washing: [],
       gilingan: [],
       mixer: [],
+      crusher: [],
       summary: {},
     );
   }
@@ -113,4 +129,5 @@ class MixerInputs {
   int countWashing() => summary['washing'] ?? washing.length;
   int countGilingan() => summary['gilingan'] ?? gilingan.length;
   int countMixer() => summary['mixer'] ?? mixer.length;
+  int countCrusher() => summary['crusher'] ?? crusher.length;
 }

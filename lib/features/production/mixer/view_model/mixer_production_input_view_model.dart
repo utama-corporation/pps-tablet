@@ -32,6 +32,7 @@ class TempItemsByLabel {
   final List<GilinganItem> gilinganPartials;
   final List<MixerItem> mixerItems;
   final List<MixerItem> mixerPartials;
+  final List<CrusherItem> crusherItems;
   final DateTime addedAt;
 
   TempItemsByLabel({
@@ -44,6 +45,7 @@ class TempItemsByLabel {
     this.gilinganPartials = const [],
     this.mixerItems = const [],
     this.mixerPartials = const [],
+    this.crusherItems = const [],
     DateTime? addedAt,
   }) : addedAt = addedAt ?? DateTime.now();
 
@@ -55,7 +57,8 @@ class TempItemsByLabel {
       gilinganItems.length +
       gilinganPartials.length +
       mixerItems.length +
-      mixerPartials.length;
+      mixerPartials.length +
+      crusherItems.length;
 
   bool get isEmpty => totalCount == 0;
 
@@ -68,6 +71,7 @@ class TempItemsByLabel {
     ...gilinganPartials,
     ...mixerItems,
     ...mixerPartials,
+    ...crusherItems,
   ];
 }
 
@@ -115,6 +119,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
           ? it.noMixerPartial!
           : _nn(it.noMixer);
     }
+    if (it is CrusherItem) {
+      return _nn(it.noCrusher);
+    }
     return '-';
   }
 
@@ -157,6 +164,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
           ? '[MIX•PART] $t • sak ${_nn(it.noSak)} • ${_kg(it.berat)}kg'
           : '[MIX] $t • sak ${_nn(it.noSak)} • ${_kg(it.berat)}kg';
     }
+    if (it is CrusherItem) {
+      return '[CRUSH] $t • ${_kg(it.berat)}kg';
+    }
     return '[UNKNOWN] $it';
   }
 
@@ -181,6 +191,7 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     _dumpList('tempGilinganPartial', tempGilinganPartial, _keyFromGilinganItem);
     _dumpList('tempMixer', tempMixer, _keyFromMixerItem);
     _dumpList('tempMixerPartial', tempMixerPartial, _keyFromMixerItem);
+    _dumpList('tempCrusher', tempCrusher, _keyFromCrusherItem);
     _d('TOTAL TEMP COUNT = $totalTempCount');
     _d('========================================');
   }
@@ -400,6 +411,7 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     if (t.mixerItems.isNotEmpty) s.add('${t.mixerItems.length} Mixer (full)');
     if (t.mixerPartials.isNotEmpty)
       s.add('${t.mixerPartials.length} Mixer Partial');
+    if (t.crusherItems.isNotEmpty) s.add('${t.crusherItems.length} Crusher');
     return s.join(', ');
   }
 
@@ -434,6 +446,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
         tempMixer.remove(item);
         tempMixerPartial.remove(item);
         _tempKeys.remove(_keyFromMixerItem(item));
+      } else if (item is CrusherItem) {
+        tempCrusher.remove(item);
+        _tempKeys.remove(_keyFromCrusherItem(item));
       }
     }
 
@@ -469,6 +484,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     final mixPart = tempMixerPartial
         .where((e) => _getItemLabelCode(e) == code)
         .toList();
+    final crushFull = tempCrusher
+        .where((e) => _getItemLabelCode(e) == code)
+        .toList();
 
     if ([
       brokerFull,
@@ -479,6 +497,7 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       gilPart,
       mixFull,
       mixPart,
+      crushFull,
     ].every((l) => l.isEmpty)) {
       _tempItemsByLabel.remove(code);
       return;
@@ -494,6 +513,7 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       gilinganPartials: gilPart,
       mixerItems: mixFull,
       mixerPartials: mixPart,
+      crusherItems: crushFull,
       addedAt: _tempItemsByLabel[code]?.addedAt ?? DateTime.now(),
     );
   }
@@ -528,6 +548,8 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       return item.noMixer;
     }
 
+    if (item is CrusherItem) return item.noCrusher;
+
     return null;
   }
 
@@ -547,6 +569,8 @@ class MixerProductionInputViewModel extends ChangeNotifier {
 
   final List<MixerItem> tempMixer = [];
   final List<MixerItem> tempMixerPartial = [];
+
+  final List<CrusherItem> tempCrusher = [];
 
   final Set<String> _pickedKeys = <String>{};
   final List<Map<String, dynamic>> _pickedRows = <Map<String, dynamic>>[];
@@ -571,6 +595,8 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       'V.|Gilingan|${i.noGilingan ?? '-'}|';
   String _keyFromMixerItem(MixerItem i) =>
       'H.|Mixer_d|${i.noMixer ?? '-'}|${(i.noSak ?? '').toString().trim()}';
+  String _keyFromCrusherItem(CrusherItem i) =>
+      'F.|Crusher|${i.noCrusher ?? '-'}|';
 
   // ====== keys in DB (from cache) ======
   Set<String> _dbKeysFor(String noProduksi) {
@@ -582,6 +608,7 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       for (final x in db.washing) keys.add(_keyFromWashingItem(x));
       for (final x in db.gilingan) keys.add(_keyFromGilinganItem(x));
       for (final x in db.mixer) keys.add(_keyFromMixerItem(x));
+      for (final x in db.crusher) keys.add(_keyFromCrusherItem(x));
     }
     return keys;
   }
@@ -783,6 +810,8 @@ class MixerProductionInputViewModel extends ChangeNotifier {
           ? _keyFromGilinganItem(item)
           : item is MixerItem
           ? _keyFromMixerItem(item)
+          : item is CrusherItem
+          ? _keyFromCrusherItem(item)
           : simpleKey;
 
       if (!_tempKeys.add(tempKey)) {
@@ -824,6 +853,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
         } else {
           tempMixer.add(newItem);
         }
+        itemAdded = true;
+      } else if (newItem is CrusherItem) {
+        tempCrusher.add(newItem);
         itemAdded = true;
       }
 
@@ -967,6 +999,15 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void deleteTempCrusherItem(CrusherItem item) {
+    tempCrusher.remove(item);
+    _tempKeys.remove(_keyFromCrusherItem(item));
+    final code = _getItemLabelCode(item);
+    if (code != null) _updateTempItemsByLabel(code);
+    debugDumpTempLists(tag: 'after deleteTempCrusherItem');
+    notifyListeners();
+  }
+
   bool isInTempKeys(String key) => _tempKeys.contains(key);
   Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
 
@@ -980,6 +1021,7 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     tempGilinganPartial.clear();
     tempMixer.clear();
     tempMixerPartial.clear();
+    tempCrusher.clear();
 
     _tempKeys.clear();
     _tempItemsByLabel.clear();
@@ -1011,6 +1053,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     } else if (item is MixerItem) {
       ok = tempMixer.remove(item) || tempMixerPartial.remove(item);
       if (ok) _tempKeys.remove(_keyFromMixerItem(item));
+    } else if (item is CrusherItem) {
+      ok = tempCrusher.remove(item);
+      if (ok) _tempKeys.remove(_keyFromCrusherItem(item));
     }
     if (ok) debugDumpTempLists(tag: 'after deleteIfTemp');
     return ok;
@@ -1120,7 +1165,8 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       tempGilingan.length +
       tempGilinganPartial.length +
       tempMixer.length +
-      tempMixerPartial.length;
+      tempMixerPartial.length +
+      tempCrusher.length;
 
   // ---------------------------------------------------------------------------
   // Submit temp items to backend
@@ -1166,6 +1212,10 @@ class MixerProductionInputViewModel extends ChangeNotifier {
       payload['mixer'] = tempMixer
           .map((e) => {'noMixer': e.noMixer, 'noSak': e.noSak})
           .toList();
+    }
+
+    if (tempCrusher.isNotEmpty) {
+      payload['crusher'] = tempCrusher.map((e) => {'noCrusher': e.noCrusher}).toList();
     }
 
     // NEW partials to create
@@ -1306,6 +1356,9 @@ class MixerProductionInputViewModel extends ChangeNotifier {
     if (tempMixerPartial.isNotEmpty) {
       parts.add('${tempMixerPartial.length} Mixer Partial');
     }
+    if (tempCrusher.isNotEmpty) {
+      parts.add('${tempCrusher.length} Crusher');
+    }
 
     return 'Total $totalTempCount items:\n${parts.join(', ')}';
   }
@@ -1377,6 +1430,8 @@ class MixerProductionInputViewModel extends ChangeNotifier {
         } else {
           add('mixer', {'noMixer': it.noMixer, 'noSak': it.noSak});
         }
+      } else if (it is CrusherItem) {
+        add('crusher', {'noCrusher': it.noCrusher});
       }
     }
 

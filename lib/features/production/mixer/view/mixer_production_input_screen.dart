@@ -19,6 +19,7 @@ import '../../shared/models/broker_item.dart';
 import '../../shared/models/washing_item.dart';
 import '../../shared/models/gilingan_item.dart';
 import '../../shared/models/mixer_item.dart';
+import '../../shared/models/crusher_item.dart';
 import '../model/mixer_output_model.dart';
 import '../repository/mixer_production_input_repository.dart';
 import '../repository/mixer_production_repository.dart';
@@ -192,6 +193,8 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     return p.isNotEmpty ? p : (item.noMixer ?? '-');
   }
 
+  String _crusherTitleKey(CrusherItem item) => item.noCrusher ?? '-';
+
   // ── Back ───────────────────────────────────────────────────────────────────
 
   Future<bool> _onWillPop() async {
@@ -327,6 +330,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
           (prefix: 'D', label: 'Broker'),
           (prefix: 'V', label: 'Gilingan'),
           (prefix: 'I', label: 'Mixer'),
+          (prefix: 'F', label: 'Crusher'),
         ],
         onLookup: _onCodeReady,
       ),
@@ -380,6 +384,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     if (item is WashingItem) return 'washing';
     if (item is GilinganItem) return 'gilingan';
     if (item is MixerItem) return 'mixer';
+    if (item is CrusherItem) return 'crusher';
     return null;
   }
 
@@ -401,6 +406,8 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
         builder: (_) =>
             MixerGilinganWeightDialog(noProduksi: widget.noProduksi),
       );
+    } else if (res.prefixType == PrefixType.crusher) {
+      await _commitCrusherDirectly(vm);
     } else if (_usesChipPicker(res)) {
       await showDialog(
         context: context,
@@ -408,6 +415,37 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
         builder: (_) => MixerSakPickerDialog(noProduksi: widget.noProduksi),
       );
     }
+  }
+
+  /// Crusher full-only: tidak ada sak dan tidak ada konsep partial, jadi
+  /// label dipakai utuh tanpa dialog. Berat sudah ada di label itu sendiri
+  /// (`Crusher.Berat`) — operator tidak perlu mengetiknya ulang.
+  ///
+  /// [MixerProductionInputViewModel.commitPickedToTemp] early-return kalau
+  /// `_pickedRows` kosong, jadi baris hasil lookup harus di-pick dulu — sama
+  /// seperti yang dilakukan MixerSakPickerDialog & MixerGilinganWeightDialog.
+  Future<void> _commitCrusherDirectly(
+    MixerProductionInputViewModel vm,
+  ) async {
+    final lookup = vm.lastLookup;
+    var added = 0;
+    if (lookup != null && lookup.data.isNotEmpty) {
+      vm.clearPicks();
+      for (final row in lookup.data) {
+        vm.togglePick(row);
+      }
+      added = vm.commitPickedToTemp(noProduksi: widget.noProduksi).added;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added > 0
+              ? '✅ Crusher ditambahkan'
+              : 'Gagal menambahkan atau sudah ada',
+        ),
+      ),
+    );
   }
 
   Future<void> _handlePartialMode(
@@ -444,6 +482,8 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
         builder: (_) =>
             MixerGilinganWeightDialog(noProduksi: widget.noProduksi),
       );
+    } else if (res.prefixType == PrefixType.crusher) {
+      await _commitCrusherDirectly(vm);
     } else if (_usesChipPicker(res)) {
       await showDialog(
         context: context,
@@ -985,6 +1025,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     required Map<String, List<WashingItem>> washingGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
     required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
   }) {
     switch (_selectedTab) {
       case 'broker':
@@ -995,6 +1036,8 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
         return {for (final e in gilinganGroups.entries) e.key: e.value};
       case 'mixer':
         return {for (final e in mixerGroups.entries) e.key: e.value};
+      case 'crusher':
+        return {for (final e in crusherGroups.entries) e.key: e.value};
       default:
         return {for (final e in bbGroups.entries) e.key: e.value};
     }
@@ -1012,6 +1055,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     required Map<String, List<WashingItem>> washingGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
     required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
   }) {
     int grandSak = 0;
     double grandBerat = 0.0;
@@ -1045,18 +1089,26 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
         grandBerat += i.berat ?? 0;
       }
     }
+    for (final e in crusherGroups.values) {
+      for (final i in e) {
+        grandSak++;
+        grandBerat += i.berat ?? 0;
+      }
+    }
     final totalLabel =
         bbGroups.length +
         brokerGroups.length +
         washingGroups.length +
         gilinganGroups.length +
-        mixerGroups.length;
+        mixerGroups.length +
+        crusherGroups.length;
     final selSummary = _selectedTabSummary(
       bbGroups: bbGroups,
       brokerGroups: brokerGroups,
       washingGroups: washingGroups,
       gilinganGroups: gilinganGroups,
       mixerGroups: mixerGroups,
+      crusherGroups: crusherGroups,
     );
 
     return Container(
@@ -1130,6 +1182,11 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                         label: 'Mixer',
                         count: mixerGroups.length,
                       ),
+                      ProductionTabItem(
+                        value: 'crusher',
+                        label: 'Crusher',
+                        count: crusherGroups.length,
+                      ),
                     ],
                     onChanged: (v) {
                       if (_selectedTab != v) setState(() => _selectedTab = v);
@@ -1152,9 +1209,10 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                                   bbGroups: bbGroups,
                                   brokerGroups: brokerGroups,
                                   washingGroups: washingGroups,
-                                  gilinganGroups: gilinganGroups,
-                                  mixerGroups: mixerGroups,
-                                ),
+gilinganGroups: gilinganGroups,
+                                mixerGroups: mixerGroups,
+                                crusherGroups: crusherGroups,
+                              ),
                               ),
                             ),
                           ),
@@ -1168,6 +1226,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                                 washingGroups: washingGroups,
                                 gilinganGroups: gilinganGroups,
                                 mixerGroups: mixerGroups,
+                                crusherGroups: crusherGroups,
                               ),
                             )
                           else
@@ -1239,6 +1298,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     required Map<String, List<WashingItem>> washingGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
     required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
   }) {
     switch (_selectedTab) {
       case 'bb':
@@ -1260,6 +1320,12 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
           vm: vm,
           canModify: canModify,
           gilinganGroups: gilinganGroups,
+        );
+      case 'crusher':
+        return _buildCrusherTab(
+          vm: vm,
+          canModify: canModify,
+          crusherGroups: crusherGroups,
         );
       default:
         return _buildMixerTab(
@@ -1766,6 +1832,87 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     );
   }
 
+  // ── Crusher Tab ────────────────────────────────────────────────────────────
+
+  Widget _buildCrusherTab({
+    required MixerProductionInputViewModel vm,
+    required bool canModify,
+    required Map<String, List<CrusherItem>> crusherGroups,
+  }) {
+    return ProductionOutputCategoryContent(
+      footer: const SizedBox.shrink(),
+      child: crusherGroups.isEmpty
+          ? const Center(
+              child: Text('Tidak ada data', style: TextStyle(fontSize: 11)),
+            )
+          : LayoutBuilder(
+              builder: (_, c) => GridView(
+                padding: const EdgeInsets.all(6),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: c.maxWidth < 380 ? 2 : 3,
+                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 6,
+                  mainAxisExtent: 72,
+                ),
+                children: crusherGroups.entries.map((entry) {
+                  return ProductionInputGroupTile(
+                    title:
+                        (entry.value.isNotEmpty
+                            ? entry.value.first.namaJenis
+                            : '-') ??
+                        '-',
+                    headerSubtitle: entry.key,
+                    tileMetrics: [
+                      (
+                        Icons.scale_outlined,
+                        '${num2(entry.value.fold<double>(0, (s, i) => s + (i.berat ?? 0)))} kg',
+                      ),
+                    ],
+                    color: _kMixerPrimary,
+                    isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                    isSelected: isInputGroupSelected(entry.key),
+                    onTap: isSelectingInput
+                        ? () => toggleInputGroup(entry.key, entry.value)
+                        : null,
+                    onLongPress: isSelectingInput
+                        ? null
+                        : () => startSelectingInput(entry.key, entry.value),
+                    expandable: true,
+                    detailsBuilder: () {
+                      final dbItems =
+                          vm
+                              .inputsOf(widget.noProduksi)
+                              ?.crusher
+                              .where((x) => _crusherTitleKey(x) == entry.key) ??
+                          const [];
+                      final items = [
+                        ...dbItems,
+                        ...vm.tempCrusher.where(
+                          (x) => _crusherTitleKey(x) == entry.key,
+                        ),
+                      ];
+                      return items.map((item) {
+                        final isTemp = vm.tempCrusher.contains(item);
+                        return TooltipTableRow(
+                          columns: ['${num2(item.berat)} kg'],
+                          showDelete: isTemp,
+                          onDelete: () {
+                            if (isTemp) vm.deleteTempCrusherItem(item);
+                          },
+                          isTempRow: isTemp,
+                          isHighlighted: isTemp,
+                          isDisabled: !isTemp && !canModify,
+                          itemData: item,
+                        );
+                      }).toList();
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+    );
+  }
+
   // ── Summary helper ─────────────────────────────────────────────────────────
 
   SectionSummary _selectedTabSummary({
@@ -1774,6 +1921,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
     required Map<String, List<WashingItem>> washingGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
     required Map<String, List<MixerItem>> mixerGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
   }) {
     int sak = 0;
     double berat = 0.0;
@@ -1822,6 +1970,17 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
         }
         return SectionSummary(
           totalData: gilinganGroups.length,
+          totalSak: 0,
+          totalBerat: berat,
+        );
+      case 'crusher':
+        for (final e in crusherGroups.values) {
+          for (final i in e) {
+            berat += i.berat ?? 0;
+          }
+        }
+        return SectionSummary(
+          totalData: crusherGroups.length,
           totalSak: 0,
           totalBerat: berat,
         );
@@ -1996,6 +2155,9 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                               ...vm.tempMixerPartial.reversed,
                               ...?inputs?.mixer,
                             ];
+                      final crusherAll = loading
+                          ? <CrusherItem>[]
+                          : [...vm.tempCrusher.reversed, ...?inputs?.crusher];
 
                       final bbGroups = groupBy(bbAll, _bbTitleKey);
                       final brokerGroups = groupBy(brokerAll, _brokerTitleKey);
@@ -2008,6 +2170,10 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                         _gilinganTitleKey,
                       );
                       final mixerGroups = groupBy(mixerAll, _mixerTitleKey);
+                      final crusherGroups = groupBy(
+                        crusherAll,
+                        _crusherTitleKey,
+                      );
 
                       final outputs = vm.outputsOf(widget.noProduksi) ?? [];
                       final outputLoading = vm.isOutputsLoading(
@@ -2031,6 +2197,9 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                       for (final i in mixerAll) {
                         grandInputBerat += i.berat ?? 0.0;
                       }
+                      for (final i in crusherAll) {
+                        grandInputBerat += i.berat ?? 0.0;
+                      }
 
                       return Padding(
                         padding: const EdgeInsets.all(16),
@@ -2048,6 +2217,7 @@ class _MixerProductionInputScreenState extends State<MixerProductionInputScreen>
                                 washingGroups: washingGroups,
                                 gilinganGroups: gilinganGroups,
                                 mixerGroups: mixerGroups,
+                                crusherGroups: crusherGroups,
                               ),
                             ),
                             const SizedBox(width: 16),
