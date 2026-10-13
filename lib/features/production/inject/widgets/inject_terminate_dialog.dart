@@ -83,6 +83,14 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
       return widget.carryOverInByJenis[idJenis]!;
     }
     if (widget.outputJenisList.length == 1) return widget.carryOverIn;
+    // Map per-jenis kosong sementara masih ada carry-in flat — lebih baik
+    // menampilkan total pada jenis pertama daripada membuang carry-over.
+    if (widget.carryOverInByJenis.isEmpty && widget.carryOverIn > 0) {
+      final first = widget.outputJenisList.isEmpty
+          ? null
+          : widget.outputJenisList.first.idJenis;
+      return first == idJenis ? widget.carryOverIn : 0;
+    }
     return 0;
   }
 
@@ -199,30 +207,27 @@ class _InjectTerminateDialogState extends State<InjectTerminateDialog> {
         return;
       }
 
-      // Build items (one per jenis; terminate = last bucket so carryOverOut = 0)
+// Build items (one per jenis; terminate = last bucket so carryOverOut = 0).
+      // Konsisten dengan `_onBucketSubmit` di layar input v3 yang memaksa
+      // carryOverOut = 0 pada bucket terakhir, dan dengan validasi backend yang
+      // mewajibkan sisa pcs habis di batch penutup.
       final outputs = widget.outputJenisList;
       final List<Map<String, dynamic>> items;
       if (outputs.isEmpty) {
-        final ppl = (_pplData?.items.isNotEmpty == true
-              ? _pplData!.items.first.pcsPerLabel
-              : 100)
-          .clamp(1, 999999);
         items = [{
           'carryOverIn': widget.carryOverIn,
           'pcsInput': 0,
-          'carryOverOut': widget.carryOverIn % ppl,
+          'carryOverOut': 0,
         }];
       } else {
         items = outputs.map((jenis) {
           final carryIn = _carryInForJenis(jenis.idJenis);
           final pcsInput = int.tryParse(_jenisCtrl[jenis.idJenis]?.text.trim() ?? '') ?? 0;
-          final ppl = (_pplData?.pplForJenis(jenis.idJenis) ?? 100).clamp(1, 999999);
-          final carryOut = (carryIn + pcsInput) % ppl;
           return <String, dynamic>{
             'idJenis': jenis.idJenis,
             'carryOverIn': carryIn,
             'pcsInput': pcsInput,
-            'carryOverOut': carryOut,
+            'carryOverOut': 0,
           };
         }).toList();
       }

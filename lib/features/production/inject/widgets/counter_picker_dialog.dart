@@ -59,14 +59,34 @@ class _CounterPickerDialogState extends State<CounterPickerDialog> {
 
   void _resetToMin() {
     final d = _toDigits(_min);
-    setState(() => _digits = d);
-    for (int i = 0; i < _kDigitCount; i++) {
-      _ctrls[i].animateToItem(
-        d[i],
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
+    final from = _value;
+    final target = _min;
+    // Drum dipaksa lompat (bukan `animateToItem`) supaya posisinya pasti berubah.
+    // Drum juga di-reset dari state-nya, karena kalau cuma digit state yang
+    // di-update, wheel tetap menampilkan angka lama sampai operator drag
+    // manual.
+    setState(() => _digits = List<int>.of(d));
+    for (var i = 0; i < _kDigitCount; i++) {
+      final ctrl = _ctrls[i];
+      if (ctrl.hasClients) ctrl.jumpToItem(d[i]);
     }
+    // Umpan balik eksplisit supaya operator tahu tap-nya register — kalau
+    // angka drum sudah sama dengan odometer, tidak ada perubahan visual
+    // sehingga tombol terlihat "tidak berfungsi".
+    final msg = ScaffoldMessenger.maybeOf(context);
+    msg?.clearSnackBars();
+    msg?.showSnackBar(
+      SnackBar(
+        content: Text(
+          from == target
+              ? 'Odometer sudah $target'
+              : 'Odometer direset: $from → $target',
+        ),
+        duration: const Duration(milliseconds: 1200),
+        behavior: SnackBarBehavior.floating,
+        width: 240,
+      ),
+    );
   }
 
   @override
@@ -121,32 +141,41 @@ class _CounterPickerDialogState extends State<CounterPickerDialog> {
               ),
               if (widget.minValue != null) ...[
                 const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: _resetToMin,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.07),
+                Center(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _resetToMin,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: accent.withValues(alpha: 0.20)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.info_outline, size: 11, color: accent),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Odometer saat ini: ${widget.minValue}  ·  Tap untuk reset',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: accent,
-                            fontWeight: FontWeight.w600,
+                      child: Ink(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.20),
                           ),
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.restart_alt_rounded,
+                                size: 12, color: accent),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Odometer saat ini: ${widget.minValue}  ·  Ketuk untuk reset',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: accent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -223,7 +252,9 @@ class _CounterPickerDialogState extends State<CounterPickerDialog> {
                   ),
                   onPressed: isBelowMin
                       ? null
-                      : () => Navigator.of(context).pop(current),
+                      // Baca nilai langsung dari drum, bukan capture saat build,
+                      // supaya hasil reset/klik terakhir selalu ikut terkirim.
+                      : () => Navigator.of(context).pop(_value),
                   child: const Text(
                     'Konfirmasi',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),

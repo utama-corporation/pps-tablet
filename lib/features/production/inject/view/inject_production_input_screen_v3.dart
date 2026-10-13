@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
@@ -29,9 +30,8 @@ import '../../shared/widgets/production_output_detail_dialog.dart';
 import '../view_model/inject_formula_view_model.dart';
 import '../widgets/inject_shift_timeline_dialog.dart';
 import '../widgets/counter_picker_dialog.dart';
-import '../widgets/inject_lookup_label_dialog.dart';
+import '../widgets/inject_sak_picker_dialog.dart';
 import '../../shared/widgets/bahan_pendukung_qty_dialog.dart';
-import '../widgets/inject_lookup_label_partial_dialog.dart';
 import '../widgets/inject_split_time_dialog_v3.dart';
 import '../widgets/inject_terminate_dialog.dart';
 import '../widgets/sisa_jenis_editor.dart';
@@ -54,6 +54,12 @@ import '../../../../core/view_model/label_print_lock_socket_manager.dart';
 const _kInputOpenDelay = Duration.zero;
 const _kInputWindowDuration = Duration(hours: 1);
 
+// Blok input bonggolan/reject di panel Output dibuka 2 jam sebelum window
+// bucket terakhir dibuka, supaya operator bisa menyiapkan label sisa tanpa
+// menunggu jam terakhir. Labelnya sendiri disimpan ke endpoint output (bukan
+// ikut payload batch), jadi bebas diisi kapan saja selama rentang ini.
+const _kSisaPanelLeadTime = Duration(hours: 2);
+
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const _kInjectPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kInjectOutput = Color(0xFF00695C); // darker teal — output
@@ -74,8 +80,56 @@ class _InjectProductionInputScreenState
     extends State<InjectProductionInputScreen> {
   String _selectedInputTab = 'fwip';
 
-  // ── Scan mode (full = auto-add semua item baru, partial/select = dialog manual) ──
+  // ── Scan mode (full = semua item sekuens dari label, partial = pilih sak) ──
+  /// Dipilih dari tombol FULL / PARTIAL di header dialog scan, lalu diteruskan
+  /// ke `InjectSakPickerDialog` untuk kategori ber-sak (Mixer, Broker, Gilingan).
   String _selectedMode = 'full';
+
+  bool get _isPartialMode => _selectedMode == 'partial';
+
+  /// Tombol FULL / PARTIAL di header dialog scan.
+  Widget _buildScanModeToggle() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _modeChip('FULL', active: !_isPartialMode),
+        const SizedBox(width: 4),
+        _modeChip('PARTIAL', active: _isPartialMode),
+      ],
+    );
+  }
+
+  Widget _modeChip(String label, {required bool active}) {
+    const base = _kInjectPrimary;
+    return GestureDetector(
+      onTap: () {
+        if (active) return;
+        final next = label == 'PARTIAL' ? 'partial' : 'full';
+        setState(() => _selectedMode = next);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: active
+              ? Colors.white.withValues(alpha: 0.92)
+              : Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: active ? 0.0 : 0.35),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.4,
+            color: active ? base : Colors.white.withValues(alpha: 0.8),
+          ),
+        ),
+      ),
+    );
+  }
 
   // ── Multi-select state (input) ────────────────────────────────────────────
   bool _isSelecting = false;
@@ -99,6 +153,11 @@ class _InjectProductionInputScreenState
   final Map<String, DateTime> _bucketStartTimes = {};
   final Map<String, DateTime> _bucketEndTimes = {};
   Timer? _statusTimer;
+
+  /// Dialog cetak label bucket sedang terbuka — dipakai supaya dobel-tap tombol
+  /// "Cetak Label" tidak menumpuk dua dialog yang masing-masing mencetak seluruh
+  /// labelnya (hasilnya label tercetak dua kali).
+  bool _printDialogOpen = false;
 
   // ── Batch / pcs-per-label ─────────────────────────────────────────────────
   InjectPcsPerLabelResult? _pcsPerLabelData;
@@ -335,11 +394,26 @@ class _InjectProductionInputScreenState
   ) {
     final consumedJenis = <int>{};
     for (final batch in batches) {
-      final bucketLabel = _bucketLabelOrder.firstWhere(
-        (l) => l.startsWith(batch.hourStart),
-        orElse: () => '',
-      );
-      if (bucketLabel.isEmpty) continue;
+      // Bandingkan jam dalam bentuk menit, bukan string mentah: server bisa
+      // menyimpan "HH:mm" maupun "HH:mm:ss" (terminate/split-time), dan label
+      // bucket selalu "HH:mm". Cocokkan string mentah membuat batch dengan
+      // detik (atau satu digit) tidak match sehingga carryOverOut-nya hilang
+      // dan rantai carry-over ke bucket berikutnya terputus.
+      final batchMinutes = _hourToMinutes(batch.hourStart);
+      final bucketLabel = batchMinutes == null
+          ? ''
+          : _bucketLabelOrder.firstWhere(
+              (l) => _hourToMinutes(l.split(' - ').first) == batchMinutes,
+              orElse: () => '',
+            );
+      if (bucketLabel.isEmpty) {
+        debugPrint(
+          '[inject] batch hourStart="${batch.hourStart}" tidak cocok dengan '
+          'bucket mana pun (${_bucketLabelOrder.join(' | ')}) — carry-over '
+          'batch ini tidak akan diteruskan.',
+        );
+        continue;
+      }
 
       final isLast = _bucketLabelOrder.last == bucketLabel;
       final carryInByJenis = <int, int>{};
@@ -372,7 +446,32 @@ class _InjectProductionInputScreenState
           }
         }
       } else {
-        // Legacy fallback
+        // Legacy fallback — server tidak mengirim array `items`, hanya total
+        // flat. Map per-jenis tetap harus diisi supaya bucket berikutnya punya
+        // carry-in yang benar; kalau dibiarkan kosong, `_carryInForJenis`
+        // akan mengembalikan 0 pada produksi multi-jenis dan carry-over
+        // terputus.
+        final outputJenisIds = <int>[
+          for (final o in _header?.outputs ?? const <InjectOutputJenis>[])
+            if (o.idJenis > 0) o.idJenis,
+        ];
+        if (outputJenisIds.length == 1) {
+          final id = outputJenisIds.first;
+          carryInByJenis[id] = batch.carryOverIn;
+          pcsInByJenis[id] = batch.pcsInput;
+          carryOutByJenis[id] = batch.carryOverOut;
+        } else if (outputJenisIds.length > 1) {
+          carryInByJenis.addAll(
+            _distributeByPpl(batch.carryOverIn, outputJenisIds, pcsPerLabelData),
+          );
+          pcsInByJenis.addAll(
+            _distributeByPpl(batch.pcsInput, outputJenisIds, pcsPerLabelData),
+          );
+          carryOutByJenis.addAll(
+            _distributeByPpl(batch.carryOverOut, outputJenisIds, pcsPerLabelData),
+          );
+        }
+
         final ppl = pcsPerLabelData.items.isNotEmpty
             ? pcsPerLabelData.items.first.pcsPerLabel.clamp(1, 999999)
             : 100;
@@ -382,6 +481,71 @@ class _InjectProductionInputScreenState
         } else {
           labelsCreated = totalPcs ~/ ppl;
         }
+      }
+
+      final existing = _bucketStates[bucketLabel];
+      if (existing?.status == _HourlyBucketStatus.submitted) {
+        // Dua batch jatuh ke bucket yang sama (mis. submit normal + terminate
+        // pada jam yang sama). Menimpa yang lama membuat carry-over salah satu
+        // batch hilang, jadi gabungkan: carry-in diambil dari batch pertama,
+        // pcs input dijumlahkan, dan carry-out dihitung ulang dari total.
+        final mergedCarryIn = existing!.carryOverIn;
+        final mergedPcsInput = existing.pcsInput + batch.pcsInput;
+        final mergedLabels = existing.labelsCreated + labelsCreated;
+        final merged = _mergeByJenis(existing.carryOverInByJenis, carryInByJenis);
+        final mergedPcs = _mergeByJenis(existing.pcsInputByJenis, pcsInByJenis);
+        final totalPcs = mergedCarryIn + mergedPcsInput;
+        final carryOut = isLast
+            ? 0
+            : _splitIntoLabels(
+                totalPcs: totalPcs,
+                standardPpl: pcsPerLabelData.items.isNotEmpty
+                    ? pcsPerLabelData.items.first.pcsPerLabel.clamp(1, 999999)
+                    : 100,
+                initialPpl: null,
+                alreadyConsumedInitial: true,
+              ).carryOverOut;
+        debugPrint(
+          '[inject] lebih dari satu batch untuk bucket "$bucketLabel" — '
+          'carry-over digabung (carryIn=$mergedCarryIn, pcs=$mergedPcsInput, '
+          'carryOut=$carryOut).',
+        );
+        _bucketStates[bucketLabel] = _HourlyBucketData(
+          status: _HourlyBucketStatus.submitted,
+          carryOverIn: mergedCarryIn,
+          carryOverInByJenis: merged.isNotEmpty ? merged : carryInByJenis,
+          pcsInput: mergedPcsInput,
+          pcsInputByJenis: mergedPcs.isNotEmpty ? mergedPcs : pcsInByJenis,
+          labelsCreated: mergedLabels,
+          carryOverOut: carryOut,
+          carryOverOutByJenis: carryOutByJenis.isNotEmpty
+              ? carryOutByJenis
+              : (existing.carryOverOutByJenis.isNotEmpty
+                  ? existing.carryOverOutByJenis
+                  : {}),
+          berat: batch.berat ?? existing.berat,
+          cycleTime: batch.cycleTime ?? existing.cycleTime,
+          counter: batch.counter ?? existing.counter,
+          keterangan: batch.keterangan ?? existing.keterangan,
+          isDowntime: batch.isDowntime || existing.isDowntime,
+          labelsFwip: _dedupeLabelItems([
+            ...existing.labelsFwip,
+            ...batch.labels.furnitureWip,
+          ]),
+          labelsBarangJadi: _dedupeLabelItems([
+            ...existing.labelsBarangJadi,
+            ...batch.labels.barangJadi,
+          ]),
+          labelsBonggolan: _dedupeLabelItems([
+            ...existing.labelsBonggolan,
+            ...batch.labels.bonggolan,
+          ]),
+          labelsReject: _dedupeLabelItems([
+            ...existing.labelsReject,
+            ...batch.labels.reject,
+          ]),
+        );
+        continue;
       }
 
       _bucketStates[bucketLabel] = _HourlyBucketData(
@@ -407,6 +571,46 @@ class _InjectProductionInputScreenState
     _initialTargetConsumedJenis
       ..clear()
       ..addAll(consumedJenis);
+    _dumpBucketChain(batches);
+  }
+
+  /// Diagnostic: print rekonstruksi rantai carry-over di mode debug supaya
+  /// mudah dicek saat carry-over terasa putus (lihat `_recomputeBucketStatuses`
+  /// yang hanya meneruskan carry-out dari bucket `submitted`).
+  void _dumpBucketChain(List<InjectBatchItem> batches) {
+    if (!kDebugMode) return;
+    final buf = StringBuffer('[inject-chain] $batches.length batch dari server\n');
+    for (final b in batches) {
+      buf.writeln(
+        '  batch hourStart="${b.hourStart}" -> ${_hourToMinutes(b.hourStart)}'
+        ' | in=${b.carryOverIn} pcs=${b.pcsInput} out=${b.carryOverOut}'
+        ' | jenis=${b.jenisItems.map((e) => '${e.idJenis}:${e.carryOverIn}/${e.pcsInput}/${e.carryOverOut}').join(",")}'
+        ' | downtime=${b.isDowntime}',
+      );
+    }
+    var running = 0;
+    for (final label in _bucketLabelOrder) {
+      final d = _bucketStates[label];
+      if (d?.status == _HourlyBucketStatus.submitted) {
+        running = _carryForwardOf(d!);
+      }
+      buf.writeln(
+        '  bucket "$label" status=${d?.status} carryIn=${d?.carryOverIn} '
+        'pcs=${d?.pcsInput} carryOut=${d?.carryOverOut} '
+        'carryForward=$running',
+      );
+    }
+    debugPrint(buf.toString());
+  }
+
+  /// Nilai carry-over yang diteruskan bucket ini ke bucket berikutnya.
+  /// Bucket yang tidak mengonsumsi pcs (downtime / tanpa input & tanpa label)
+  /// meneruskan carry-in apa adanya.
+  static int _carryForwardOf(_HourlyBucketData d) {
+    final passesThrough = d.carryOverIn > 0 && d.pcsInput == 0 && !d.isDowntime
+        ? d.labelsCreated == 0
+        : d.isDowntime;
+    return passesThrough ? d.carryOverIn : d.carryOverOut;
   }
 
   List<String> _computeHourBucketLabels(InjectProduction header) {
@@ -512,8 +716,27 @@ class _InjectProductionInputScreenState
 
       final current = _bucketStates[label];
       if (current?.status == _HourlyBucketStatus.submitted) {
-        lastSubmittedCarryOut = current?.carryOverOut ?? 0;
-        lastCarryOutByJenis = Map.from(current?.carryOverOutByJenis ?? {});
+        final c = current!;
+        // Bucket yang tidak mengonsumsi pcs meneruskan carry-over apa adanya.
+        // Backend menyimpan carryOverIn/Out = 0 untuk batch downtime (payload-nya
+        // tidak punya `items`), sehingga kalau nilai 0 itu dipakai apa adanya,
+        // rantai carry-over terputus dan sisa pcs dari bucket sebelumnya hilang.
+        if (c.isDowntime) {
+          // Data server tidak berguna di sini — teruskan nilai yang sedang
+          // berjalan supaya carry-over tidak hilang.
+        } else if (_carryForwardOf(c) == c.carryOverIn &&
+            c.pcsInput == 0 &&
+            c.carryOverIn > 0) {
+          // Tidak ada pcs baru dan tidak ada label tercipta → sisa tetap sama
+          // dengan carry-in. Pakai carry-in bucket ini karena itu otoritatif.
+          lastSubmittedCarryOut = c.carryOverIn;
+          if (c.carryOverInByJenis.isNotEmpty) {
+            lastCarryOutByJenis = Map.from(c.carryOverInByJenis);
+          }
+        } else {
+          lastSubmittedCarryOut = c.carryOverOut;
+          lastCarryOutByJenis = Map.from(c.carryOverOutByJenis);
+        }
         continue;
       }
 
@@ -1125,7 +1348,12 @@ class _InjectProductionInputScreenState
           final batches = await _prodRepo.fetchBatch(widget.noProduksi);
           if (!mounted) return;
           final matchedBatch = batches.cast<InjectBatchItem?>().firstWhere(
-            (b) => b?.hourStart == lastBucketHourStart,
+            // Split-time menyimpan hourStart sebagai "HH:mm:ss" sedangkan nilai
+            // lokal "HH:mm", jadi bandingkan dalam bentuk menit.
+            (b) =>
+                b != null &&
+                _hourToMinutes(b.hourStart) ==
+                    _hourToMinutes(lastBucketHourStart),
             orElse: () => null,
           );
           if (matchedBatch != null) {
@@ -1198,23 +1426,15 @@ class _InjectProductionInputScreenState
       context: context,
       builder: (_) => ProductionScanLabelDialog(
         manualHint: 'BB. / D. / H. / V. / BP.',
-        headerSubtitle: _modeLabel(_selectedMode),
+        headerSubtitle: _isPartialMode
+            ? 'Pilih sak (1 label H./D./V. = 1 sak)'
+            : 'Semua sak dari label',
+        headerAction: _buildScanModeToggle(),
         primaryColor: _kInjectPrimary,
         formulaOutputs: formulaOutputs,
         onLookup: _onCodeReady,
       ),
     );
-  }
-
-  String _modeLabel(String mode) {
-    switch (mode) {
-      case 'full':
-        return 'FULL PALLET';
-      case 'partial':
-        return 'PARTIAL';
-      default:
-        return mode.toUpperCase();
-    }
   }
 
   // Prefix label yang valid untuk proses Inject (sesuai validasi server).
@@ -1285,70 +1505,20 @@ class _InjectProductionInputScreenState
 
     if (res.prefixType == PrefixType.furnitureWip) {
       await _handleFwipPcsFlow(vm, res);
-    } else if (_selectedMode == 'partial') {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: true,
-        builder: (_) => InjectLookupLabelPartialDialog(
-          noProduksi: widget.noProduksi,
-          selectedMode: _selectedMode,
-        ),
-      );
-    } else if (_selectedMode == 'select') {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: true,
-        builder: (_) => InjectLookupLabelDialog(
-          noProduksi: widget.noProduksi,
-          selectedMode: _selectedMode,
-        ),
-      );
     } else {
-      await _handleFullMode(vm, res);
-    }
-    return null;
-  }
-
-  /// MODE FULL: auto-tambahkan semua item baru dari hasil scan tanpa dialog
-  /// pemilihan manual — sama seperti Washing production input screen.
-  Future<void> _handleFullMode(
-    InjectProductionInputViewModel vm,
-    ProductionLabelLookupResult res,
-  ) async {
-    final freshCount = vm.countNewRowsInLastLookup(widget.noProduksi);
-    if (freshCount == 0) {
-      final labelCode = _labelCodeOfFirst(res);
-      final hasTemp =
-          labelCode != null && vm.hasTemporaryDataForLabel(labelCode);
-      final suffix = hasTemp
-          ? ' • ${vm.getTemporaryDataSummary(labelCode)}'
-          : '';
-      _showSnack(
-        'Semua item untuk ${labelCode ?? "label ini"} sudah ada.$suffix',
+      // Kategori ber-sak (Mixer H., Broker D., Gilingan V.) memakai dialog
+      // pilih sak — sama seperti inject v1..operator bisa memilih mode FULL
+      // atau PARTIAL lewat tombol di header dialog scan, dan mode itu diteruskan
+      // ke dialog sebagai `isPartialMode`.
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => InjectSakPickerDialog(
+          noProduksi: widget.noProduksi,
+          isPartialMode: _isPartialMode,
+        ),
       );
-      return;
     }
-
-    vm.clearPicks();
-    vm.pickAllNew(widget.noProduksi);
-    final result = vm.commitPickedToTemp(noProduksi: widget.noProduksi);
-
-    final msg = result.added > 0
-        ? '✅ Auto-added ${result.added} item${result.skipped > 0 ? ' • Duplikat terlewati ${result.skipped}' : ''}'
-        : 'Tidak ada item baru ditambahkan';
-    _showSnack(
-      msg,
-      backgroundColor: result.added > 0 ? Colors.green : Colors.orange,
-    );
-  }
-
-  String? _labelCodeOfFirst(ProductionLabelLookupResult res) {
-    if (res.typedItems.isEmpty) return null;
-    final item = res.typedItems.first;
-    if (item is BrokerItem) return _brokerTitleKey(item);
-    if (item is MixerItem) return _mixerTitleKey(item);
-    if (item is GilinganItem) return _gilinganTitleKey(item);
-    if (item is FurnitureWipItem) return _fwipTitleKey(item);
     return null;
   }
 
@@ -2381,8 +2551,18 @@ class _InjectProductionInputScreenState
     String resolveJenis(String fromLabel) =>
         fromLabel.isNotEmpty ? fromLabel : singleOutputJenis;
     final entries = <_PrintableLabelEntry>[];
+    // Satu label hanya boleh masuk daftar cetak sekali. Label ber-kode kosong
+    // (dari `_fallbackSisaLabels`) juga dibuang karena tidak punya PDF.
+    final seen = <String>{};
+    bool add(_PrintableLabelEntry e) {
+      final code = e.code.trim();
+      if (code.isEmpty || !seen.add(code)) return false;
+      entries.add(e);
+      return true;
+    }
+
     for (final c in data.labelsFwip) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: resolveJenis(c.namaJenis),
@@ -2397,7 +2577,7 @@ class _InjectProductionInputScreenState
     }
 
     for (final c in data.labelsBarangJadi) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: c.namaJenis,
@@ -2412,7 +2592,7 @@ class _InjectProductionInputScreenState
       );
     }
     for (final c in data.labelsBonggolan) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: c.namaJenis,
@@ -2426,7 +2606,7 @@ class _InjectProductionInputScreenState
       );
     }
     for (final c in data.labelsReject) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: c.namaJenis,
@@ -2441,10 +2621,7 @@ class _InjectProductionInputScreenState
       );
     }
     entries.addAll(
-      _buildProductionSisaEntries(
-        label,
-        excludeCodes: entries.map((e) => e.code).toSet(),
-      ),
+      _buildProductionSisaEntries(label, excludeCodes: seen),
     );
     return entries;
   }
@@ -2508,8 +2685,19 @@ class _InjectProductionInputScreenState
     String resolveJenis(String fromLabel) =>
         fromLabel.isNotEmpty ? fromLabel : singleOutputJenis;
     final entries = <_PrintableLabelEntry>[];
+    // Backend mencocokkan label ke batch lewat `DateTimeCreate`, jadi label
+    // yang sama bisa muncul di lebih dari satu batch. De-duplikasi di sini
+    // supaya jalur split-time tidak mencetak label yang sama dua kali.
+    final seen = <String>{};
+    bool add(_PrintableLabelEntry e) {
+      final code = e.code.trim();
+      if (code.isEmpty || !seen.add(code)) return false;
+      entries.add(e);
+      return true;
+    }
+
     for (final c in batch.labels.furnitureWip) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: resolveJenis(c.namaJenis),
@@ -2523,7 +2711,7 @@ class _InjectProductionInputScreenState
       );
     }
     for (final c in batch.labels.barangJadi) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: c.namaJenis,
@@ -2538,7 +2726,7 @@ class _InjectProductionInputScreenState
       );
     }
     for (final c in batch.labels.bonggolan) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: c.namaJenis,
@@ -2552,7 +2740,7 @@ class _InjectProductionInputScreenState
       );
     }
     for (final c in batch.labels.reject) {
-      entries.add(
+      add(
         _PrintableLabelEntry(
           code: c.code,
           namaJenis: c.namaJenis,
@@ -2572,6 +2760,10 @@ class _InjectProductionInputScreenState
   void _openBucketPrintDialog(BuildContext ctx, String label) {
     final entries = _buildPrintableEntries(label);
     if (entries.isEmpty) return;
+    // Cegah dobel-tap menumpuk dua dialog cetak dengan daftar yang sama —
+    // tiap dialog akan mencetak ulang seluruh labelnya.
+    if (_printDialogOpen) return;
+    _printDialogOpen = true;
     showDialog<void>(
       context: ctx,
       builder: (_) => _BucketPrintDialog(
@@ -2579,11 +2771,23 @@ class _InjectProductionInputScreenState
         entries: entries,
         onPrint: (selected) => _printLabelsBatch(selected),
       ),
-    );
+    ).whenComplete(() => _printDialogOpen = false);
   }
 
   Future<void> _printLabelsBatch(List<_PrintableLabelEntry> entries) async {
     if (entries.isEmpty) return;
+    // Satu kode label hanya boleh dicetak sekali per sesi cetak. Tanpa ini,
+    // `pdfUrls` berisi URL yang sama dua kali dan `previewMultipleFromUrls`
+    // mencetak satu halaman per elemen — label jadi tercetak ganda.
+    final uniqueEntries = <_PrintableLabelEntry>[];
+    final seenCodes = <String>{};
+    for (final e in entries) {
+      final code = e.code.trim();
+      if (code.isEmpty || !seenCodes.add(code)) continue;
+      uniqueEntries.add(e);
+    }
+    if (uniqueEntries.isEmpty) return;
+    final printEntries = uniqueEntries;
     final lockApi = LabelPrintLockApi();
     final lockVm = context.read<LabelPrintLockSocketManager>();
     final queue = context.read<LabelPrintSyncQueue>();
@@ -2591,7 +2795,7 @@ class _InjectProductionInputScreenState
 
     // Acquire locks for all labels before opening the viewer
     final acquiredCodes = <String>{};
-    for (final entry in entries) {
+    for (final entry in printEntries) {
       if (!mounted) break;
       try {
         await lockApi.acquire(entry.code);
@@ -2610,7 +2814,7 @@ class _InjectProductionInputScreenState
     final printedCodes = <String>{};
 
     // Build per-label callbacks — fire-and-forget async inside VoidCallback
-    final callbacks = entries.map((entry) {
+    final callbacks = printEntries.map((entry) {
       return () {
             printedCodes.add(entry.code);
             () async {
@@ -2643,13 +2847,13 @@ class _InjectProductionInputScreenState
     try {
       await PdfPrintService(defaultSystem: 'pps').previewMultipleFromUrls(
         context: rootCtx,
-        pdfUrls: entries.map((e) => Uri.parse(e.pdfUrl)).toList(),
-        title: 'Cetak ${entries.length} Label',
+        pdfUrls: printEntries.map((e) => Uri.parse(e.pdfUrl)).toList(),
+        title: 'Cetak ${printEntries.length} Label',
         onPrintedCallbacks: callbacks,
       );
     } finally {
       // Release locks for labels that were NOT printed (user cancelled / failed)
-      for (final entry in entries) {
+      for (final entry in printEntries) {
         if (acquiredCodes.contains(entry.code) &&
             !printedCodes.contains(entry.code)) {
           () async {
@@ -2670,9 +2874,24 @@ class _InjectProductionInputScreenState
 
   // ── Output panel ───────────────────────────────────────────────────────────
 
-  /// Seksi label "Sisa Akhir Shift" di bucket terakhir. Bonggolan & reject
-  /// dikelola sebagai label mandiri (sama seperti tab Output), jadi user bebas
-  /// menambah atau menghapus kapan saja — bukan sekali input_batch.
+  /// Apakah seksi "Sisa Akhir Shift" (bonggolan & reject) sudah boleh diisi.
+  ///
+  /// Tetap di dalam bucket terakhir, tapi dibuka [_kSisaPanelLeadTime] lebih
+  /// awal supaya operator bisa menyiapkan label sisa tanpa menunggu window
+  /// bucket terakhir. Yang dibuka hanya label sisa — form input pcs/berat/
+  /// cycle/counter tetap terkunci sampai bucketnya benar-benar terbuka.
+  bool get _isSisaPanelOpen {
+    if (_bucketLabelOrder.isEmpty) return false;
+    final lastOpensAt = _bucketEndTimes[_bucketLabelOrder.last];
+    if (lastOpensAt == null) return false;
+    return !DateTime.now().isBefore(
+      lastOpensAt.subtract(_kSisaPanelLeadTime),
+    );
+  }
+
+  /// Seksi label "Sisa Akhir Shift". Bonggolan & reject dikelola sebagai label
+  /// mandiri (sama seperti tab Output), jadi user bebas menambah atau menghapus
+  /// kapan saja — bukan sekali input_batch.
   ///
   /// Setelah produksi terkunci bagian ini tetap ditampilkan (dengan aksi
   /// tambah/hapus dimatikan) supaya label yang sudah terlanjur dibuat tetap
@@ -2787,6 +3006,8 @@ class _InjectProductionInputScreenState
               ),
             ),
           ),
+          // Blok input bonggolan/reject hanya di panel Output saja — form input
+          // batch produksi di bawah timeline tetap bersih.
         ],
       ),
     );
@@ -2840,13 +3061,20 @@ class _InjectProductionInputScreenState
     for (final label in _bucketLabelOrder) {
       final data = _bucketStates[label];
       if (data == null) continue;
-      final bonggolan =
-          data.labelsBonggolan
-              .where((c) => liveBonggolan.contains(c.code))
-              .toList();
-      final reject =
-          data.labelsReject.where((c) => liveReject.contains(c.code)).toList();
-      if (bonggolan.length == data.labelsBonggolan.length &&
+      // Semua daftar label sekaligus di-de-duplikasi: fwip/barangJadi pernah
+      // membawa duplikat dari merge bucket, dan ini satu-satunya tempat yang
+      // menyentuh bucket tiap kali label sisa berubah.
+      final fwip = _dedupeLabelItems(data.labelsFwip);
+      final barangJadi = _dedupeLabelItems(data.labelsBarangJadi);
+      final bonggolan = _dedupeLabelItems(
+        data.labelsBonggolan.where((c) => liveBonggolan.contains(c.code)),
+      );
+      final reject = _dedupeLabelItems(
+        data.labelsReject.where((c) => liveReject.contains(c.code)),
+      );
+      if (fwip.length == data.labelsFwip.length &&
+          barangJadi.length == data.labelsBarangJadi.length &&
+          bonggolan.length == data.labelsBonggolan.length &&
           reject.length == data.labelsReject.length) {
         continue;
       }
@@ -2867,8 +3095,8 @@ class _InjectProductionInputScreenState
         carryOverInByJenis: data.carryOverInByJenis,
         pcsInputByJenis: data.pcsInputByJenis,
         carryOverOutByJenis: data.carryOverOutByJenis,
-        labelsFwip: data.labelsFwip,
-        labelsBarangJadi: data.labelsBarangJadi,
+        labelsFwip: fwip,
+        labelsBarangJadi: barangJadi,
         labelsBonggolan: bonggolan,
         labelsReject: reject,
       );
@@ -2967,16 +3195,18 @@ class _InjectProductionInputScreenState
     return _buildHourlyOutputTimeline<_BucketLabelEntry>(
       groups: _bucketLabelOrder.map((label) {
         final data = _bucketStates[label];
-        final codes = <String>[
+        // Set, bukan List — supaya kode label yang sama tidak tampil dua kali
+        // di ringkasan card (indikasi label akan tercetak dua kali).
+        final codes = <String>{
           ...?data?.labelsFwip.map((c) => c.code),
           ...?data?.labelsBarangJadi.map((c) => c.code),
-        ];
+        }..removeWhere((c) => c.trim().isEmpty);
         // Bucket terakhir juga menampilkan seluruh label bonggolan/reject
         // produksi supaya operator bisa mencetak semuanya dari satu tempat.
         codes.addAll(
           _buildProductionSisaEntries(label)
               .map((e) => e.code)
-              .where((c) => !codes.contains(c)),
+              .where((c) => c.trim().isNotEmpty),
         );
         return _HourlyTimelineGroup<_BucketLabelEntry>(
           label: label,
@@ -3000,11 +3230,12 @@ class _InjectProductionInputScreenState
           initialPplByJenis: _effectiveInitialPplByJenis,
           consumedInitialJenis: _initialTargetConsumedJenis,
           isLastBucket: isLastBucket,
-          // Tetap pakai builder yang sama setelah produksi terkunci — label sisa
-          // dibuat sebagai label produksi (bukan terikat hourStart batch), jadi
-          // tidak ada di `batch.labels` untuk dipakai sebagai fallback. Aksi
-          // tambah/hapus sudah dimatikan di dalam builder saat locked.
-          sisaLabelsBuilder: isLastBucket ? _buildSisaLabelsSection : null,
+          // Hanya bucket terakhir yang punya akses label sisa — bucket
+          // sebelumnya tetap persis seperti sebelumnya (tanpa seksi bonggolan
+          // & reject), baik tersedia maupun terkunci.
+          sisaInputOpen: isLastBucket && _isSisaPanelOpen,
+          sisaLabelsBuilder:
+              isLastBucket ? _buildSisaLabelsSection : null,
           onSubmit:
               (
                 jenisItems,
@@ -3564,6 +3795,102 @@ String _formatHourMinute(DateTime value) {
   return '$hour:$minute';
 }
 
+/// Buang label dengan kode kosong dan kode yang sudah muncul sebelumnya.
+///
+/// Dua sumber duplikasi:
+/// 1. `_fallbackSisaLabels` membuat entri ber-kode `''` saat response server
+///    tidak membawa label sisa — ikut masuk daftar cetak kalau tidak dibuang.
+/// 2. Saat dua batch digabung ke satu bucket (submit + terminate, atau reload
+///    batch setelah tambah/hapus label sisa), label yang sama bisa muncul di
+///    kedua batch. Tanpa de-duplikasi, kode itu masuk daftar cetak dua kali
+///    dan fisiknya tercetak dua kali.
+List<InjectBatchLabelItem> _dedupeLabelItems(
+  Iterable<InjectBatchLabelItem> items,
+) {
+  final seen = <String>{};
+  final out = <InjectBatchLabelItem>[];
+  for (final it in items) {
+    final code = it.code.trim();
+    if (code.isEmpty || !seen.add(code)) continue;
+    out.add(it);
+  }
+  return out;
+}
+
+/// Ubah string jam dari server ("09:00", "09:00:00", "9:00", atau
+/// "2026-10-13 09:00:00") menjadi jumlah menit sejak tengah malam. Lebih
+/// longgar dari [_parseMinutes] supaya nilai yang menyimpan detik maupun
+/// tanggal lengkap tetap bisa dicocokkan dengan label bucket (selalu "HH:mm").
+int? _hourToMinutes(String? raw) {
+  final s = (raw ?? '').trim();
+  if (s.isEmpty) return null;
+  final anchored = RegExp(
+    r'^(\d{1,2}):(\d{2})',
+  ).firstMatch(s) ?? RegExp(r'(\d{1,2}):(\d{2})').firstMatch(s);
+  if (anchored == null) return null;
+  final hour = int.tryParse(anchored.group(1)!);
+  final minute = int.tryParse(anchored.group(2)!);
+  if (hour == null || minute == null) return null;
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+/// Gabungkan dua map per-jenis (nilai ditambahkan per idJenis).
+Map<int, int> _mergeByJenis(Map<int, int> a, Map<int, int> b) {
+  if (b.isEmpty) return Map.from(a);
+  if (a.isEmpty) return Map.from(b);
+  final out = Map<int, int>.from(a);
+  b.forEach((k, v) => out[k] = (out[k] ?? 0) + v);
+  return out;
+}
+
+/// Bagi [total] ke beberapa jenis output dengan bobot `pcsPerLabel` masing-masing
+/// (metode largest-remainder, jumlah bagian selalu tepat sama dengan [total]).
+/// Dipakai saat server hanya mengirim total flat tanpa array `items`, supaya
+/// carry-over tetap terbagi per-jenis dan tidak hilang saat produksi multi-jenis.
+Map<int, int> _distributeByPpl(
+  int total,
+  List<int> jenisIds,
+  InjectPcsPerLabelResult pcsPerLabelData,
+) {
+  if (jenisIds.isEmpty || total == 0) return {};
+  if (jenisIds.length == 1) return {jenisIds.first: total};
+
+  final weights = jenisIds
+      .map((id) => pcsPerLabelData.pplForJenis(id).clamp(1, 999999))
+      .toList();
+  final totalWeight = weights.fold<int>(0, (s, w) => s + w);
+  if (totalWeight <= 0) return {jenisIds.first: total};
+
+  final base = <int>[];
+  final remainders = <int>[];
+  var allocated = 0;
+  for (var i = 0; i < jenisIds.length; i++) {
+    final exact = total * weights[i];
+    final q = exact ~/ totalWeight;
+    base.add(q);
+    remainders.add(exact - (q * totalWeight));
+    allocated += q;
+  }
+
+  var leftover = total - allocated;
+  final order = List<int>.generate(jenisIds.length, (i) => i)
+    ..sort((a, b) {
+      final cmp = remainders[b].compareTo(remainders[a]);
+      return cmp != 0 ? cmp : a.compareTo(b);
+    });
+  var k = 0;
+  while (leftover > 0 && order.isNotEmpty) {
+    base[order[k % order.length]] += 1;
+    leftover -= 1;
+    k += 1;
+  }
+
+  return {
+    for (var i = 0; i < jenisIds.length; i++) jenisIds[i]: base[i],
+  };
+}
+
 /// Normalisasi string jam dari server ("HH:mm:ss", "HH:mm", atau satu digit)
 /// menjadi "HH:mm:ss". Mengembalikan null kalau tidak bisa diparse.
 String? _normalizeHourString(String? raw) {
@@ -4019,6 +4346,7 @@ class _HourlyPcsSection extends StatefulWidget {
     this.initialPplByJenis = const {},
     this.consumedInitialJenis = const {},
     this.isLastBucket = false,
+    this.sisaInputOpen = false,
     this.sisaLabelsBuilder,
     this.onPrint,
     this.counterCurrent,
@@ -4037,6 +4365,11 @@ class _HourlyPcsSection extends StatefulWidget {
   /// idJenis yang target awalnya sudah terpakai di sesi ini.
   final Set<int> consumedInitialJenis;
   final bool isLastBucket;
+
+  /// Sudah masuk rentang [_kSisaPanelLeadTime] sebelum window bucket terakhir
+  /// dibuka. Dipakai supaya seksi "Sisa Akhir Shift" tetap bisa diisi di dalam
+  /// bucket terakhir walau bucket itu masih berstatus `locked`.
+  final bool sisaInputOpen;
 
   /// Builder untuk seksi label "Sisa Akhir Shift" (bonggolan & reject).
   /// Kalau null, bucket pakai editor inline bawaan. Dipasang supaya label
@@ -4107,6 +4440,19 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
     final byJenis = widget.data.carryOverInByJenis;
     if (byJenis.containsKey(idJenis)) return byJenis[idJenis]!;
     if (widget.headerOutputs.length == 1) return widget.data.carryOverIn;
+    if (byJenis.isEmpty && widget.data.carryOverIn > 0) {
+      // Map per-jenis kosong sementara masih ada carry-in flat — bucket ini
+      // belum pernah di-restore lengkap. Menampilkan total flat di jenis
+      // pertama daripada 0 supaya carry-over tidak hilang diam-diam.
+      debugPrint(
+        '[inject] carryOverInByJenis kosong untuk idJenis=$idJenis, '
+        'carryOverIn=${widget.data.carryOverIn} — dipakai pada jenis pertama.',
+      );
+      final first = widget.headerOutputs.isEmpty
+          ? null
+          : widget.headerOutputs.first.idJenis;
+      return first == idJenis ? widget.data.carryOverIn : 0;
+    }
     return 0;
   }
 
@@ -4446,6 +4792,25 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
               icon: Icons.hourglass_bottom_rounded,
               color: const Color(0xFF64748B),
             ),
+          ],
+          // Bucket terakhir tetap bisa diisi label sisa 2 jam sebelum window-nya
+          // buka — form input pcs-nya yang masih terkunci, bukan label sisa.
+          if (widget.sisaInputOpen && widget.sisaLabelsBuilder != null) ...[
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                opensAt != null && !DateTime.now().isBefore(opensAt)
+                    ? 'Label sisa — sudah masuk bucket terakhir'
+                    : 'Label sisa bisa diisi 2 jam sebelum bucket terakhir dibuka',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ),
+            widget.sisaLabelsBuilder!(_kInjectOutput),
           ],
         ],
       ),
@@ -4813,7 +5178,7 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
               if (i > 0) const SizedBox(height: 10),
               buildJenisRow(outputs[i], showLabel: multiJenis),
             ],
-            // ── Sisa Akhir Shift (last bucket only) ──────────────────
+            // ── Sisa Akhir Shift (bucket terakhir only) ──────────────────
             // Label bonggolan/reject dikelola terpisah lewat tab Output,
             // jadi di form bucket hanya ada penunjuk + aksi tambah/hapus.
             if (widget.isLastBucket) ...[
@@ -5200,16 +5565,39 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
     final outputs = widget.headerOutputs;
     final multiJenis = outputs.length > 1;
 
-    Widget buildJenisRowDisabled(InjectOutputJenis jenis) {
-      final carryIn = data.carryOverInByJenis.containsKey(jenis.idJenis)
-          ? data.carryOverInByJenis[jenis.idJenis]!
-          : (outputs.length == 1 ? data.carryOverIn : 0);
-      final pcsIn = data.pcsInputByJenis.containsKey(jenis.idJenis)
-          ? data.pcsInputByJenis[jenis.idJenis]!
-          : (outputs.length == 1 ? data.pcsInput : 0);
-      final carryOut = data.carryOverOutByJenis.containsKey(jenis.idJenis)
-          ? data.carryOverOutByJenis[jenis.idJenis]!
-          : (outputs.length == 1 ? data.carryOverOut : 0);
+    final emptyByJenis = data.carryOverInByJenis.isEmpty;
+      final firstJenisId = outputs.isEmpty ? -1 : outputs.first.idJenis;
+      Widget buildJenisRowDisabled(InjectOutputJenis jenis) {
+        final carryIn = data.carryOverInByJenis.containsKey(jenis.idJenis)
+            ? data.carryOverInByJenis[jenis.idJenis]!
+            : (outputs.length == 1
+                ? data.carryOverIn
+                : (emptyByJenis && jenis.idJenis == firstJenisId
+                    ? data.carryOverIn
+                    : 0));
+        final pcsIn = data.pcsInputByJenis.containsKey(jenis.idJenis)
+            ? data.pcsInputByJenis[jenis.idJenis]!
+            : (outputs.length == 1
+                ? data.pcsInput
+                : (data.pcsInputByJenis.isEmpty && jenis.idJenis == firstJenisId
+                    ? data.pcsInput
+                    : 0));
+        final carryOut = data.carryOverOutByJenis.containsKey(jenis.idJenis)
+            ? data.carryOverOutByJenis[jenis.idJenis]!
+            : (outputs.length == 1
+                ? data.carryOverOut
+                : (data.carryOverOutByJenis.isEmpty &&
+                        jenis.idJenis == firstJenisId
+                    ? data.carryOverOut
+                    : 0));
+      // Bucket yang tidak mengonsumsi pcs (tidak ada input dan tidak ada label
+      // tercipta) meneruskan carry-in apa adanya — sama dengan aturan rantai
+      // di `_recomputeBucketStatuses`, supaya angka yang tampil di bucket ini
+      // tidak berbeda dari carry-in bucket berikutnya.
+      final carryOutShown =
+          data.pcsInput == 0 && data.labelsCreated == 0 && carryIn > 0
+          ? carryIn
+          : carryOut;
       final ppl = (widget.pplByJenis[jenis.idJenis] ?? 100).clamp(1, 999999);
       // Samakan dengan bucket available: kalau target awal jenis ini belum
       // pernah terpakai (masih pending), tampilkan denominatornya, bukan
@@ -5313,7 +5701,7 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
               Expanded(
                 child: _readonlyChip(
                   label: 'Carry Over Sesudah',
-                  value: '$carryOut pcs',
+                  value: '$carryOutShown pcs',
                   icon: Icons.arrow_forward,
                   accent: const Color(0xFF64748B),
                 ),
@@ -5362,10 +5750,10 @@ class _HourlyPcsSectionState extends State<_HourlyPcsSection> {
             if (i > 0) const SizedBox(height: 10),
             buildJenisRowDisabled(outputs[i]),
           ],
-          // Sisa Akhir Shift — label bonggolan/reject. Builder aktif baik
-          // sebelum maupun sesudah produksi terkunci; setelah terkunci tombol
-          // tambah/hapus dimatikan di dalam builder, tapi daftarnya tetap
-          // tampil supaya label yang sudah dibuat tidak ikut hilang.
+          // Sisa Akhir Shift — daftar label bonggolan/reject. Builder aktif baik
+          // sebelum maupun sesudah bucket terakhir dibuka (dan setelah
+          // produksi terkunci tombol tambah/hapus dimatikan di dalam builder,
+          // tapi daftarnya tetap tampil).
           if (widget.isLastBucket &&
               (widget.sisaLabelsBuilder != null ||
                   data.labelsBonggolan.isNotEmpty ||
@@ -5764,19 +6152,29 @@ class _BucketPrintDialog extends StatefulWidget {
 class _BucketPrintDialogState extends State<_BucketPrintDialog> {
   late final Set<String> _selected;
 
+  /// Daftar label yang sudah di-de-duplikasi per kode. Dialog ini defensif
+  /// karena kalau `entries` berisi kode yang sama dua kali, setiap entri akan
+  /// dicetak sebagai halaman terpisah.
+  late final List<_PrintableLabelEntry> _entries;
+
   @override
   void initState() {
     super.initState();
-    _selected = widget.entries.map((e) => e.code).toSet();
+    final seen = <String>{};
+    _entries = [
+      for (final e in widget.entries)
+        if (e.code.trim().isNotEmpty && seen.add(e.code.trim())) e,
+    ];
+    _selected = _entries.map((e) => e.code).toSet();
   }
 
-  bool get _allSelected => _selected.length == widget.entries.length;
+  bool get _allSelected => _selected.length == _entries.length;
 
   void _toggleAll() => setState(() {
     if (_allSelected) {
       _selected.clear();
     } else {
-      _selected.addAll(widget.entries.map((e) => e.code));
+      _selected.addAll(_entries.map((e) => e.code));
     }
   });
 
@@ -5798,11 +6196,11 @@ class _BucketPrintDialogState extends State<_BucketPrintDialog> {
     const accent = _kInjectOutput;
 
     final grouped = <String, List<_PrintableLabelEntry>>{};
-    for (final e in widget.entries) {
+    for (final e in _entries) {
       (grouped[e.category] ??= []).add(e);
     }
 
-    final selectedEntries = widget.entries
+    final selectedEntries = _entries
         .where((e) => _selected.contains(e.code))
         .toList();
     final selectedCount = selectedEntries.length;

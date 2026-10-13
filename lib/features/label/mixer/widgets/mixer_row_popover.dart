@@ -326,6 +326,36 @@ class _MixerRowPopoverState extends State<MixerRowPopover> {
               ),
               divider,
               LabelPopoverMenuTile(
+                icon: Icons.picture_as_pdf_outlined,
+                label: 'Print QC',
+                enabled: true,
+                onTap: () => _runAndClose(() async {
+                  final rootCtx = Navigator.of(
+                    context,
+                    rootNavigator: true,
+                  ).context;
+
+                  // Sengaja tanpa lock + tanpa markAsPrinted: yang menambah
+                  // HasBeenPrinted hanya cetak LABEL. Print QC hanya
+                  // mengambil ulang angka QC — pola sama dengan broker/washing.
+                  final noMixer = widget.header.noMixer;
+                  try {
+                    await PdfPrintService(defaultSystem: 'pps').previewFromUrl(
+                      context: rootCtx,
+                      pdfUrl: Uri.parse(ApiConstants.mixerQcPdf(noMixer)),
+                      title: '$noMixer - QC',
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    final msg = e.toString().replaceFirst('Exception: ', '');
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(msg)));
+                  }
+                }),
+              ),
+              divider,
+              LabelPopoverMenuTile(
                 icon: Icons.delete_outline,
                 label: 'Delete',
                 enabled: canDelete,

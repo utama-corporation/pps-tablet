@@ -24,6 +24,10 @@ class ProductionScanLabelDialog extends StatefulWidget {
   final Color primaryColor;
   final List<ProductionFormulaOutput> formulaOutputs;
 
+  /// Kontrol tambahan di header (mis. tombol pilih mode FULL / PARTIAL).
+  /// Kalau null, header hanya menampilkan judul + subtitle.
+  final Widget? headerAction;
+
   const ProductionScanLabelDialog({
     super.key,
     required this.onLookup,
@@ -31,6 +35,7 @@ class ProductionScanLabelDialog extends StatefulWidget {
     this.headerSubtitle,
     this.primaryColor = const Color(0xFF1E6FD9),
     this.formulaOutputs = const [],
+    this.headerAction,
   });
 
   @override
@@ -235,6 +240,10 @@ class _ProductionScanLabelDialogState extends State<ProductionScanLabelDialog>
                 fontSize: 12,
               ),
             ),
+            const SizedBox(width: 8),
+          ],
+          if (widget.headerAction != null) ...[
+            widget.headerAction!,
             const SizedBox(width: 8),
           ],
           GestureDetector(

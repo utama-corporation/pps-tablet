@@ -176,6 +176,19 @@ class ApiConstants {
     return 'http://$host:7500/api/labels/mixer/$encoded/pdf/';
   }
 
+  /// Label QC mixer (Moisture 1-3, Min/Max Melt Temp, MFI, VisualNote).
+  /// Dicetak dari menu "Print QC" di MixerRowPopover — tidak lewat lock/count
+  /// HasBeenPrinted, sama seperti washingQcPdf & brokerQcPdf.
+  ///
+  /// CATATAN: route backend `GET /api/labels/mixer/:noMixer/qc/pdf` belum ada
+  /// (dicek 2026-10-13, balas 404 sementara washing/broker balas 200). Menu
+  /// ini akan gagal sampai backend menambahkannya.
+  static String mixerQcPdf(String noMixer) {
+    final host = Uri.parse(baseUrl).host;
+    final encoded = Uri.encodeComponent(noMixer);
+    return 'http://$host:7500/api/labels/mixer/$encoded/qc/pdf';
+  }
+
   static String bonggolanLabelPdf(String noBonggolan) {
     final host = Uri.parse(baseUrl).host;
     final encoded = Uri.encodeComponent(noBonggolan);

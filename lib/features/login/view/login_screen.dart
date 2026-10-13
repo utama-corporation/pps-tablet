@@ -931,6 +931,7 @@ class _LoginScreenState extends State<LoginScreen>
             TextField(
               controller: _usernameController,
               focusNode: _usernameFocusNode,
+              autofocus: true,
               textInputAction: TextInputAction.next,
               onChanged: (_) => _clearErrorMessage(),
               decoration: InputDecoration(
