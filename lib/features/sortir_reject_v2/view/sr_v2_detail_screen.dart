@@ -253,6 +253,7 @@ class _HeaderCard extends StatelessWidget {
                     pcsIn: trx.totalPcsInput ?? 0,
                     pcsOut: trx.totalPcsOutput ?? 0,
                     beratOut: trx.totalBeratOutput,
+                    qtyIn: trx.totalQtyInput,
                   ),
                 ),
               ],
@@ -385,12 +386,17 @@ class _FlowItem extends StatelessWidget {
   final int pcsOut;
   final double? beratOut;
 
+  /// Total qty bahan pendukung (bukan pcs). Non-null hanya untuk kategori
+  /// bahanPendukung, yang tidak punya satuan pcs sama sekali.
+  final double? qtyIn;
+
   const _FlowItem({
     required this.inputCount,
     required this.outputCount,
     required this.pcsIn,
     required this.pcsOut,
     this.beratOut,
+    this.qtyIn,
   });
 
   @override
@@ -399,10 +405,15 @@ class _FlowItem extends StatelessWidget {
     final formattedBerat = berat == null
         ? null
         : NumberFormat('#,##0.##', 'id_ID').format(berat);
+    // Bahan pendukung tidak ber-pcs: pakai qty tanpa satuan pcs.
+    final qty = qtyIn;
+    final inputText = qty != null
+        ? NumberFormat('#,##0.##', 'id_ID').format(qty)
+        : '$pcsIn pcs';
     final pcsOutText = pcsOut > 0 ? '$pcsOut pcs / ' : '';
     final outputSummary = formattedBerat != null
-        ? '$pcsIn pcs -> $pcsOutText$formattedBerat kg'
-        : '$pcsIn pcs -> $pcsOut pcs';
+        ? '$inputText -> $pcsOutText$formattedBerat kg'
+        : '$inputText -> $pcsOut pcs';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,6 +440,15 @@ class _FlowItem extends StatelessWidget {
             ),
             _Pill(count: outputCount, color: _kGreen, label: 'Label'),
           ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          outputSummary,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF4B5563),
+          ),
         ),
       ],
     );

@@ -62,7 +62,15 @@ class SrV2InputLabel {
   }
 
   factory SrV2InputLabel.fromJson(Map<String, dynamic> j) {
-    final rawQty = j['qty'] ?? j['Qty'] ?? j['pcs'] ?? j['Pcs'];
+    final rawQty =
+        j['qty'] ??
+        j['Qty'] ??
+        j['jumlah'] ??
+        j['Jumlah'] ??
+        j['qtySisa'] ??
+        j['QtySisa'] ??
+        j['pcs'] ??
+        j['Pcs'];
     return SrV2InputLabel(
       noBJ: _labelCode(j),
       dateCreate: j['DateCreate'] != null
@@ -76,7 +84,11 @@ class SrV2InputLabel {
           : j['CreateBy'] != null
           ? _s(j['CreateBy'])
           : null,
-      category: j['category'] != null ? _s(j['category']) : null,
+      category: j['category'] != null
+          ? _s(j['category'])
+          : j['Category'] != null
+          ? _s(j['Category'])
+          : null,
       qty: _d(rawQty),
     );
   }
@@ -166,6 +178,11 @@ class SrV2Transaction {
   final int? totalPcsInput;
   final int? totalPcsOutput;
   final double? totalBeratOutput;
+
+  /// Total qty bahan pendukung yang terpakai pada transaksi ini. Backend
+  /// hanya mengirim ini untuk kategori bahanPendukung (bahan pendukung tidak
+  /// ber-pcs, jadi [totalPcsInput] selalu 0 untuknya).
+  final double? totalQtyInput;
   final List<SrV2InputLabel> inputs;
   final List<SrV2OutputLabel> outputs;
 
@@ -183,6 +200,7 @@ class SrV2Transaction {
     this.totalPcsInput,
     this.totalPcsOutput,
     this.totalBeratOutput,
+    this.totalQtyInput,
     this.inputs = const [],
     this.outputs = const [],
   });
@@ -275,6 +293,7 @@ class SrV2Transaction {
       totalPcsInput: _iOpt(j['totalPcsInput']),
       totalPcsOutput: _iOpt(j['totalPcsOutput']),
       totalBeratOutput: _dOpt(j['totalBeratOutput']),
+      totalQtyInput: _dOpt(j['totalQtyInput']),
       inputs: inputs,
       outputs: outputs,
     );

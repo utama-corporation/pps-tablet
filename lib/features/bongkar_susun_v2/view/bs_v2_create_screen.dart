@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../../common/widgets/error_status_dialog.dart';
 import '../../../../common/widgets/scan_label_dialog.dart';
 import '../../../../common/widgets/success_status_dialog.dart';
+import '../../production/shared/widgets/weight_input_dialog.dart';
 import '../model/bs_v2_label_info.dart';
 import '../utils/bs_v2_category_label.dart';
 import '../view_model/bs_v2_create_view_model.dart';
@@ -78,14 +79,12 @@ class BsV2CreateScreen extends StatefulWidget {
 class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
   final Map<String, TextEditingController> _beratCtls = {};
   final Map<String, TextEditingController> _sakBeratCtls = {};
-  final Map<String, TextEditingController> _partialCtls = {};
   final NumberFormat _nf = NumberFormat('#,##0.###', 'id_ID');
 
   @override
   void dispose() {
     for (final c in _beratCtls.values) c.dispose();
     for (final c in _sakBeratCtls.values) c.dispose();
-    for (final c in _partialCtls.values) c.dispose();
     super.dispose();
   }
 
@@ -94,19 +93,6 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
         outputId,
         () =>
             TextEditingController(text: current > 0 ? current.toString() : ''),
-      );
-
-  /// Controller "berat dipakai" untuk label reject yang di-partial.
-  TextEditingController _partialCtl(BsV2LabelInfo lbl, double current) =>
-      _partialCtls.putIfAbsent(
-        lbl.labelCode,
-        () => TextEditingController(
-          text: current > 0
-              ? current
-                    .toStringAsFixed(3)
-                    .replaceAll(RegExp(r'\.?0+$'), '')
-              : '',
-        ),
       );
 
   TextEditingController _getSakBeratCtl(String key, double current) =>
@@ -136,20 +122,13 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
       }
       return false;
     });
-    final validInputCodes = vm.inputs.map((l) => l.labelCode).toSet();
-    _partialCtls.removeWhere((k, v) {
-      if (!validInputCodes.contains(k)) {
-        v.dispose();
-        return true;
-      }
-      return false;
-    });
   }
 
   Future<void> _openScanDialog(
     BuildContext context,
     BsV2CreateViewModel vm,
   ) async {
+    final before = vm.inputs.length;
     await showDialog<void>(
       context: context,
       builder: (_) => ScanLabelDialog(
@@ -170,6 +149,37 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
         ],
       ),
     );
+    // ScanLabelDialog menutup diri sendiri begitu lookup sukses, jadi dialog
+    // berat baru dibuka setelah dialog scan tertutup - tidak ada dialog
+    // bersarang.
+    if (!context.mounted || vm.inputs.length <= before) return;
+    await _askPartialBerat(context, vm, vm.inputs.last);
+  }
+
+  /// Label reject tidak ber-sak: satu label = satu berat, jadi operator
+  /// selalu ditanya berapa kg yang dipakai (boleh seluruh sisa label).
+  /// Memakai WeightInputDialog yang sama dengan produksi broker / washing /
+  /// gilingan untuk item non-sak - bukan field teks inline di panel input.
+  Future<void> _askPartialBerat(
+    BuildContext context,
+    BsV2CreateViewModel vm,
+    BsV2LabelInfo lbl,
+  ) async {
+    if (!lbl.isReject) return;
+
+    final newWeight = await WeightInputDialog.show(
+      context,
+      maxWeight: lbl.totalBerat,
+      currentWeight: vm.inputPartialQty[lbl.labelCode],
+    );
+    if (!context.mounted) return;
+
+    // Batal = label tidak jadi dipakai, sama seperti item non-sak di produksi.
+    if (newWeight == null) {
+      vm.removeInput(lbl.labelCode);
+      return;
+    }
+    vm.setInputPartialQty(lbl.labelCode, newWeight);
   }
 
   Future<void> _submit(BuildContext context, BsV2CreateViewModel vm) async {
@@ -256,8 +266,7 @@ class _BsV2CreateScreenState extends State<BsV2CreateScreen> {
                   onRemove: vm.removeInput,
                   onScan: () => _openScanDialog(context, vm),
                   nf: _nf,
-                  partialCtlOf: (lbl, current) => _partialCtl(lbl, current),
-                  onPartialQty: vm.setInputPartialQty,
+                  usedBeratOf: vm.inputUsedBerat,
                 );
                 final outputPanel = _OutputsPanel(
                   vm: vm,
@@ -322,16 +331,14 @@ class _InputsCard extends StatelessWidget {
   final void Function(String) onRemove;
   final VoidCallback onScan;
   final NumberFormat nf;
-  final TextEditingController Function(BsV2LabelInfo, double) partialCtlOf;
-  final void Function(String, double?) onPartialQty;
+  final double Function(BsV2LabelInfo) usedBeratOf;
 
   const _InputsCard({
     required this.inputs,
     required this.onRemove,
     required this.onScan,
     required this.nf,
-    required this.partialCtlOf,
-    required this.onPartialQty,
+    required this.usedBeratOf,
   });
 
   @override
@@ -450,8 +457,7 @@ class _InputsCard extends StatelessWidget {
                       lbl: inputs[i],
                       nf: nf,
                       onRemove: onRemove,
-                      partialCtlOf: partialCtlOf,
-                      onPartialQty: onPartialQty,
+                      usedBeratOf: usedBeratOf,
                     ),
                   ),
           ),
@@ -465,15 +471,13 @@ class _InputLabelTile extends StatelessWidget {
   final BsV2LabelInfo lbl;
   final NumberFormat nf;
   final void Function(String) onRemove;
-  final TextEditingController Function(BsV2LabelInfo, double) partialCtlOf;
-  final void Function(String, double?) onPartialQty;
+  final double Function(BsV2LabelInfo) usedBeratOf;
 
   const _InputLabelTile({
     required this.lbl,
     required this.nf,
     required this.onRemove,
-    required this.partialCtlOf,
-    required this.onPartialQty,
+    required this.usedBeratOf,
   });
 
   void _showSakDetail(BuildContext context) {
@@ -486,6 +490,9 @@ class _InputLabelTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasSaks = lbl.saks.isNotEmpty;
+    final used = usedBeratOf(lbl);
+    // Partial = operator memakai kurang dari sisa berat label.
+    final isPartialInput = lbl.isReject && used < lbl.totalBerat - 0.0005;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -600,25 +607,17 @@ class _InputLabelTile extends StatelessWidget {
                     ],
                   ),
                 ],
-                // Reject: operator boleh memakai sebagian berat label. Sisa
-                // berat yang tidak dipakai dikirim sebagai inputsPartial.
-                if (lbl.isReject) ...[
-                  const SizedBox(height: 6),
-                  _PartialQtyField(
-                    lbl: lbl,
-                    nf: nf,
-                    controller: partialCtlOf(lbl, lbl.totalBerat),
-                    onChanged: (v) => onPartialQty(lbl.labelCode, v),
-                    onReset: () => onPartialQty(lbl.labelCode, null),
-                  ),
-                ],
               ],
             ),
           ),
           const SizedBox(width: 8),
           if (!hasSaks)
             Text(
-              '${lbl.isPcsCategory ? lbl.totalBerat.toInt() : nf.format(lbl.totalBerat)} ${lbl.isPcsCategory ? 'pcs' : 'kg'}',
+              lbl.isReject && isPartialInput
+                  // Label reject dipakai sebagian: tampilkan berat terpakai
+                  // terhadap sisa berat label.
+                  ? '${nf.format(used)} / ${nf.format(lbl.totalBerat)} kg'
+                  : '${lbl.isPcsCategory ? used.toInt() : nf.format(used)} ${lbl.isPcsCategory ? 'pcs' : 'kg'}',
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -669,118 +668,6 @@ class _PartialHint extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-    );
-  }
-}
-
-/// Input "berat dipakai" per label reject. Kosong / sama dengan sisa berat
-/// berarti pakai penuh (tidak ada partial yang dibuat).
-class _PartialQtyField extends StatelessWidget {
-  final BsV2LabelInfo lbl;
-  final NumberFormat nf;
-  final TextEditingController controller;
-  final void Function(double?) onChanged;
-  final VoidCallback onReset;
-
-  const _PartialQtyField({
-    required this.lbl,
-    required this.nf,
-    required this.controller,
-    required this.onChanged,
-    required this.onReset,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Text(
-          'Dipakai',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1A1D23),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: SizedBox(
-            height: 30,
-            child: TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-              ],
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1D23),
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: _kSurface,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
-                suffixText: 'kg',
-                suffixStyle: const TextStyle(fontSize: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: _kBorder),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: _kBorder),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: _kPrimary, width: 1.5),
-                ),
-              ),
-              onChanged: (v) {
-                final d = double.tryParse(v);
-                if (d == null || d <= 0 || d >= lbl.totalBerat) {
-                  onChanged(null);
-                } else {
-                  onChanged(d);
-                }
-              },
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        GestureDetector(
-          onTap: () {
-            controller.text = lbl.totalBerat
-                .toStringAsFixed(3)
-                .replaceAll(RegExp(r'\.?0+$'), '');
-            onReset();
-          },
-          child: Tooltip(
-            message: 'Pakai penuh (${nf.format(lbl.totalBerat)} kg)',
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-              decoration: BoxDecoration(
-                color: _kPrimary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text(
-                'Penuh',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: _kPrimary,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -80,34 +80,63 @@ class _InjectProductionInputScreenState
     extends State<InjectProductionInputScreen> {
   String _selectedInputTab = 'fwip';
 
-  // ── Scan mode (full = semua item sekuens dari label, partial = pilih sak) ──
+// ── Scan mode (full = semua item sekuens dari label, partial = pilih sak) ──
   /// Dipilih dari tombol FULL / PARTIAL di header dialog scan, lalu diteruskan
   /// ke `InjectSakPickerDialog` untuk kategori ber-sak (Mixer, Broker, Gilingan).
-  String _selectedMode = 'full';
+  ///
+  /// Pakai [ValueNotifier] — bukan `setState` — karena tombolnya berada di
+  /// dalam dialog scan yang dipush sebagai route terpisah. `setState` di state
+  /// layar ini hanya me-rebuild pohon di bawahnya, sedangkan dialog sudah punya
+  /// pohonnya sendiri, jadi widget tombolnya tidak pernah dibangun ulang dan
+  /// tampilannya tetap sama. Notifier inilah yang membuat bagian dalam dialog
+  /// ikut rebuild begitu nilainya berubah.
+  final ValueNotifier<bool> _scanPartialMode = ValueNotifier<bool>(false);
 
-  bool get _isPartialMode => _selectedMode == 'partial';
+  bool get _isPartialMode => _scanPartialMode.value;
 
   /// Tombol FULL / PARTIAL di header dialog scan.
+  ///
+  /// Dibungkus [ValueListenableBuilder] supaya tetap rebuild walau ada di dalam
+  /// dialog — yang rebuild bukan state layar, tapi notifier-nya. Subtitle ikut
+  /// diletakkan di sini (bukan lewat `headerSubtitle`) supaya deskripsinya
+  /// juga berubah bersamaan dengan pilihan, tidak jadi teks basi.
   Widget _buildScanModeToggle() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _modeChip('FULL', active: !_isPartialMode),
-        const SizedBox(width: 4),
-        _modeChip('PARTIAL', active: _isPartialMode),
-      ],
+    return ValueListenableBuilder<bool>(
+      valueListenable: _scanPartialMode,
+      builder: (context, isPartial, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isPartial ? 'Pilih sak (1 label = 1 sak)' : 'Semua sak dari label',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 10),
+            _modeChip('FULL', active: !isPartial, partial: false),
+            const SizedBox(width: 4),
+            _modeChip('PARTIAL', active: isPartial, partial: true),
+          ],
+        );
+      },
     );
   }
 
-  Widget _modeChip(String label, {required bool active}) {
+  Widget _modeChip(
+    String label, {
+    required bool active,
+    required bool partial,
+  }) {
     const base = _kInjectPrimary;
     return GestureDetector(
       onTap: () {
         if (active) return;
-        final next = label == 'PARTIAL' ? 'partial' : 'full';
-        setState(() => _selectedMode = next);
+        _scanPartialMode.value = partial;
       },
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: active
@@ -1044,6 +1073,7 @@ class _InjectProductionInputScreenState
   @override
   void dispose() {
     _statusTimer?.cancel();
+    _scanPartialMode.dispose();
     // Breadcrumb must update after the current frame — updating a ValueNotifier
     // during unmount triggers setState on AppShell while the tree is locked.
     final prev = _prevBreadcrumb;
@@ -1426,9 +1456,6 @@ class _InjectProductionInputScreenState
       context: context,
       builder: (_) => ProductionScanLabelDialog(
         manualHint: 'BB. / D. / H. / V. / BP.',
-        headerSubtitle: _isPartialMode
-            ? 'Pilih sak (1 label H./D./V. = 1 sak)'
-            : 'Semua sak dari label',
         headerAction: _buildScanModeToggle(),
         primaryColor: _kInjectPrimary,
         formulaOutputs: formulaOutputs,

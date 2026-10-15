@@ -76,14 +76,38 @@ class SrV2LabelInfo {
     return 0;
   }
 
+  /// Backend bisa mengirim kode label dengan awalan field berbeda tiap
+  /// sumber (list/detail vs lookup). Tanpa fallback ini, `BP.` tidak terbaca
+  /// dan kategori jadi `unknown`, sehingga UI jatuh ke kolom pcs yang 0.
+  static String _labelCode(Map<String, dynamic> j) => _s(
+    j['labelCode'] ??
+        j['LabelCode'] ??
+        j['noBJ'] ??
+        j['NoBJ'] ??
+        j['noFurnitureWIP'] ??
+        j['NoFurnitureWIP'] ??
+        j['noBahanPendukung'] ??
+        j['NoBahanPendukung'] ??
+        j['noBahanPendukungPartial'] ??
+        j['NoBahanPendukungPartial'],
+  );
+
   factory SrV2LabelInfo.fromJson(Map<String, dynamic> j) {
-    final rawQty = j['qty'] ?? j['Qty'] ?? j['pcs'] ?? j['Pcs'];
+    final rawQty =
+        j['qty'] ??
+        j['Qty'] ??
+        j['jumlah'] ??
+        j['Jumlah'] ??
+        j['qtySisa'] ??
+        j['QtySisa'] ??
+        j['pcs'] ??
+        j['Pcs'];
     return SrV2LabelInfo(
-      labelCode: _s(j['labelCode']),
-      category: _s(j['category']),
-      idJenis: _i(j['idJenis']),
-      namaJenis: _s(j['namaJenis']),
-      pcs: _i(j['pcs']),
+      labelCode: _labelCode(j),
+      category: _s(j['category'] ?? j['Category']),
+      idJenis: _i(j['idJenis'] ?? j['IdJenis']),
+      namaJenis: _s(j['namaJenis'] ?? j['NamaJenis'] ?? j['nama']),
+      pcs: _i(j['pcs'] ?? j['Pcs']),
       qty: _d(rawQty),
     );
   }
