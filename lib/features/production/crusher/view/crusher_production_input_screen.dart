@@ -27,6 +27,7 @@ import '../widgets/crusher_output_tile.dart';
 import '../repository/crusher_production_input_repository.dart';
 import '../widgets/crusher_lookup_label_dialog.dart';
 import '../widgets/crusher_lookup_label_partial_dialog.dart';
+import '../widgets/crusher_berat_input_dialog.dart';
 import '../widgets/crusher_production_output_form_dialog.dart';
 import '../../../label/crusher/repository/crusher_repository.dart';
 import '../../../../core/network/endpoints.dart';
@@ -74,7 +75,11 @@ class _CrusherProductionInputScreenState
   List<ProductionFormulaOutput> _formulaOutputs = [];
   Set<String>? _allowedInputKategori;
 
-  static const _kategoriToTab = {'bahanbaku': 'bb', 'bonggolan': 'bonggolan'};
+  static const _kategoriToTab = {
+    'bahanbaku': 'bb',
+    'bonggolan': 'bonggolan',
+    'reject': 'reject',
+  };
 
   bool _isTabAllowed(String tab) {
     final kodes = _allowedInputKategori;
@@ -83,7 +88,7 @@ class _CrusherProductionInputScreenState
   }
 
   String? _firstAllowedTab(Set<String> kodes) {
-    for (final tab in ['bb', 'bonggolan']) {
+    for (final tab in ['bb', 'bonggolan', 'reject']) {
       if (kodes.any((k) => _kategoriToTab[k] == tab)) return tab;
     }
     return null;
@@ -338,13 +343,18 @@ class _CrusherProductionInputScreenState
 
     // Validasi prefix sebelum ke server
     final trimmed = code.trim();
-    final prefix = trimmed.length >= 2
-        ? trimmed.substring(0, 2).toUpperCase()
-        : '';
-    const validPrefixes = {'A.', 'M.'};
-    if (prefix.isNotEmpty && !validPrefixes.contains(prefix)) {
+    final upper = trimmed.toUpperCase();
+    // Prefix dicari dari daftar, bukan substring(0, 2): sebagian prefix punya
+    // 3 karakter (BF.), sehingga potongan fixed-length akan kehilangan titik.
+    const validPrefixes = ['A.', 'M.', 'BF.'];
+    final prefix = validPrefixes.firstWhere(
+      (p) => upper.startsWith(p),
+      orElse: () => '',
+    );
+    if (prefix.isEmpty) {
       return 'Label "$trimmed" tidak dapat diproses.\n'
-          'Proses crusher hanya menerima label Bahan Baku (A.) dan Bonggolan (M.).';
+          'Proses crusher hanya menerima label Bahan Baku (A.), '
+          'Bonggolan (M.), dan Reject (BF.).';
     }
 
     if (_selectedMode == 'partial') {
@@ -415,6 +425,7 @@ class _CrusherProductionInputScreenState
     final item = res.typedItems.first;
     if (item is BbItem) return 'bb';
     if (item is BonggolanItem) return 'bonggolan';
+    if (item is RejectItem) return 'reject';
     return null;
   }
 
@@ -422,7 +433,7 @@ class _CrusherProductionInputScreenState
     CrusherProductionInputViewModel vm,
     ProductionLabelLookupResult res,
   ) async {
-    final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
+final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
     if (freshCount == 0) {
       final labelCode = _labelCodeOfFirst(res);
       final hasTemp =
@@ -435,6 +446,21 @@ class _CrusherProductionInputScreenState
       );
       return;
     }
+
+    // Reject bukan full-only: user menentukan berapa kg yang diambil. Kalau
+    // kurang dari berat sisa, baris otomatis ditandai partial — sama seperti
+    // GilinganBeratInputDialog di proses gilingan.
+    if (res.prefixType == PrefixType.reject) {
+      await showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => CrusherBeratInputDialog(
+          noProduksi: widget.noCrusherProduksi,
+        ),
+      );
+      return;
+    }
+
     vm.clearPicks();
     vm.pickAllNew(widget.noCrusherProduksi);
     final result = vm.commitPickedToTemp(noProduksi: widget.noCrusherProduksi);
@@ -500,7 +526,76 @@ class _CrusherProductionInputScreenState
       return palletStr.isEmpty ? noBB : '$noBB-$palletStr';
     }
     if (item is BonggolanItem) return item.noBonggolan;
+    if (item is RejectItem) {
+      final part = (item.noRejectPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noReject;
+    }
     return null;
+  }
+
+  // ── Temp card options (long press) ────────────────────────────────────────
+
+  /// Pintu masuk ke mode partial / sebagian lewat long-press pada tile yang
+  /// sudah ada di TEMP. Tanpa ini `_selectedMode` terkunci 'full' dan dialog
+  /// partial tidak akan pernah terbuka. Pola sama dengan washing & broker.
+  Future<void> _showTempCardOptions(String labelTitle) async {
+    final vm = context.read<CrusherProductionInputViewModel>();
+
+    final tempData = vm.getTemporaryDataForLabel(labelTitle);
+
+    // Sebagian: hanya BB (sak-based). Bonggolan & Reject tidak per sak.
+    final isSakBased =
+        tempData != null &&
+        (tempData.bbItems.isNotEmpty || tempData.bbPartials.isNotEmpty);
+
+    // Partial: BB & Reject. Bonggolan (M.) tidak mendukung partial.
+    final supportsPartial =
+        tempData != null &&
+        (tempData.bbItems.isNotEmpty ||
+            tempData.bbPartials.isNotEmpty ||
+            tempData.reject.isNotEmpty);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => ProductionTempCardOptionsDialog(
+        labelTitle: labelTitle,
+        showSebagian: isSakBased,
+        showPartial: supportsPartial,
+        primaryColor: _kCrusherPrimary,
+        surfaceColor: _kCrusherSurface,
+        borderColor: _kCrusherBorder,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    if (result == 'delete') {
+      vm.deleteAllTempForLabel(labelTitle);
+    } else if (result == 'select' || result == 'partial') {
+      // Hapus temp lama, lalu re-lookup dari cache
+      vm.deleteAllTempForLabel(labelTitle);
+      setState(() => _selectedMode = result);
+
+      if (!mounted) return;
+
+      final lookupResult = await vm.lookupLabel(labelTitle);
+      if (!mounted) return;
+
+      if (lookupResult == null) {
+        _showSnack(
+          'Gagal memuat data label: ${vm.lookupError ?? "error tidak diketahui"}',
+          backgroundColor: Colors.red,
+        );
+        return;
+      }
+
+      if (result == 'partial') {
+        await _handlePartialMode(vm, lookupResult);
+      } else {
+        await _handleSelectMode(vm, lookupResult);
+      }
+    }
   }
 
   // ── Input summary helper ───────────────────────────────────────────────────
@@ -508,6 +603,7 @@ class _CrusherProductionInputScreenState
   SectionSummary _selectedInputSummary({
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<RejectItem>> rejectGroups,
   }) {
     if (_selectedInputTab == 'bb') {
       int totalSak = 0;
@@ -519,6 +615,18 @@ class _CrusherProductionInputScreenState
       return SectionSummary(
         totalData: bbGroups.length,
         totalSak: totalSak,
+        totalBerat: totalBerat,
+      );
+    } else if (_selectedInputTab == 'reject') {
+      int totalCount = 0;
+      double totalBerat = 0.0;
+      for (final items in rejectGroups.values) {
+        totalCount += items.length;
+        for (final i in items) totalBerat += i.berat ?? 0.0;
+      }
+      return SectionSummary(
+        totalData: rejectGroups.length,
+        totalSak: totalCount,
         totalBerat: totalBerat,
       );
     } else {
@@ -541,6 +649,7 @@ class _CrusherProductionInputScreenState
     required bool canDelete,
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<RejectItem>> rejectGroups,
     required bool showFooter,
   }) {
     if (_selectedInputTab == 'bb') {
@@ -548,6 +657,14 @@ class _CrusherProductionInputScreenState
         vm: vm,
         canDelete: canDelete,
         bbGroups: bbGroups,
+        showFooter: showFooter,
+      );
+    }
+    if (_selectedInputTab == 'reject') {
+      return _buildRejectTab(
+        vm: vm,
+        canDelete: canDelete,
+        rejectGroups: rejectGroups,
         showFooter: showFooter,
       );
     }
@@ -608,8 +725,10 @@ class _CrusherProductionInputScreenState
     required bool canDelete,
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<RejectItem>> rejectGroups,
   }) {
-    int grandLabel = bbGroups.length + bonggolGroups.length;
+    int grandLabel =
+        bbGroups.length + bonggolGroups.length + rejectGroups.length;
     int grandSak = 0;
     double grandBerat = 0.0;
     for (final items in bbGroups.values) {
@@ -620,10 +739,15 @@ class _CrusherProductionInputScreenState
       grandSak += items.length;
       for (final i in items) grandBerat += i.berat ?? 0.0;
     }
+    for (final items in rejectGroups.values) {
+      grandSak += items.length;
+      for (final i in items) grandBerat += i.berat ?? 0.0;
+    }
 
     final selectedSummary = _selectedInputSummary(
       bbGroups: bbGroups,
       bonggolGroups: bonggolGroups,
+      rejectGroups: rejectGroups,
     );
 
     return Container(
@@ -687,6 +811,12 @@ class _CrusherProductionInputScreenState
                           label: 'Bonggolan',
                           count: bonggolGroups.length,
                         ),
+                      if (_isTabAllowed('reject'))
+                        ProductionTabItem(
+                          value: 'reject',
+                          label: 'Reject',
+                          count: rejectGroups.length,
+                        ),
                     ],
                     onChanged: (value) {
                       if (_selectedInputTab == value) return;
@@ -709,6 +839,7 @@ class _CrusherProductionInputScreenState
                                   canDelete: canDelete,
                                   bbGroups: bbGroups,
                                   bonggolGroups: bonggolGroups,
+                                  rejectGroups: rejectGroups,
                                   showFooter: false,
                                 ),
                               ),
@@ -720,6 +851,8 @@ class _CrusherProductionInputScreenState
                               vm,
                               _selectedInputTab == 'bonggolan'
                                   ? bonggolGroups
+                                  : _selectedInputTab == 'reject'
+                                  ? rejectGroups
                                   : bbGroups,
                             )
                           else
@@ -733,8 +866,8 @@ class _CrusherProductionInputScreenState
                                     ProductionCategorySummaryTile(
                                       summary: selectedSummary,
                                       accentColor: _kCrusherPrimary,
-                                      // Bonggolan hanya pakai UOM berat, tidak ada pcs
-                                      showSak: _selectedInputTab != 'bonggolan',
+                                      // Reject hanya pakai UOM berat, tidak ada pcs
+                                      showSak: _selectedInputTab == 'bb',
                                     ),
                                     const SizedBox(height: 10),
                                     ProductionInputGrandTotalBar(
@@ -858,6 +991,8 @@ class _CrusherProductionInputScreenState
                       : null,
                   onLongPress: isSelectingInput
                       ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
                       : () => startSelectingInput(entry.key, entry.value),
                   partialReference: hasPartial
                       ? _bbPairLabel(
@@ -970,6 +1105,8 @@ class _CrusherProductionInputScreenState
                       : null,
                   onLongPress: isSelectingInput
                       ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
                       : () => startSelectingInput(entry.key, entry.value),
                   detailsBuilder: () => [],
                   chipItemsBuilder: () {
@@ -991,6 +1128,115 @@ class _CrusherProductionInputScreenState
                         isTemp: isTemp,
                         onDelete: isTemp
                             ? () => vm.deleteTempBonggolanItem(item)
+                            : null,
+                      );
+                    }).toList();
+                  },
+                );
+              }).toList(),
+            ),
+          );
+
+    return ProductionOutputCategoryContent(footer: footer, child: grid);
+  }
+
+  Widget _buildRejectTab({
+    required CrusherProductionInputViewModel vm,
+    required bool canDelete,
+    required Map<String, List<RejectItem>> rejectGroups,
+    required bool showFooter,
+  }) {
+    int totalCount = 0;
+    double totalBerat = 0.0;
+    for (final entry in rejectGroups.entries) {
+      for (final item in entry.value) {
+        totalCount++;
+        totalBerat += item.berat ?? 0.0;
+      }
+    }
+
+    final footer = showFooter
+        ? ProductionCategorySummaryTile(
+            summary: SectionSummary(
+              totalData: rejectGroups.length,
+              totalSak: totalCount,
+              totalBerat: totalBerat,
+            ),
+            accentColor: _kCrusherPrimary,
+            // Reject hanya pakai UOM berat, tidak ada pcs
+            showSak: false,
+          )
+        : const SizedBox.shrink();
+
+    final grid = rejectGroups.isEmpty
+        ? const Center(
+            child: Text('Tidak ada data', style: TextStyle(fontSize: 11)),
+          )
+        : LayoutBuilder(
+            builder: (_, c) => GridView(
+              padding: const EdgeInsets.all(6),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: c.maxWidth < 380 ? 2 : 3,
+                crossAxisSpacing: 6,
+                mainAxisSpacing: 6,
+                mainAxisExtent: 72,
+              ),
+              children: rejectGroups.entries.map((entry) {
+                final namaJenis =
+                    (entry.value.isNotEmpty ? entry.value.first.namaJenis : null) ??
+                    '-';
+                final hasRejectPartial = entry.value.any((x) => x.isPartialRow);
+                return ProductionInputGroupTile(
+                  title: namaJenis,
+                  headerSubtitle: entry.key,
+                  tileMetrics: [
+                    (
+                      Icons.scale_outlined,
+                      '${num2(entry.value.fold<double>(0.0, (s, i) => s + (i.berat ?? 0.0)))} kg',
+                    ),
+                  ],
+                  color: _kCrusherPrimary,
+                  isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                  expandable: !hasRejectPartial,
+                  isPartialGroup: hasRejectPartial,
+                  partialReference: hasRejectPartial
+                      ? entry.value
+                            .firstWhere((x) => x.isPartialRow)
+                            .noReject
+                      : null,
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
+                      : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
+                      : () => startSelectingInput(entry.key, entry.value),
+                  detailsBuilder: () => [],
+                  chipItemsBuilder: () {
+                    final currentInputs = vm.inputsOf(widget.noCrusherProduksi);
+                    final dbItems = currentInputs == null
+                        ? <RejectItem>[]
+                        : currentInputs.reject.where(
+                            (x) => _rejectTitleKey(x) == entry.key,
+                          );
+                    final tempItems = [
+                      ...vm.tempReject,
+                      ...vm.tempRejectPartial,
+                    ].where((x) => _rejectTitleKey(x) == entry.key);
+                    final items = [...dbItems, ...tempItems];
+                    return items.map((item) {
+                      final isTemp =
+                          vm.tempReject.contains(item) ||
+                          vm.tempRejectPartial.contains(item);
+                      return ProductionSakChip(
+                        label: '${num2(item.berat)} kg',
+                        berat: item.berat,
+                        isTemp: isTemp,
+                        isPartial: item.isPartialRow,
+                        onDelete: isTemp
+                            ? () => vm.deleteTempRejectItem(item)
                             : null,
                       );
                     }).toList();
@@ -1493,6 +1739,13 @@ class _CrusherProductionInputScreenState
 
   // ── Title key helpers ──────────────────────────────────────────────────────
 
+  String _rejectTitleKey(RejectItem item) {
+    final partial = (item.noRejectPartial ?? '').trim();
+    if (partial.isNotEmpty) return partial;
+    final n = (item.noReject ?? '').trim();
+    return n.isEmpty ? '-' : n;
+  }
+
   String _bbTitleKey(BbItem item) {
     final partial = (item.noBBPartial ?? '').trim();
     if (partial.isNotEmpty) return partial;
@@ -1540,12 +1793,20 @@ class _CrusherProductionInputScreenState
         final bonggolAll = loading
             ? <BonggolanItem>[]
             : [...vm.tempBonggolan, ...?inputs?.bonggolan];
+        final rejectAll = loading
+            ? <RejectItem>[]
+            : [
+                ...vm.tempReject,
+                ...vm.tempRejectPartial,
+                ...?inputs?.reject,
+              ];
 
         final bbGroups = groupBy(bbAll, _bbTitleKey);
         final bonggolGroups = groupBy(
           bonggolAll,
           (BonggolanItem e) => e.noBonggolan ?? '-',
         );
+        final rejectGroups = groupBy(rejectAll, _rejectTitleKey);
 
         return PopScope(
           canPop: false,
@@ -1619,6 +1880,7 @@ class _CrusherProductionInputScreenState
                                 canDelete: canDelete,
                                 bbGroups: bbGroups,
                                 bonggolGroups: bonggolGroups,
+                                rejectGroups: rejectGroups,
                               ),
                             ),
                             const SizedBox(width: 16),

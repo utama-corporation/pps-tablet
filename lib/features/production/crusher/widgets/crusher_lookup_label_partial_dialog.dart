@@ -85,6 +85,17 @@ class _CrusherLookupLabelPartialDialogState
     });
   }
 
+  void _showWeightError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFFDC2626),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   void _commitSelection(
       CrusherProductionInputViewModel vm,
       ProductionLabelLookupResult result,
@@ -95,7 +106,24 @@ class _CrusherLookupLabelPartialDialogState
     final originalBerat = row['berat'];
     final originalIsPartial = row['isPartial'];
 
-    // Kalau user edit berat → tandai sebagai partial (hanya BB yg diproses partial di VM)
+    // Batas berat: sisa yang masih tersedia dari backend. WeightInputDialog
+    // sudah memvalidasi saat user mengetik, tapi commit dicek ulang di sini
+    // karena _editedWeight bisa terisi dari jalur lain.
+    final maxWeight = _beratFromRow(row);
+    if (_editedWeight != null) {
+      if (_editedWeight! <= 0) {
+        _showWeightError('Berat harus lebih besar dari 0 kg.');
+        return;
+      }
+      if (maxWeight != null && _editedWeight! > maxWeight) {
+        _showWeightError(
+          'Berat ${num2(_editedWeight!)} kg melebihi sisa ${num2(maxWeight)} kg.',
+        );
+        return;
+      }
+    }
+
+    // Kalau user edit berat → tandai sebagai partial (BB & Reject)
     if (_editedWeight != null) {
       row['isPartial'] = true;
       row['IsPartial'] = true;
@@ -495,8 +523,11 @@ class _CrusherLookupLabelPartialDialogState
                         statusColor = Colors.orange;
                       }
 
+                      // BB & Reject punya partial; keduanya batasnya berat sisa dari backend
                       final canEditWeight =
-                          item is BbItem && !isDisabled && isSelected;
+                          (item is BbItem || item is RejectItem) &&
+                          !isDisabled &&
+                          isSelected;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -678,8 +709,8 @@ class _CrusherLookupLabelPartialDialogState
                                           mainAxisAlignment:
                                           MainAxisAlignment.end,
                                           children: [
-                                            // Edit weight (HANYA BB)
-                                            if (canEditWeight)
+// Edit berat (BB & Reject)
+                                             if (canEditWeight)
                                               SizedBox(
                                                 height: 32,
                                                 child:
@@ -965,6 +996,10 @@ class _CrusherLookupLabelPartialDialogState
   String _getDetailText(dynamic item, PrefixType type) {
     if (item is BbItem) return '${item.noSak ?? '-'}';
     if (item is BonggolanItem) return item.noBonggolan ?? '-';
+    if (item is RejectItem) {
+      final part = (item.noRejectPartial ?? '').trim();
+      return part.isNotEmpty ? part : (item.noReject ?? '-');
+    }
     return '-';
   }
 
@@ -1002,6 +1037,12 @@ class _CrusherLookupLabelPartialDialogState
     if (item is BonggolanItem) {
       return item.noBonggolan ?? '-';
     }
+
+    if (item is RejectItem) {
+      final part = (item.noRejectPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noReject ?? '-';
+    }
     return '-';
   }
 
@@ -1009,12 +1050,14 @@ class _CrusherLookupLabelPartialDialogState
   static String? _namaJenisOf(dynamic item) {
     if (item is BbItem) return item.namaJenis;
     if (item is BonggolanItem) return item.namaJenis;
+    if (item is RejectItem) return item.namaJenis;
     return null;
   }
 
   static double? _beratOf(dynamic item) {
     if (item is BbItem) return item.berat;
     if (item is BonggolanItem) return item.berat;
+    if (item is RejectItem) return item.berat;
     return null;
   }
 

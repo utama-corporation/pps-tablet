@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../view_model/crusher_production_input_view_model.dart';
 
-/// Cek apakah bucket TEMP untuk labelCode berisi item partial (hanya BB yang punya partial)
+/// Cek apakah bucket TEMP untuk labelCode berisi item partial
+/// (BB dan Reject yang punya partial)
 bool _hasPartialTempForLabel(
     CrusherProductionInputViewModel vm,
     String labelCode,
@@ -13,11 +14,13 @@ bool _hasPartialTempForLabel(
   final b = vm.getTemporaryDataForLabel(labelCode.trim());
   if (b == null || b.isEmpty) return false;
 
-  // Hanya BB yang punya partial
   final hasBbPart =
-  b.bbItems.any((e) => (e.noBBPartial ?? '').trim().isNotEmpty);
+      b.bbItems.any((e) => (e.noBBPartial ?? '').trim().isNotEmpty);
+  final hasRejectPart = b.reject.any(
+    (e) => (e.noRejectPartial ?? '').trim().isNotEmpty || e.isPartialRow,
+  );
 
-  return hasBbPart;
+  return hasBbPart || hasRejectPart;
 }
 
 /// ✅ Model untuk summary data - HANYA BERAT

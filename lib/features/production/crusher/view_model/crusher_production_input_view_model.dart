@@ -27,6 +27,7 @@ class CrusherTempItemsByLabel {
   final List<BbItem> bbItems;       // full
   final List<BbItem> bbPartials;    // partial
   final List<BonggolanItem> bonggolan;  // full (tidak ada partial)
+  final List<RejectItem> reject;   // full + partial digabung
 
   final DateTime addedAt;
 
@@ -35,11 +36,12 @@ class CrusherTempItemsByLabel {
     this.bbItems = const [],
     this.bbPartials = const [],
     this.bonggolan = const [],
+    this.reject = const [],
     DateTime? addedAt,
   }) : addedAt = addedAt ?? DateTime.now();
 
   int get totalCount =>
-      bbItems.length + bbPartials.length + bonggolan.length;
+      bbItems.length + bbPartials.length + bonggolan.length + reject.length;
 
   bool get isEmpty => totalCount == 0;
 
@@ -47,6 +49,7 @@ class CrusherTempItemsByLabel {
     ...bbItems,
     ...bbPartials,
     ...bonggolan,
+    ...reject,
   ];
 }
 
@@ -84,6 +87,11 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     if (it is BonggolanItem) {
       return _nn(it.noBonggolan);
     }
+    if (it is RejectItem) {
+      final part = (it.noRejectPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return _nn(it.noReject);
+    }
     return '-';
   }
 
@@ -116,6 +124,13 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       return '[BONG] $t • ${_kg(it.berat)}kg';
     }
 
+    if (it is RejectItem) {
+      final isPart = (it.noRejectPartial ?? '').trim().isNotEmpty || it.isPartialRow;
+      return isPart
+          ? '[REJ•PART] $t • ${_kg(it.berat)}kg'
+          : '[REJ] $t • ${_kg(it.berat)}kg';
+    }
+
     return '[UNKNOWN] $it';
   }
 
@@ -134,6 +149,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     _dumpList('tempBb', tempBb, _keyFromBbItem);
     _dumpList('tempBbPartial', tempBbPartial, _keyFromBbItem);
     _dumpList('tempBonggolan', tempBonggolan, _keyFromBonggolanItem);
+    _dumpList('tempReject', tempReject, _keyFromRejectItem);
+    _dumpList('tempRejectPartial', tempRejectPartial, _keyFromRejectItem);
     _d('TOTAL TEMP COUNT = $totalTempCount');
     _d('===============================================');
   }
@@ -368,6 +385,12 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       } else if (item is BonggolanItem) {
         tempBonggolan.remove(item);
         _tempKeys.remove(_keyFromBonggolanItem(item));
+      } else if (item is RejectItem) {
+        tempReject.remove(item);
+        _tempKeys.remove(_keyFromRejectItem(item));
+      } else if (item is RejectItem) {
+        tempRejectPartial.remove(item);
+        _tempKeys.remove(_keyFromRejectItem(item));
       }
     }
 
@@ -384,8 +407,10 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     tempBbPartial.where((e) => _getItemLabelCode(e) == code).toList();
     final bonggolan =
     tempBonggolan.where((e) => _getItemLabelCode(e) == code).toList();
+    final reject =
+        tempReject.where((e) => _getItemLabelCode(e) == code).toList();
 
-    if ([bbFull, bbPart, bonggolan].every((l) => l.isEmpty)) {
+    if ([bbFull, bbPart, bonggolan, reject].every((l) => l.isEmpty)) {
       _tempItemsByLabel.remove(code);
       return;
     }
@@ -395,6 +420,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       bbItems: bbFull,
       bbPartials: bbPart,
       bonggolan: bonggolan,
+      reject: reject,
       addedAt: _tempItemsByLabel[code]?.addedAt ?? DateTime.now(),
     );
   }
@@ -414,6 +440,12 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       return item.noBonggolan;
     }
 
+    if (item is RejectItem) {
+      final part = (item.noRejectPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noReject;
+    }
+
     return null;
   }
 
@@ -424,6 +456,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
   final List<BbItem> tempBbPartial = [];
 
   final List<BonggolanItem> tempBonggolan = [];
+
+  final List<RejectItem> tempReject = [];
+  final List<RejectItem> tempRejectPartial = [];
 
   final Set<String> _pickedKeys = <String>{};
   final List<Map<String, dynamic>> _pickedRows = <Map<String, dynamic>>[];
@@ -443,6 +478,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
   String _keyFromBonggolanItem(BonggolanItem i) =>
       'E.|Bonggolan|${i.noBonggolan ?? '-'}|';
 
+  String _keyFromRejectItem(RejectItem i) =>
+      'BF.|RejectV2|${i.noReject ?? '-'}|';
+
   // DB keys (untuk future: kalau mau gabung DB+TEMP)
   Set<String> _dbKeysFor(String noProduksi) {
     final keys = <String>{};
@@ -450,6 +488,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     if (db != null) {
       for (final x in db.bb) keys.add(_keyFromBbItem(x));
       for (final x in db.bonggolan) keys.add(_keyFromBonggolanItem(x));
+      for (final x in db.reject) keys.add(_keyFromRejectItem(x));
     }
     return keys;
   }
@@ -554,7 +593,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-  // Partial helpers (hanya BB yang punya partial)
+  // Partial helpers (BB & Reject punya partial)
   // -------------------------------------------------------------------------
   bool _rowIsPartial(Map<String, dynamic> row, PrefixType t) {
     // Generic flag fallback
@@ -572,6 +611,10 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         final s =
         (row['NoBBPartial'] ?? row['noBBPartial'] ?? '').toString().trim();
         return s.isNotEmpty;
+      case PrefixType.reject:
+        final s =
+        (row['NoRejectPartial'] ?? row['noRejectPartial'] ?? '').toString().trim();
+        return s.isNotEmpty;
       default:
         return false;
     }
@@ -584,6 +627,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         final noPallet = row['NoPallet'] ?? row['noPallet'] ?? 0;
         final noSak = row['NoSak'] ?? row['noSak'] ?? '';
         return 'A.|BahanBaku_d|$noBb|$noPallet|$noSak';
+      case PrefixType.reject:
+        final noRej = row['NoReject'] ?? row['noReject'] ?? '';
+        return 'BF.|RejectV2|$noRej';
       default:
         return '';
     }
@@ -598,6 +644,12 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           return existing;
         }
       }
+    } else if (item is RejectItem) {
+      for (final existing in tempRejectPartial) {
+        if (existing.noReject == item.noReject) {
+          return existing;
+        }
+      }
     }
     return null;
   }
@@ -605,14 +657,16 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
   double? _getWeightFromItem(dynamic item) {
     if (item is BbItem) return item.berat;
     if (item is BonggolanItem) return item.berat;
+    if (item is RejectItem) return item.berat;
     return null;
   }
 
   // -------------------------------------------------------------------------
-  // Temp-partial numbering (hanya untuk BB)
+  // Temp-partial numbering (BB & Reject)
   // -------------------------------------------------------------------------
   final Map<PrefixType, int> _tempPartialSeq = {
     PrefixType.bb: 0,
+    PrefixType.reject: 0,
   };
 
   int _nextPartialSeq(PrefixType t) {
@@ -626,6 +680,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     switch (tp) {
       case PrefixType.bb:
         return 'P.XXXXXXXX ($numStr)';
+      case PrefixType.reject:
+        return 'BK.XXXXXXXX ($numStr)';
       default:
         return '';
     }
@@ -633,7 +689,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
 
   dynamic _withTempPartialIfNeeded(
       dynamic item, PrefixType t, bool isPartial) {
-    final supports = t == PrefixType.bb;
+    final supports = t == PrefixType.bb || t == PrefixType.reject;
     if (!supports || !isPartial) return item;
 
     if (item is BbItem) {
@@ -645,13 +701,24 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       return item;
     }
 
+    if (item is RejectItem) {
+      final already = (item.noRejectPartial ?? '').trim().isNotEmpty;
+      if (!already) {
+        final code = _formatTempPartial(t, _nextPartialSeq(t));
+        return item.copyWith(noRejectPartial: code);
+      }
+      return item;
+    }
+
     return item;
   }
 
   int get totalTempCount =>
       tempBb.length +
           tempBbPartial.length +
-          tempBonggolan.length;
+          tempBonggolan.length +
+          tempReject.length +
+          tempRejectPartial.length;
 
   // -------------------------------------------------------------------------
   // Commit picked → TEMP (strict anti-duplicate)
@@ -686,7 +753,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       final rawRow = filteredData[i];
 
       // Hanya proses tipe yang relevan
-      if (item is! BbItem && item is! BonggolanItem) {
+      if (item is! BbItem && item is! BonggolanItem && item is! RejectItem) {
         _d('commitPickedToTemp: tipe item tidak didukung di Crusher ($item), skip');
         skipped++;
         continue;
@@ -694,7 +761,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
 
       final simpleKey = ctx.simpleKey(rawRow);
       final bool isPartial =
-      _rowIsPartial(rawRow, ctx.prefixType); // hanya bb yg true
+      _rowIsPartial(rawRow, ctx.prefixType); // bb & reject bisa true
 
       bool shouldSkip = false;
 
@@ -726,6 +793,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           ? _keyFromBbItem(item)
           : item is BonggolanItem
           ? _keyFromBonggolanItem(item)
+          : item is RejectItem
+          ? _keyFromRejectItem(item)
           : simpleKey;
 
       // Kalau key TEMP sudah ada → skip
@@ -756,6 +825,14 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         itemAdded = true;
       } else if (newItem is BonggolanItem) {
         tempBonggolan.add(newItem);
+        itemAdded = true;
+      } else if (newItem is RejectItem) {
+        if (newItem.isPartialRow ||
+            (newItem.noRejectPartial ?? '').trim().isNotEmpty) {
+          tempRejectPartial.add(newItem);
+        } else {
+          tempReject.add(newItem);
+        }
         itemAdded = true;
       }
 
@@ -810,6 +887,17 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void deleteTempRejectItem(RejectItem item) {
+    tempReject.remove(item);
+    tempRejectPartial.remove(item);
+    _tempKeys.remove(_keyFromRejectItem(item));
+    final code = _getItemLabelCode(item);
+    if (code != null) _updateTempItemsByLabel(code);
+
+    debugDumpTempLists(tag: 'after deleteTempRejectItem');
+    notifyListeners();
+  }
+
   bool isInTempKeys(String key) => _tempKeys.contains(key);
 
   Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
@@ -818,6 +906,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     tempBb.clear();
     tempBbPartial.clear();
     tempBonggolan.clear();
+    tempReject.clear();
+    tempRejectPartial.clear();
 
     _tempKeys.clear();
     _tempItemsByLabel.clear();
@@ -841,6 +931,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     } else if (item is BonggolanItem) {
       ok = tempBonggolan.remove(item);
       if (ok) _tempKeys.remove(_keyFromBonggolanItem(item));
+    } else if (item is RejectItem) {
+      ok = tempReject.remove(item) || tempRejectPartial.remove(item);
+      if (ok) _tempKeys.remove(_keyFromRejectItem(item));
     }
 
     if (ok) debugDumpTempLists(tag: 'after deleteIfTemp');
@@ -898,6 +991,23 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         'noBahanBaku': e.noBahanBaku,
         'noPallet': e.noPallet,
         'noSak': e.noSak,
+        'berat': e.berat,
+      })
+          .toList();
+    }
+
+    if (tempReject.isNotEmpty) {
+      payload['reject'] = tempReject
+          .map((e) => {
+        'noReject': e.noReject,
+      })
+          .toList();
+    }
+
+    if (tempRejectPartial.isNotEmpty) {
+      payload['rejectPartialNew'] = tempRejectPartial
+          .map((e) => {
+        'noReject': e.noReject,
         'berat': e.berat,
       })
           .toList();
@@ -987,6 +1097,12 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     if (tempBonggolan.isNotEmpty) {
       parts.add('${tempBonggolan.length} Bonggolan');
     }
+    if (tempReject.isNotEmpty) {
+      parts.add('${tempReject.length} Reject');
+    }
+    if (tempRejectPartial.isNotEmpty) {
+      parts.add('${tempRejectPartial.length} Reject Partial');
+    }
 
     return 'Total $totalTempCount items:\n${parts.join(', ')}';
   }
@@ -1030,6 +1146,19 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         add('bonggolan', {
           'noBonggolan': it.noBonggolan,
         });
+      } else if (it is RejectItem) {
+        // Partial dihapus lewat kode partial-nya (partialColumn =
+        // NoRejectPartial); kode `noReject` tidak akan cocok di sisi server.
+        final code = (it.noRejectPartial ?? '').trim();
+        if (code.isNotEmpty) {
+          add('rejectPartial', {
+            'noRejectPartial': code,
+          });
+        } else {
+          add('reject', {
+            'noReject': it.noReject,
+          });
+        }
       }
     }
 

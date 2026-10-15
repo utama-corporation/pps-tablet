@@ -2,11 +2,13 @@
 
 import '../../shared/models/bb_item.dart';
 import '../../shared/models/bonggolan_item.dart';
+import '../../shared/models/reject_item.dart';
 import '../../../../core/utils/model_helpers.dart';
 
 // ✅ Export item models
 export '../../shared/models/bb_item.dart';
 export '../../shared/models/bonggolan_item.dart';
+export '../../shared/models/reject_item.dart';
 
 /* ===================== ROOT AGGREGATOR ===================== */
 
@@ -14,12 +16,17 @@ class CrusherInputs {
   final List<BbItem> bb;
   final List<BonggolanItem> bonggolan;
 
+  /// Full dan partial digabung di backend pada satu array; baris partial
+  /// ditandai oleh `noRejectPartial` (lihat crusher-production-service.js:1360).
+  final List<RejectItem> reject;
+
   final Map<String, int> summary;
 
   CrusherInputs({
     required this.bb,
     required this.bonggolan,
     required this.summary,
+    this.reject = const [],
   });
 
   factory CrusherInputs.fromJson(Map<String, dynamic> j) {
@@ -36,6 +43,7 @@ class CrusherInputs {
     return CrusherInputs(
       bb: _listOf(j['bb'], (m) => BbItem.fromJson(m)),
       bonggolan: _listOf(j['bonggolan'], (m) => BonggolanItem.fromJson(m)),
+      reject: _listOf(j['reject'], (m) => RejectItem.fromJson(m)),
       summary: _toSummary(j['summary']),
     );
   }
@@ -43,7 +51,8 @@ class CrusherInputs {
   // Quick totals
   double totalBeratBb() => bb.fold(0.0, (s, it) => s + (it.berat ?? 0));
   double totalBeratBonggolan() => bonggolan.fold(0.0, (s, it) => s + (it.berat ?? 0));
+  double totalBeratReject() => reject.fold(0.0, (s, it) => s + (it.berat ?? 0));
 
   // Total keseluruhan
-  double totalBeratAll() => totalBeratBb() + totalBeratBonggolan();
+  double totalBeratAll() => totalBeratBb() + totalBeratBonggolan() + totalBeratReject();
 }

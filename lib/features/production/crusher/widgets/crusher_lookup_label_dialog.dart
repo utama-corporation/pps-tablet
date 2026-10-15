@@ -803,7 +803,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
     );
   }
 
-  // ===== Helpers: HANYA BbItem + BonggolanItem =====
+  // ===== Helpers: HANYA BbItem + BonggolanItem + RejectItem =====
 
   String _getDetailHeader(PrefixType type) {
     switch (type) {
@@ -811,6 +811,8 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
         return 'SAK';
       case PrefixType.crusher:
         return 'NO BONGGOL';
+      case PrefixType.reject:
+        return 'NO REJECT';
       default:
         return 'DETAIL';
     }
@@ -819,6 +821,10 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
   String _getDetailText(dynamic item, PrefixType type) {
     if (item is BbItem) return '${item.noSak ?? '-'}';
     if (item is BonggolanItem) return item.noBonggolan ?? '-';
+    if (item is RejectItem) {
+      final part = (item.noRejectPartial ?? '').trim();
+      return part.isNotEmpty ? part : (item.noReject ?? '-');
+    }
     return '-';
   }
 
@@ -849,18 +855,26 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
     if (item is BonggolanItem) {
       return item.noBonggolan ?? '-';
     }
+
+    if (item is RejectItem) {
+      final part = (item.noRejectPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noReject ?? '-';
+    }
     return '-';
   }
 
   static String? _namaJenisOf(dynamic item) {
     if (item is BbItem) return item.namaJenis;
     if (item is BonggolanItem) return item.namaJenis;
+    if (item is RejectItem) return item.namaJenis;
     return null;
   }
 
   static double? _beratOf(dynamic item) {
     if (item is BbItem) return item.berat;
     if (item is BonggolanItem) return item.berat;
+    if (item is RejectItem) return item.berat;
     return null;
   }
 
@@ -879,6 +893,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
     try {
       if (item is BbItem && item.isPartialRow == true) return true;
       // BonggolanItem tidak punya partial
+      if (item is RejectItem && item.isPartialRow == true) return true;
     } catch (_) {}
     return false;
   }
