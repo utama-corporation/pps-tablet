@@ -93,6 +93,44 @@ class _InjectProductionFormDialogState
 
   bool get isEdit => widget.header != null;
 
+  /// Master shift tidak punya jam weekend lagi, jadi default tetap weekday.
+  bool get _isWeekendDate =>
+      _selectedDate.weekday == DateTime.saturday ||
+      _selectedDate.weekday == DateTime.sunday;
+
+  bool get _isHourEditable =>
+      widget.isBackdateInput || isEdit || _isWeekendDate;
+
+  int? _shiftWindowStart;
+  int? _shiftWindowEnd;
+
+  bool get _hasShiftWindow =>
+      _shiftWindowStart != null && _shiftWindowEnd != null;
+
+  void _rememberShiftWindow(String? start, String? end) {
+    final s = parseHHmm(start);
+    final e = parseHHmm(end);
+    if (s == null || e == null) return;
+    _shiftWindowStart = minutesSinceMidnight(s);
+    _shiftWindowEnd = minutesSinceMidnight(e);
+  }
+
+  void _rejectOutsideShiftWindow(TimeOfDay picked) {
+    final s = _shiftWindowStart!;
+    final e = _shiftWindowEnd!;
+    String hm(int m) =>
+        formatHHmm(TimeOfDay(hour: m ~/ 60, minute: m % 60));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Jam ${formatHHmm(picked)} di luar jam shift '
+          '${hm(s)} - ${hm(e)}.',
+        ),
+        backgroundColor: const Color(0xFFDC2626),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -112,8 +150,12 @@ class _InjectProductionFormDialogState
     final initEnd = widget.header?.hourEnd ?? widget.initialHourEnd;
     hourStartCtrl = TextEditingController(text: initStart ?? '');
     hourEndCtrl = TextEditingController(text: initEnd ?? '');
+    _rememberShiftWindow(widget.initialHourStart, widget.initialHourEnd);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _checkOverlap();
+      if (mounted && !_hasShiftWindow && _selectedShift != null) {
+        _fetchShiftHour(_selectedShift!, applyValues: false);
+      }
     });
 
     _selectedFurnitureMaterial = _noneFurnitureMaterial;
@@ -222,7 +264,7 @@ class _InjectProductionFormDialogState
     await _checkOverlap();
   }
 
-  Future<void> _fetchShiftHour(int shift) async {
+  Future<void> _fetchShiftHour(int shift, {bool applyValues = true}) async {
     final tanggal = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final base = ApiConstants.baseUrl.replaceFirst(RegExp(r'/*$'), '');
     final url = Uri.parse(
@@ -250,10 +292,13 @@ class _InjectProductionFormDialogState
       final end = trim5(data['hourEnd'] as String?);
       if (!mounted) return;
       setState(() {
-        if (start.isNotEmpty) hourStartCtrl.text = start;
-        if (end.isNotEmpty) hourEndCtrl.text = end;
+        _rememberShiftWindow(start, end);
+        if (applyValues) {
+          if (start.isNotEmpty) hourStartCtrl.text = start;
+          if (end.isNotEmpty) hourEndCtrl.text = end;
+        }
       });
-      await _checkOverlap();
+      if (applyValues) await _checkOverlap();
     } catch (_) {}
   }
 
@@ -639,13 +684,22 @@ class _InjectProductionFormDialogState
                   controller: hourStartCtrl,
                   label: 'Jam Mulai',
                   hintText: 'HH:mm',
-                  enabled: widget.isBackdateInput || isEdit,
+                  enabled: _isHourEditable,
                   onPick: () async {
                     final picked = await pickTime24h(
                       context,
-                      initial: _startTime,
+                      initial: parseHHmm(hourStartCtrl.text) ?? _startTime,
                     );
                     if (picked != null) {
+                      if (_hasShiftWindow &&
+                          !isWithinMinuteWindow(
+                            minutesSinceMidnight(picked),
+                            _shiftWindowStart!,
+                            _shiftWindowEnd!,
+                          )) {
+                        _rejectOutsideShiftWindow(picked);
+                        return;
+                      }
                       setState(() {
                         _startTime = picked;
                         hourStartCtrl.text = formatHHmm(picked);
@@ -674,13 +728,22 @@ class _InjectProductionFormDialogState
                   controller: hourEndCtrl,
                   label: 'Jam Selesai',
                   hintText: 'HH:mm',
-                  enabled: widget.isBackdateInput || isEdit,
+                  enabled: _isHourEditable,
                   onPick: () async {
                     final picked = await pickTime24h(
                       context,
-                      initial: _endTime ?? _startTime,
+                      initial: parseHHmm(hourEndCtrl.text) ?? _endTime ?? _startTime,
                     );
                     if (picked != null) {
+                      if (_hasShiftWindow &&
+                          !isWithinMinuteWindow(
+                            minutesSinceMidnight(picked),
+                            _shiftWindowStart!,
+                            _shiftWindowEnd!,
+                          )) {
+                        _rejectOutsideShiftWindow(picked);
+                        return;
+                      }
                       setState(() {
                         _endTime = picked;
                         hourEndCtrl.text = formatHHmm(picked);
@@ -719,6 +782,30 @@ class _InjectProductionFormDialogState
               ),
             ],
           ),
+
+          if (_isWeekendDate) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 13,
+                  color: Color(0xFF6B7280),
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    'Akhir pekan - jam mulai & selesai bisa disesuaikan manual.',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 16),
 

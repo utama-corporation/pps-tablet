@@ -37,6 +37,17 @@ Future<TimeOfDay?> pickTime24h(BuildContext context, {TimeOfDay? initial}) {
 /// Minutes since midnight (0..1439)
 int minutesSinceMidnight(TimeOfDay t) => t.hour * 60 + t.minute;
 
+/// Whether minute [m] falls inside the shift window [startMin]..[endMin].
+///
+/// Wraps around midnight, so an overnight shift 23:00-07:00 (1380..420)
+/// accepts both 23:30 and 02:00. Returns false when the window is empty.
+bool isWithinMinuteWindow(int m, int startMin, int endMin) {
+  if (startMin == endMin) return false;
+  final span = (endMin - startMin + 1440) % 1440;
+  final offset = (m - startMin + 1440) % 1440;
+  return offset <= span;
+}
+
 /// Duration between two "HH:mm" strings with midnight wrap.
 /// Returns null if one is invalid or duration == 0 minutes.
 Duration? durationBetweenHHmmWrap(String? startHHmm, String? endHHmm) {

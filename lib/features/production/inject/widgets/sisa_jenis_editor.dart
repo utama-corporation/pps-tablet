@@ -192,7 +192,7 @@ class _SisaJenisEditorState extends State<SisaJenisEditor> {
           color: widget.accent,
           rowCount: draft.bonggolan.length,
           canAdd: draft.canAddBonggolan,
-          onAdd: draft.addBonggolan,
+          onAdd: () => setState(draft.addBonggolan),
           child: Column(
             children: [
               for (var i = 0; i < draft.bonggolan.length; i++) ...[
@@ -218,7 +218,7 @@ class _SisaJenisEditorState extends State<SisaJenisEditor> {
           color: widget.accent,
           rowCount: draft.reject.length,
           canAdd: draft.canAddReject,
-          onAdd: draft.addReject,
+          onAdd: () => setState(draft.addReject),
           child: Column(
             children: [
               for (var i = 0; i < draft.reject.length; i++) ...[
