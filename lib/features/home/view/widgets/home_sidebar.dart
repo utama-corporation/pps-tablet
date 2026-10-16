@@ -80,6 +80,11 @@ class _HomeSidebarState extends State<HomeSidebar> {
           icon: Icons.cancel_outlined,
           route: '/label/reject',
         ),
+        _SubItem(
+          title: 'Bahan Pendukung',
+          icon: Icons.science_outlined,
+          route: '/label/bahan-pendukung',
+        ),
       ],
     ),
   ];

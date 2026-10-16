@@ -25,6 +25,9 @@ import 'package:pps_tablet/features/jenis_bonggolan/view_model/jenis_bonggolan_v
 import 'package:pps_tablet/features/label/bahan_baku/repository/bahan_baku_repository.dart';
 import 'package:pps_tablet/features/label/bahan_baku/view/bahan_baku_screen.dart';
 import 'package:pps_tablet/features/label/bahan_baku/view_model/bahan_baku_view_model.dart';
+import 'package:pps_tablet/features/label/bahan_pend_support/repository/bahan_pend_support_repository.dart';
+import 'package:pps_tablet/features/label/bahan_pend_support/view/bahan_pend_support_screen.dart';
+import 'package:pps_tablet/features/label/bahan_pend_support/view_model/bahan_pend_support_view_model.dart';
 import 'package:pps_tablet/features/label/bonggolan/repository/bonggolan_repository.dart';
 import 'package:pps_tablet/features/label/bonggolan/view/bonggolan_screen.dart';
 import 'package:pps_tablet/features/label/bonggolan/view_model/bonggolan_view_model.dart';
@@ -478,6 +481,14 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
+        // Label Bahan Pendukung — backend tidak punya endpoint create untuk BP.,
+        // jadi layar ini hanya list / print / delete.
+        ChangeNotifierProvider<BahanPendukungViewModel>(
+          create: (ctx) => BahanPendukungViewModel(
+            repository: BahanPendukungRepository(api: ctx.read<ApiClient>()),
+          ),
+        ),
+
         ChangeNotifierProvider<SortirRejectProductionViewModel>(
           create: (ctx) => SortirRejectProductionViewModel(
             repository: SortirRejectProductionRepository(
@@ -577,6 +588,8 @@ class MyApp extends StatelessWidget {
           '/production/crusher': (context) => CrusherProductionScreen(),
           '/label/packing': (context) => PackingScreen(),
           '/label/reject': (context) => RejectScreen(),
+          '/label/bahan-pendukung': (context) =>
+              const BahanPendukungScreen(),
           '/production/gilingan': (context) =>
               const GilinganProductionMesinScreen(),
           '/production/mixer': (context) => MixerProductionScreen(),

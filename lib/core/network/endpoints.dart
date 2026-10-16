@@ -406,6 +406,13 @@ class ApiConstants {
     final host = Uri.parse(baseUrl).host;
     return 'http://$host:7500/api/labels/bahan-pendukung/$idBahanPendukung/label';
   }
+
+  /// Base endpoint Label Bahan Pendukung. Query string (page, limit, search,
+  /// includeUsed) ditambahkan oleh repository.
+  static String get bahanPendukungLabels {
+    final host = Uri.parse(baseUrl).host;
+    return 'http://$host:7500/api/labels/bahan-pendukung';
+  }
 }
 
 

@@ -26,6 +26,7 @@ class LabelSelectionScreen extends StatelessWidget {
       'label_barangjadi:read',
     ); // <-- kamu punya packing:read (bukan label_packing)
     final canReadReject = perm.can('label_reject:read');
+    final canReadBahanPendukung = perm.can('label_bahanpendukung:read');
 
     return Scaffold(
       body: ListView(
@@ -142,6 +143,18 @@ class LabelSelectionScreen extends StatelessWidget {
             enabled: canReadReject,
             onTap: canReadReject
                 ? () => Navigator.pushNamed(context, '/label/reject')
+                : null,
+          ),
+
+          _buildLabelCard(
+            context,
+            title: 'Label Bahan Pendukung',
+            subtitle: 'Kelola label dari penerimaan bahan pendukung',
+            icon: Icons.label,
+            enabled: canReadBahanPendukung,
+            onTap: canReadBahanPendukung
+                ? () =>
+                      Navigator.pushNamed(context, '/label/bahan-pendukung')
                 : null,
           ),
         ],

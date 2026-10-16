@@ -13,6 +13,7 @@ import 'package:pps_tablet/features/home/view/widgets/account_info_dialog.dart';
 import 'package:pps_tablet/features/home/view/widgets/home_sidebar.dart';
 import 'package:pps_tablet/features/home/view/widgets/user_profile_dialog.dart';
 import 'package:pps_tablet/features/label/bahan_baku/view/bahan_baku_screen.dart';
+import 'package:pps_tablet/features/label/bahan_pend_support/view/bahan_pend_support_screen.dart';
 import 'package:pps_tablet/features/label/bonggolan/view/bonggolan_screen.dart';
 import 'package:pps_tablet/features/label/broker/view/broker_screen.dart';
 import 'package:pps_tablet/features/label/crusher/view/crusher_screen.dart';
@@ -552,6 +553,8 @@ class _AppShellState extends State<AppShell> {
         return PackingScreen();
       case '/label/reject':
         return RejectScreen();
+      case '/label/bahan-pendukung':
+        return BahanPendukungScreen();
       case '/production':
         return ProductionSelectionScreen();
       case '/production/washing':

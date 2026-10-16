@@ -61,6 +61,27 @@ class ApiException implements Exception {
     return message;
   }
 
+  /// `error.code` dari body JSON server, kalau ada.
+  ///
+  /// Beberapa modul backend memakai kode mesin untuk membedakan jenis kegagalan
+  /// pada status yang sama — mis. hapus Label Bahan Pendukung membalas 409
+  /// dengan `BP_ALREADY_USED` (sudah terpakai penuh) vs `BP_ALREADY_PARTIAL`
+  /// (sudah terpakai sebagian). Tanpa getter ini tiap modul harus parse
+  /// [responseBody] sendiri.
+  String? get errorCode {
+    final body = responseBody;
+    if (body == null || body.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      final err = decoded['error'];
+      if (err is Map && err['code'] != null) return err['code'].toString();
+      if (err is String && err.trim().isNotEmpty) return err.trim();
+      if (decoded['code'] != null) return decoded['code'].toString();
+    } catch (_) {}
+    return null;
+  }
+
   @override
   String toString() =>
       'ApiException($statusCode): $message ${responseBody ?? ''}';
