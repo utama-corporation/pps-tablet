@@ -9,6 +9,7 @@ import '../models/bb_item.dart';
 import '../models/broker_item.dart';
 import '../models/washing_item.dart';
 import '../models/gilingan_item.dart';
+import '../models/crusher_item.dart';
 import '../models/mixer_item.dart';
 import '../utils/format.dart';
 import 'weight_input_dialog.dart';
@@ -289,6 +290,7 @@ class _ProductionSakPickerDialogState
 
   static String _chipLabel(dynamic item) {
     if (item is GilinganItem) return item.noGilingan ?? '-';
+    if (item is CrusherItem) return item.noCrusher ?? '-';
     final sak = _sakOf(item);
     return sak != null ? 'Sak $sak' : '-';
   }
@@ -306,6 +308,7 @@ class _ProductionSakPickerDialogState
     if (item is BrokerItem) return item.berat;
     if (item is WashingItem) return item.berat;
     if (item is GilinganItem) return item.berat;
+    if (item is CrusherItem) return item.berat;
     if (item is MixerItem) return item.berat;
     return null;
   }
@@ -335,6 +338,7 @@ class _ProductionSakPickerDialogState
     if (item is BrokerItem) return item.noBroker ?? '-';
     if (item is WashingItem) return item.noWashing ?? '-';
     if (item is GilinganItem) return item.noGilingan ?? '-';
+    if (item is CrusherItem) return item.noCrusher ?? '-';
     if (item is MixerItem) return item.noMixer ?? '-';
     return '-';
   }
@@ -346,6 +350,7 @@ class _ProductionSakPickerDialogState
     if (item is BrokerItem) return item.namaJenis;
     if (item is WashingItem) return item.namaJenis;
     if (item is GilinganItem) return item.namaJenis;
+    if (item is CrusherItem) return item.namaJenis;
     if (item is MixerItem) return item.namaJenis;
     return null;
   }
@@ -364,6 +369,7 @@ class _ProductionSakPickerDialogState
     if (item is BrokerItem) return item.noBroker;
     if (item is WashingItem) return item.noWashing;
     if (item is GilinganItem) return item.noGilingan;
+    if (item is CrusherItem) return item.noCrusher;
     if (item is MixerItem) return item.noMixer;
     return null;
   }

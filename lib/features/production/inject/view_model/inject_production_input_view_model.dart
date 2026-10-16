@@ -29,6 +29,7 @@ class TempItemsByLabel {
   final List<MixerItem> mixerPartials;
   final List<GilinganItem> gilinganItems;
   final List<GilinganItem> gilinganPartials;
+  final List<CrusherItem> crusherItems;
   final List<FurnitureWipItem> furnitureWipItems;
   final List<FurnitureWipItem> furnitureWipPartials;
   final DateTime addedAt;
@@ -41,6 +42,7 @@ class TempItemsByLabel {
     this.mixerPartials = const [],
     this.gilinganItems = const [],
     this.gilinganPartials = const [],
+    this.crusherItems = const [],
     this.furnitureWipItems = const [],
     this.furnitureWipPartials = const [],
     DateTime? addedAt,
@@ -53,6 +55,7 @@ class TempItemsByLabel {
           mixerPartials.length +
           gilinganItems.length +
           gilinganPartials.length +
+          crusherItems.length +
           furnitureWipItems.length +
           furnitureWipPartials.length;
 
@@ -65,6 +68,7 @@ class TempItemsByLabel {
     ...mixerPartials,
     ...gilinganItems,
     ...gilinganPartials,
+    ...crusherItems,
     ...furnitureWipItems,
     ...furnitureWipPartials,
   ];
@@ -110,6 +114,9 @@ class InjectProductionInputViewModel extends ChangeNotifier {
           ? it.noGilinganPartial!
           : _nn(it.noGilingan);
     }
+    if (it is CrusherItem) {
+      return _nn(it.noCrusher);
+    }
     if (it is FurnitureWipItem) {
       return (it.noFurnitureWIPPartial ?? '').trim().isNotEmpty
           ? it.noFurnitureWIPPartial!
@@ -140,6 +147,9 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       return isPart
           ? '[GILINGAN•PART] $t • ${_kg(it.berat)}kg'
           : '[GILINGAN] $t • ${_kg(it.berat)}kg';
+    }
+    if (it is CrusherItem) {
+      return '[CRUSHER] $t • ${_kg(it.berat)}kg';
     }
     if (it is FurnitureWipItem) {
       final isPart = (it.noFurnitureWIPPartial ?? '').trim().isNotEmpty;
@@ -174,6 +184,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     _dumpList('tempMixerPartial', tempMixerPartial, _keyFromMixerItem);
     _dumpList('tempGilingan', tempGilingan, _keyFromGilinganItem);
     _dumpList('tempGilinganPartial', tempGilinganPartial, _keyFromGilinganItem);
+    _dumpList('tempCrusher', tempCrusher, _keyFromCrusherItem);
     _dumpList('tempFurnitureWip', tempFurnitureWip, _keyFromFurnitureWipItem);
     _dumpList('tempFurnitureWipPartial', tempFurnitureWipPartial, _keyFromFurnitureWipItem);
     _dumpList('tempCabinetMaterial', tempCabinetMaterial, _keyFromCabinetMaterialItem);
@@ -691,6 +702,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     if (t.mixerPartials.isNotEmpty) s.add('${t.mixerPartials.length} Mixer Partial');
     if (t.gilinganItems.isNotEmpty) s.add('${t.gilinganItems.length} Gilingan');
     if (t.gilinganPartials.isNotEmpty) s.add('${t.gilinganPartials.length} Gilingan Partial');
+    if (t.crusherItems.isNotEmpty) s.add('${t.crusherItems.length} Crusher');
     if (t.furnitureWipItems.isNotEmpty) s.add('${t.furnitureWipItems.length} FWIP');
     if (t.furnitureWipPartials.isNotEmpty) s.add('${t.furnitureWipPartials.length} FWIP Partial');
     return s.join(', ');
@@ -721,6 +733,9 @@ class InjectProductionInputViewModel extends ChangeNotifier {
         tempGilingan.remove(item);
         tempGilinganPartial.remove(item);
         _tempKeys.remove(_keyFromGilinganItem(item));
+      } else if (item is CrusherItem) {
+        tempCrusher.remove(item);
+        _tempKeys.remove(_keyFromCrusherItem(item));
       } else if (item is FurnitureWipItem) {
         tempFurnitureWip.remove(item);
         tempFurnitureWipPartial.remove(item);
@@ -741,10 +756,11 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     final mixerPart = tempMixerPartial.where((e) => _getItemLabelCode(e) == code).toList();
     final gilingFull = tempGilingan.where((e) => _getItemLabelCode(e) == code).toList();
     final gilingPart = tempGilinganPartial.where((e) => _getItemLabelCode(e) == code).toList();
+    final crusherFull = tempCrusher.where((e) => _getItemLabelCode(e) == code).toList();
     final fwipFull = tempFurnitureWip.where((e) => _getItemLabelCode(e) == code).toList();
     final fwipPart = tempFurnitureWipPartial.where((e) => _getItemLabelCode(e) == code).toList();
 
-    if ([brokerFull, brokerPart, mixerFull, mixerPart, gilingFull, gilingPart, fwipFull, fwipPart]
+    if ([brokerFull, brokerPart, mixerFull, mixerPart, gilingFull, gilingPart, crusherFull, fwipFull, fwipPart]
         .every((l) => l.isEmpty)) {
       _tempItemsByLabel.remove(code);
       return;
@@ -758,6 +774,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       mixerPartials: mixerPart,
       gilinganItems: gilingFull,
       gilinganPartials: gilingPart,
+      crusherItems: crusherFull,
       furnitureWipItems: fwipFull,
       furnitureWipPartials: fwipPart,
       addedAt: _tempItemsByLabel[code]?.addedAt ?? DateTime.now(),
@@ -780,6 +797,9 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       if (part.isNotEmpty) return part;
       return item.noGilingan;
     }
+    if (item is CrusherItem) {
+      return item.noCrusher;
+    }
     if (item is FurnitureWipItem) {
       final part = (item.noFurnitureWIPPartial ?? '').trim();
       if (part.isNotEmpty) return part;
@@ -797,6 +817,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
   final List<MixerItem> tempMixerPartial = [];
   final List<GilinganItem> tempGilingan = [];
   final List<GilinganItem> tempGilinganPartial = [];
+  final List<CrusherItem> tempCrusher = [];
   final List<FurnitureWipItem> tempFurnitureWip = [];
   final List<FurnitureWipItem> tempFurnitureWipPartial = [];
   final List<CabinetMaterialItem> tempCabinetMaterial = [];
@@ -824,6 +845,8 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       'M|Mixer|${i.noMixer ?? '-'}|${i.noSak ?? 0}';
   String _keyFromGilinganItem(GilinganItem i) =>
       'G|Gilingan|${i.noGilingan ?? '-'}|';
+  String _keyFromCrusherItem(CrusherItem i) =>
+      'F|Crusher|${i.noCrusher ?? '-'}|';
   String _keyFromFurnitureWipItem(FurnitureWipItem i) =>
       'F|FurnitureWIP|${i.noFurnitureWIP ?? '-'}|';
   String _keyFromCabinetMaterialItem(CabinetMaterialItem i) =>
@@ -837,6 +860,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       for (final x in db.broker) keys.add(_keyFromBrokerItem(x));
       for (final x in db.mixer) keys.add(_keyFromMixerItem(x));
       for (final x in db.gilingan) keys.add(_keyFromGilinganItem(x));
+      for (final x in db.crusher) keys.add(_keyFromCrusherItem(x));
       for (final x in db.furnitureWip) keys.add(_keyFromFurnitureWipItem(x));
     }
     return keys;
@@ -1068,6 +1092,10 @@ class InjectProductionInputViewModel extends ChangeNotifier {
           tempGilingan.add(newItem);
         }
         itemAdded = true;
+      } else if (newItem is CrusherItem) {
+        // Crusher tidak mendukung partial — selalu full.
+        tempCrusher.add(newItem);
+        itemAdded = true;
       } else if (newItem is FurnitureWipItem) {
         if (newItem.isPartialRow) {
           tempFurnitureWipPartial.add(newItem);
@@ -1106,6 +1134,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     if (item is BrokerItem) return _keyFromBrokerItem(item);
     if (item is MixerItem) return _keyFromMixerItem(item);
     if (item is GilinganItem) return _keyFromGilinganItem(item);
+    if (item is CrusherItem) return _keyFromCrusherItem(item);
     if (item is FurnitureWipItem) return _keyFromFurnitureWipItem(item);
     return '';
   }
@@ -1148,6 +1177,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     if (item is BrokerItem) return item.berat;
     if (item is MixerItem) return item.berat;
     if (item is GilinganItem) return item.berat;
+    if (item is CrusherItem) return item.berat;
     if (item is FurnitureWipItem) return item.berat;
     return null;
   }
@@ -1183,6 +1213,15 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     final code = _getItemLabelCode(item);
     if (code != null) _updateTempItemsByLabel(code);
     debugDumpTempLists(tag: 'after deleteTempGilinganItem');
+    notifyListeners();
+  }
+
+  void deleteTempCrusherItem(CrusherItem item) {
+    tempCrusher.remove(item);
+    _tempKeys.remove(_keyFromCrusherItem(item));
+    final code = _getItemLabelCode(item);
+    if (code != null) _updateTempItemsByLabel(code);
+    debugDumpTempLists(tag: 'after deleteTempCrusherItem');
     notifyListeners();
   }
 
@@ -1223,6 +1262,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     tempMixerPartial.clear();
     tempGilingan.clear();
     tempGilinganPartial.clear();
+    tempCrusher.clear();
     tempFurnitureWip.clear();
     tempFurnitureWipPartial.clear();
     tempCabinetMaterial.clear();
@@ -1254,6 +1294,9 @@ class InjectProductionInputViewModel extends ChangeNotifier {
     } else if (item is GilinganItem) {
       ok = tempGilingan.remove(item) || tempGilinganPartial.remove(item);
       if (ok) _tempKeys.remove(_keyFromGilinganItem(item));
+    } else if (item is CrusherItem) {
+      ok = tempCrusher.remove(item);
+      if (ok) _tempKeys.remove(_keyFromCrusherItem(item));
     } else if (item is FurnitureWipItem) {
       ok = tempFurnitureWip.remove(item) || tempFurnitureWipPartial.remove(item);
       if (ok) _tempKeys.remove(_keyFromFurnitureWipItem(item));
@@ -1356,6 +1399,7 @@ class InjectProductionInputViewModel extends ChangeNotifier {
           tempMixerPartial.length +
           tempGilingan.length +
           tempGilinganPartial.length +
+          tempCrusher.length +
           tempFurnitureWip.length +
           tempFurnitureWipPartial.length +
           tempCabinetMaterial.length;
@@ -1395,6 +1439,14 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       payload['gilingan'] = tempGilingan
           .map((e) => {
         'noGilingan': e.noGilingan,
+      })
+          .toList();
+    }
+
+    if (tempCrusher.isNotEmpty) {
+      payload['crusher'] = tempCrusher
+          .map((e) => {
+        'noCrusher': e.noCrusher,
       })
           .toList();
     }
@@ -1555,6 +1607,7 @@ if (tempCabinetMaterial.isNotEmpty) {
     if (tempMixerPartial.isNotEmpty) parts.add('${tempMixerPartial.length} Mixer Partial');
     if (tempGilingan.isNotEmpty) parts.add('${tempGilingan.length} Gilingan');
     if (tempGilinganPartial.isNotEmpty) parts.add('${tempGilinganPartial.length} Gilingan Partial');
+    if (tempCrusher.isNotEmpty) parts.add('${tempCrusher.length} Crusher');
     if (tempFurnitureWip.isNotEmpty) parts.add('${tempFurnitureWip.length} FWIP');
     if (tempFurnitureWipPartial.isNotEmpty) parts.add('${tempFurnitureWipPartial.length} FWIP Partial');
     if (tempCabinetMaterial.isNotEmpty) parts.add('${tempCabinetMaterial.length} Cabinet Material');
@@ -1620,6 +1673,8 @@ if (tempCabinetMaterial.isNotEmpty) {
         } else {
           add('gilingan', {'noGilingan': it.noGilingan});
         }
+      } else if (it is CrusherItem) {
+        add('crusher', {'noCrusher': it.noCrusher});
       } else if (it is FurnitureWipItem) {
         final isPart = it.isPartialRow ||
             ((it.noFurnitureWIPPartial ?? '').trim().isNotEmpty);

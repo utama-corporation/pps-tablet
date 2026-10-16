@@ -3,6 +3,7 @@
 import '../../shared/models/broker_item.dart';
 import '../../shared/models/mixer_item.dart';
 import '../../shared/models/gilingan_item.dart';
+import '../../shared/models/crusher_item.dart';
 import '../../shared/models/furniture_wip_item.dart';
 import '../../shared/models/cabinet_material_item.dart';
 import '../../../../core/utils/model_helpers.dart';
@@ -11,6 +12,7 @@ import '../../../../core/utils/model_helpers.dart';
 export '../../shared/models/broker_item.dart';
 export '../../shared/models/mixer_item.dart';
 export '../../shared/models/gilingan_item.dart';
+export '../../shared/models/crusher_item.dart';
 export '../../shared/models/furniture_wip_item.dart';
 export '../../shared/models/cabinet_material_item.dart';
 
@@ -20,6 +22,7 @@ class InjectProductionInputs {
   final List<BrokerItem> broker;
   final List<MixerItem> mixer;
   final List<GilinganItem> gilingan;
+  final List<CrusherItem> crusher;
   final List<FurnitureWipItem> furnitureWip;
   final List<CabinetMaterialItem> cabinetMaterial;
 
@@ -29,6 +32,7 @@ class InjectProductionInputs {
     required this.broker,
     required this.mixer,
     required this.gilingan,
+    required this.crusher,
     required this.furnitureWip,
     required this.cabinetMaterial,
     required this.summary,
@@ -51,6 +55,7 @@ class InjectProductionInputs {
       broker: _listOf(j['broker'], (m) => BrokerItem.fromJson(m)),
       mixer: _listOf(j['mixer'], (m) => MixerItem.fromJson(m)),
       gilingan: _listOf(j['gilingan'], (m) => GilinganItem.fromJson(m)),
+      crusher: _listOf(j['crusher'], (m) => CrusherItem.fromJson(m)),
       furnitureWip: _listOf(
         j['furnitureWip'],
         (m) => FurnitureWipItem.fromJson(m),
@@ -72,6 +77,9 @@ class InjectProductionInputs {
   double totalBeratGilingan() =>
       gilingan.fold(0.0, (s, it) => s + (it.berat ?? 0));
 
+  double totalBeratCrusher() =>
+      crusher.fold(0.0, (s, it) => s + (it.berat ?? 0));
+
   double totalBeratFurnitureWip() =>
       furnitureWip.fold(0.0, (s, it) => s + (it.berat ?? 0));
 
@@ -85,11 +93,12 @@ class InjectProductionInputs {
 
   // ============ GRAND TOTALS ============
 
-  /// Total berat semua input (Broker + Mixer + Gilingan + FurnitureWIP)
+  /// Total berat semua input (Broker + Mixer + Gilingan + Crusher + FurnitureWIP)
   double totalBerat() =>
       totalBeratBroker() +
       totalBeratMixer() +
       totalBeratGilingan() +
+      totalBeratCrusher() +
       totalBeratFurnitureWip();
 
   /// Total items count (all categories)
@@ -97,6 +106,7 @@ class InjectProductionInputs {
       broker.length +
       mixer.length +
       gilingan.length +
+      crusher.length +
       furnitureWip.length +
       cabinetMaterial.length;
 
@@ -106,6 +116,7 @@ class InjectProductionInputs {
       broker.isEmpty &&
       mixer.isEmpty &&
       gilingan.isEmpty &&
+      crusher.isEmpty &&
       furnitureWip.isEmpty &&
       cabinetMaterial.isEmpty;
 
@@ -117,6 +128,7 @@ class InjectProductionInputs {
     List<BrokerItem>? broker,
     List<MixerItem>? mixer,
     List<GilinganItem>? gilingan,
+    List<CrusherItem>? crusher,
     List<FurnitureWipItem>? furnitureWip,
     List<CabinetMaterialItem>? cabinetMaterial,
     Map<String, int>? summary,
@@ -125,6 +137,7 @@ class InjectProductionInputs {
       broker: broker ?? this.broker,
       mixer: mixer ?? this.mixer,
       gilingan: gilingan ?? this.gilingan,
+      crusher: crusher ?? this.crusher,
       furnitureWip: furnitureWip ?? this.furnitureWip,
       cabinetMaterial: cabinetMaterial ?? this.cabinetMaterial,
       summary: summary ?? this.summary,
@@ -138,6 +151,7 @@ class InjectProductionInputs {
       broker: [],
       mixer: [],
       gilingan: [],
+      crusher: [],
       furnitureWip: [],
       cabinetMaterial: [],
       summary: {},
@@ -149,6 +163,7 @@ class InjectProductionInputs {
   int countBroker() => summary['broker'] ?? broker.length;
   int countMixer() => summary['mixer'] ?? mixer.length;
   int countGilingan() => summary['gilingan'] ?? gilingan.length;
+  int countCrusher() => summary['crusher'] ?? crusher.length;
   int countFurnitureWip() => summary['furnitureWip'] ?? furnitureWip.length;
   int countCabinetMaterial() =>
       summary['cabinetMaterial'] ?? cabinetMaterial.length;
@@ -173,6 +188,9 @@ class InjectProductionInputs {
   List<GilinganItem> get partialGilingan =>
       gilingan.where((it) => it.isPartialRow).toList();
 
+  // Crusher (selalu full, tidak mendukung partial)
+  List<CrusherItem> get fullCrusher => crusher;
+
   // FurnitureWIP
   List<FurnitureWipItem> get fullFurnitureWip =>
       furnitureWip.where((it) => !it.isPartialRow).toList();
@@ -185,6 +203,7 @@ class InjectProductionInputs {
       fullBroker.length +
       fullMixer.length +
       fullGilingan.length +
+      fullCrusher.length +
       fullFurnitureWip.length +
       cabinetMaterial.length; // material tidak ada partial
 
@@ -201,6 +220,7 @@ class InjectProductionInputs {
     'Broker': broker,
     'Mixer': mixer,
     'Gilingan': gilingan,
+    'Crusher': crusher,
     'Furniture WIP': furnitureWip,
     'Cabinet Material': cabinetMaterial,
   };

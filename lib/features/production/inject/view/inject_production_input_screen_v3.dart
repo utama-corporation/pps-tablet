@@ -14,6 +14,7 @@ import '../../../../core/view_model/permission_view_model.dart';
 import '../../shared/models/production_label_lookup_result.dart';
 import '../../shared/models/bahan_pendukung_item.dart';
 import '../../shared/widgets/confirm_save_temp_dialog.dart';
+import '../../shared/widgets/partial_mode_not_supported_dialog.dart';
 import '../../shared/widgets/save_button_with_badge.dart';
 import '../../shared/widgets/unsaved_temp_warning_dialog.dart';
 import '../model/inject_batch_model.dart';
@@ -1455,7 +1456,7 @@ class _InjectProductionInputScreenState
     await showDialog<void>(
       context: context,
       builder: (_) => ProductionScanLabelDialog(
-        manualHint: 'BB. / D. / H. / V. / BP.',
+        manualHint: 'BB. / D. / H. / V. / F. / BP.',
         headerAction: _buildScanModeToggle(),
         primaryColor: _kInjectPrimary,
         formulaOutputs: formulaOutputs,
@@ -1466,7 +1467,7 @@ class _InjectProductionInputScreenState
 
   // Prefix label yang valid untuk proses Inject (sesuai validasi server).
   static const List<String> _validInjectPrefixes =
-      ['BB.', 'D.', 'H.', 'V.', 'BP.'];
+      ['BB.', 'D.', 'H.', 'V.', 'F.', 'BP.'];
 
   Future<String?> _onCodeReady(String code) async {
     // Validasi prefix di sisi klien agar pesan jelas (server balas 500 untuk
@@ -1478,7 +1479,7 @@ class _InjectProductionInputScreenState
           : normalized;
       return 'Prefix "$prefix" tidak diizinkan. '
           'Label valid: BB. (Furniture WIP), D. (Broker), H. (Mixer), '
-          'V. (Gilingan), BP. (Bahan Pendukung).';
+          'V. (Gilingan), F. (Crusher), BP. (Bahan Pendukung).';
     }
 
     final vm = context.read<InjectProductionInputViewModel>();
@@ -1532,6 +1533,20 @@ class _InjectProductionInputScreenState
 
     if (res.prefixType == PrefixType.furnitureWip) {
       await _handleFwipPcsFlow(vm, res);
+    } else if (res.prefixType == PrefixType.crusher) {
+      // Crusher (F.) tidak mendukung mode PARTIAL — hanya FULL, dan tidak ada
+      // sak per item sehingga langsung commit tanpa dialog (sama seperti
+      // proses Gilingan/Broker untuk prefix full-only).
+      if (_isPartialMode) {
+        await PartialModeNotSupportedDialog.show(
+          context: context,
+          labelType: res.prefixType.displayName,
+          onOk: () {},
+        );
+        return 'Crusher tidak mendukung mode PARTIAL';
+      }
+      _switchToInputTab('crusher');
+      _autoCommitFullOnly(vm, res);
     } else {
       // Kategori ber-sak (Mixer H., Broker D., Gilingan V.) memakai dialog
       // pilih sak — sama seperti inject v1..operator bisa memilih mode FULL
@@ -1547,6 +1562,36 @@ class _InjectProductionInputScreenState
       );
     }
     return null;
+  }
+
+  /// Pindah tab input setelah scan label (dipakai untuk prefix crusher).
+  void _switchToInputTab(String tab) {
+    if (_selectedInputTab == tab) return;
+    setState(() {
+      _selectedInputTab = tab;
+      _isSelecting = false;
+      _selectedGroups.clear();
+    });
+  }
+
+  /// Commit langsung untuk prefix full-only (Crusher): tidak ada dialog pilih
+  /// sak maupun input berat, berat label dipakai apa adanya.
+  void _autoCommitFullOnly(
+    InjectProductionInputViewModel vm,
+    ProductionLabelLookupResult res,
+  ) {
+    if (res.data.isEmpty) return;
+    final row = res.data.first;
+    vm.clearPicks();
+    vm.togglePick(row);
+    final r = vm.commitPickedToTemp(noProduksi: widget.noProduksi);
+    if (!mounted) return;
+    _showSnack(
+      r.added > 0
+          ? '✅ ${res.prefixType.displayName} ditambahkan'
+          : 'Gagal menambahkan atau sudah ada',
+      backgroundColor: r.added > 0 ? Colors.green : Colors.orange,
+    );
   }
 
   /// Bahan Pendukung: tanya jumlah per label (default seluruh sisa). Mendukung
@@ -1704,6 +1749,8 @@ class _InjectProductionInputScreenState
     return part.isNotEmpty ? part : (e.noGilingan ?? '-');
   }
 
+  String _crusherTitleKey(CrusherItem e) => e.noCrusher ?? '-';
+
   // ── Multi-select input (keluarkan label dari proses) ───────────────────────
 
   void _startSelecting(String key, List<dynamic> items) {
@@ -1774,6 +1821,7 @@ class _InjectProductionInputScreenState
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<MixerItem>> mixerGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
   }) {
     switch (_selectedInputTab) {
       case 'fwip':
@@ -1784,6 +1832,8 @@ class _InjectProductionInputScreenState
         return {for (final e in mixerGroups.entries) e.key: e.value};
       case 'gilingan':
         return {for (final e in gilinganGroups.entries) e.key: e.value};
+      case 'crusher':
+        return {for (final e in crusherGroups.entries) e.key: e.value};
       default:
         return const {};
     }
@@ -1820,6 +1870,7 @@ class _InjectProductionInputScreenState
     'broker',
     'mixer',
     'gilingan',
+    'crusher',
     'material',
   ];
 
@@ -1839,6 +1890,7 @@ class _InjectProductionInputScreenState
         if (k.contains('broker')) tabs.add('broker');
         if (k.contains('mixer')) tabs.add('mixer');
         if (k.contains('gilingan')) tabs.add('gilingan');
+        if (k.contains('crusher')) tabs.add('crusher');
         if (k.contains('material') ||
             k.contains('kabinet') ||
             k.contains('cabinet') ||
@@ -1870,6 +1922,8 @@ class _InjectProductionInputScreenState
           tab = 'mixer';
         } else if (k.contains('gilingan')) {
           tab = 'gilingan';
+        } else if (k.contains('crusher')) {
+          tab = 'crusher';
         } else if (k.contains('material') ||
             k.contains('kabinet') ||
             k.contains('cabinet') ||
@@ -1895,6 +1949,8 @@ class _InjectProductionInputScreenState
         return 'mixer';
       case PrefixType.gilingan:
         return 'gilingan';
+      case PrefixType.crusher:
+        return 'crusher';
       default:
         return null;
     }
@@ -1912,6 +1968,7 @@ class _InjectProductionInputScreenState
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<MixerItem>> mixerGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
     required List<CabinetMaterialItem> materialAll,
     required Set<int> tempMaterialIds,
   }) {
@@ -1948,6 +2005,12 @@ class _InjectProductionInputScreenState
         gilinganBerat += i.berat ?? 0;
       }
     }
+    double crusherBerat = 0;
+    for (final items in crusherGroups.values) {
+      for (final i in items) {
+        crusherBerat += i.berat ?? 0;
+      }
+    }
     final materialCount = materialAll.length;
     final materialQty =
         materialAll.fold<num>(0, (sum, it) => sum + (it.Jumlah ?? 0));
@@ -1958,9 +2021,11 @@ class _InjectProductionInputScreenState
         brokerGroups.length +
         mixerGroups.length +
         gilinganGroups.length +
+        crusherGroups.length +
         materialCount;
     final grandSak = brokerSak + mixerSak + materialQty;
-    final grandBerat = fwipBerat + brokerBerat + mixerBerat + gilinganBerat;
+    final grandBerat =
+        fwipBerat + brokerBerat + mixerBerat + gilinganBerat + crusherBerat;
 
     // ── active-tab summary ─────────────────────────────────────────
     SectionSummary activeTabSummary() {
@@ -1989,6 +2054,12 @@ class _InjectProductionInputScreenState
             totalSak: 0,
             totalBerat: gilinganBerat,
           );
+        case 'crusher':
+          return SectionSummary(
+            totalData: crusherGroups.length,
+            totalSak: 0,
+            totalBerat: crusherBerat,
+          );
         case 'material':
           return SectionSummary(
             totalData: materialCount,
@@ -2005,6 +2076,7 @@ class _InjectProductionInputScreenState
       'broker': brokerGroups.length,
       'mixer': mixerGroups.length,
       'gilingan': gilinganGroups.length,
+      'crusher': crusherGroups.length,
       'material': materialCount,
     };
 
@@ -2080,6 +2152,12 @@ class _InjectProductionInputScreenState
                           label: 'Gilingan',
                           count: tabCounts['gilingan'] ?? 0,
                         ),
+                      if (tabVisible('crusher'))
+                        ProductionTabItem(
+                          value: 'crusher',
+                          label: 'Crusher',
+                          count: tabCounts['crusher'] ?? 0,
+                        ),
                       if (tabVisible('material'))
                         ProductionTabItem(
                           value: 'material',
@@ -2115,7 +2193,8 @@ class _InjectProductionInputScreenState
                                   fwipGroups: fwipGroups,
                                   brokerGroups: brokerGroups,
                                   mixerGroups: mixerGroups,
-                                  gilinganGroups: gilinganGroups,
+gilinganGroups: gilinganGroups,
+                                  crusherGroups: crusherGroups,
                                   materialAll: materialAll,
                                   tempMaterialIds: tempMaterialIds,
                                   constraints: c,
@@ -2132,6 +2211,7 @@ class _InjectProductionInputScreenState
                                 brokerGroups: brokerGroups,
                                 mixerGroups: mixerGroups,
                                 gilinganGroups: gilinganGroups,
+                                crusherGroups: crusherGroups,
                               ),
                             )
                           else
@@ -2211,6 +2291,7 @@ class _InjectProductionInputScreenState
     required Map<String, List<BrokerItem>> brokerGroups,
     required Map<String, List<MixerItem>> mixerGroups,
     required Map<String, List<GilinganItem>> gilinganGroups,
+    required Map<String, List<CrusherItem>> crusherGroups,
     required List<CabinetMaterialItem> materialAll,
     required Set<int> tempMaterialIds,
     required BoxConstraints constraints,
@@ -2332,6 +2413,41 @@ class _InjectProductionInputScreenState
                 isTemp: isTemp,
                 isPartial: item.isPartialRow,
                 onDelete: isTemp ? () => vm.deleteTempGilinganItem(item) : null,
+              );
+            }).toList(),
+          ),
+        );
+      case 'crusher':
+        return _buildLabelGroupTab<CrusherItem>(
+          groups: crusherGroups,
+          emptyMessage: 'Belum ada label Crusher',
+          constraints: constraints,
+          tileBuilder: (key, items) => ProductionInputGroupTile(
+            title: (items.isNotEmpty ? items.first.namaJenis : '-') ?? '-',
+            headerSubtitle: key,
+            tileMetrics: [
+              (
+                Icons.scale_outlined,
+                '${items.fold<double>(0, (s, i) => s + (i.berat ?? 0)).toStringAsFixed(1)} kg',
+              ),
+            ],
+            color: _kInjectPrimary,
+            isTemp: vm.hasTemporaryDataForLabel(key),
+            expandable: true,
+            isPartialGroup: false,
+            isSelected: _selectedGroups.containsKey(key),
+            onTap: _isSelecting ? () => _toggleSelection(key, items) : null,
+            onLongPress: _isSelecting
+                ? null
+                : () => _deleteInputGroup(vm, key, items),
+            detailsBuilder: () => [],
+            chipItemsBuilder: () => items.map((item) {
+              final isTemp = vm.tempCrusher.contains(item);
+              return ProductionSakChip(
+                label: item.noCrusher ?? '-',
+                berat: item.berat,
+                isTemp: isTemp,
+                onDelete: isTemp ? () => vm.deleteTempCrusherItem(item) : null,
               );
             }).toList(),
           ),
@@ -3425,6 +3541,12 @@ class _InjectProductionInputScreenState
                               ...vm.tempGilinganPartial.reversed,
                               ...?inputs?.gilingan,
                             ];
+                      final crusherAll = loading
+                          ? <CrusherItem>[]
+                          : [
+                              ...vm.tempCrusher.reversed,
+                              ...?inputs?.crusher,
+                            ];
                       final tempMat = vm.tempCabinetMaterial;
                       final dbMat =
                           inputs?.cabinetMaterial ??
@@ -3445,6 +3567,10 @@ class _InjectProductionInputScreenState
                         gilinganAll,
                         _gilinganTitleKey,
                       );
+                      final crusherGroups = _groupBy(
+                        crusherAll,
+                        _crusherTitleKey,
+                      );
 
                       final outputPanel = Expanded(child: _buildOutputPanel());
                       final inputPanel = Expanded(
@@ -3457,7 +3583,8 @@ class _InjectProductionInputScreenState
                           fwipGroups: fwipGroups,
                           brokerGroups: brokerGroups,
                           mixerGroups: mixerGroups,
-                          gilinganGroups: gilinganGroups,
+gilinganGroups: gilinganGroups,
+                          crusherGroups: crusherGroups,
                           materialAll: materialAll,
                           tempMaterialIds: tempMaterialIds,
                         ),
