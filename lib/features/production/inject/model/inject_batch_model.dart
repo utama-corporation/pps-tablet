@@ -109,6 +109,10 @@ class InjectBatchLabelItem {
     final code =
         (j['noFurnitureWIP'] ??
                 j['noBarangJadi'] ??
+                // `GET /batch` backend mengirim key `noBJ` (bukan `noBarangJadi`)
+                // — tanpa ini label barang jadi parse jadi kode kosong lalu
+                // dibuang dari header bucket & daftar cetak.
+                j['noBJ'] ??
                 j['noBonggolan'] ??
                 j['noReject'] ??
                 j['code'] ??
