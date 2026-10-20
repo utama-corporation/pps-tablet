@@ -787,13 +787,13 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             oldestDateOf: (item) => item.dateCreateTertua,
           )
         ];
-      case StockProsesKey.barangJadiMoore:
+      case StockProsesKey.barangJadiMore:
         final repo = PackingProduksiRepository();
         return [
           _TypedStockSource<PackingStokItem, PackingStokLabel>(
-            label: 'Packing Produksi Moore',
-            fetchStok: () => repo.fetchStok(type: 'MOORE'),
-            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'MOORE'),
+            label: 'Packing Produksi More',
+            fetchStok: () => repo.fetchStok(type: 'MORE'),
+            fetchLabel: (item) => repo.fetchLabel(item.idBJ, type: 'MORE'),
             labelSisaOf: (PackingStokItem item) => item.labelSisa,
             sakColumnLabel: 'Pcs',
             showBeratColumn: false,

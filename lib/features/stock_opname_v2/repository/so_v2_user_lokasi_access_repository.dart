@@ -42,7 +42,7 @@ class SoV2UserLokasiAccessRepository {
     required String stockOpnameNo,
   }) async {
     await _api.deleteJson(
-      '/api/stock-opname-v2/lokasi-access/$stockOpnameNo/$blok/$idLokasi/$idUsername',
+      '/api/stock-opname-v2/lokasi-access/${Uri.encodeComponent(stockOpnameNo)}/${Uri.encodeComponent(blok)}/$idLokasi/$idUsername',
     );
   }
 }

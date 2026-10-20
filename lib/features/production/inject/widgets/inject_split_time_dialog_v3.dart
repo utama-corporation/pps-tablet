@@ -175,17 +175,6 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
     );
   }
 
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  /// True kalau tanggal hasil resolusi berbeda dari tglProduksi — artinya
-  /// split terjadi di tanggal berikutnya (shift lewat tengah malam).
-  bool get _crossesMidnight {
-    final resolved = _resolveSplitAt(_hourCtrl.text);
-    if (resolved == null) return false;
-    return !_sameDay(resolved, widget.tglProduksi);
-  }
-
   /// Jam split hasil resolusi, untuk ditampilkan ke operator.
   DateTime? get _resolvedSplitAt => _resolveSplitAt(_hourCtrl.text);
 
@@ -878,21 +867,17 @@ class _InjectSplitTimeDialogV3State extends State<InjectSplitTimeDialogV3> {
                                             ),
                                           ),
                                         ),
-                                        if (_resolvedSplitAt != null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 3),
-                                            child: Text(
-                                              '${_formatTanggal(_resolvedSplitAt!)}'
-                                              '${_crossesMidnight ? ' · keesokan hari' : ''}',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                                color: _crossesMidnight
-                                                    ? const Color(0xFFB45309)
-                                                    : accent.withValues(alpha: 0.7),
-                                              ),
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 3),
+                                          child: Text(
+                                            _formatTanggal(widget.tglProduksi),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: accent.withValues(alpha: 0.7),
                                             ),
                                           ),
+                                        ),
                                       ],
                                     ),
                                   ),

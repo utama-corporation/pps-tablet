@@ -24,7 +24,7 @@ enum StockProsesKey {
   barangJadiHana,
   barangJadiModelux,
   barangJadiMerona,
-  barangJadiMoore,
+  barangJadiMore,
   barangJadiSekar,
   barangJadiKursi,
   barangJadiEnamel,

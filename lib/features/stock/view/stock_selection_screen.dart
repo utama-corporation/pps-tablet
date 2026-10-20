@@ -56,7 +56,7 @@ final Map<_StockProsesTitle, List<_StockProsesDef>> _dashboardInventoryData = {
     const _StockProsesDef(key: StockProsesKey.barangJadiHana, title: 'Hana', icon: Icons.view_in_ar),
     const _StockProsesDef(key: StockProsesKey.barangJadiModelux, title: 'Modelux', icon: Icons.weekend_outlined),
     const _StockProsesDef(key: StockProsesKey.barangJadiMerona, title: 'Merona', icon: Icons.chair_alt_outlined),
-    const _StockProsesDef(key: StockProsesKey.barangJadiMoore, title: 'Moore', icon: Icons.inventory_rounded),
+    const _StockProsesDef(key: StockProsesKey.barangJadiMore, title: 'More', icon: Icons.inventory_rounded),
     const _StockProsesDef(key: StockProsesKey.barangJadiSekar, title: 'Sekar', icon: Icons.dining),
     //const _StockProsesDef(key: StockProsesKey.barangJadiKursi, title: 'Kursi', icon: Icons.chair),
     //const _StockProsesDef(key: StockProsesKey.barangJadiEnamel, title: 'Enamel', icon: Icons.fact_check_outlined),

@@ -126,8 +126,8 @@ Future<StockProsesTotals> fetchStockProsesTotals(StockProsesKey key) async {
     case StockProsesKey.barangJadiMerona:
       final items = await PackingProduksiRepository().fetchStok(type: 'MERONA');
       return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
-    case StockProsesKey.barangJadiMoore:
-      final items = await PackingProduksiRepository().fetchStok(type: 'MOORE');
+    case StockProsesKey.barangJadiMore:
+      final items = await PackingProduksiRepository().fetchStok(type: 'MORE');
       return _sumPcs(items, (i) => i.labelSisa, (i) => i.pcsSisa);
     case StockProsesKey.barangJadiSekar:
       final items = await PackingProduksiRepository().fetchStok(type: 'SEKAR');

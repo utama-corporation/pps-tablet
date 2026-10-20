@@ -129,7 +129,7 @@ class SoV2Repository {
     required String blok,
   }) async {
     final body = await _api.getJson(
-      '/api/stock-opname-v2/transaksi/$stockOpnameNo/blok/$blok/lokasi',
+      '/api/stock-opname-v2/transaksi/${Uri.encodeComponent(stockOpnameNo)}/blok/${Uri.encodeComponent(blok)}/lokasi',
     );
     final data = body['data'] as Map<String, dynamic>?;
     if (data == null) throw Exception('Response tidak mengandung data');
@@ -151,7 +151,7 @@ class SoV2Repository {
     };
     try {
       final body = await _api.getJson(
-        '/api/stock-opname-v2/transaksi/$stockOpnameNo/blok/$blok/lokasi/$locationId/label',
+        '/api/stock-opname-v2/transaksi/${Uri.encodeComponent(stockOpnameNo)}/blok/${Uri.encodeComponent(blok)}/lokasi/$locationId/label',
         query: qp,
       );
       final data = body['data'] as Map<String, dynamic>?;
