@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'dart:typed_data';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/endpoints.dart';
 import '../../../core/network/report_endpoints.dart';
 import '../model/report_item.dart';
 import '../service/report_pdf_service.dart';
@@ -97,6 +98,29 @@ class ReportListViewModel extends ChangeNotifier {
         uri = ReportEndpoints.ppsApiPdf(item.ppsApiPath!, reportDate);
         debugPrint('[REPORT] URL => $uri');
         return await _apiClient.getPdfBytes(uri, timeout: pdfTimeout);
+      } else if (item.source == ReportSource.baseApi) {
+        assert(
+          item.baseApiPath != null,
+          'baseApiPath wajib diisi untuk ReportSource.baseApi',
+        );
+        final dateFormat = DateFormat(item.baseApiDateFormat);
+        final path = item.baseApiPath!;
+        // Endpoint laporan backend selalu baca rentang tanggal:
+        //   tglAwal  -> StartDate  (mutasi/stok/umur/produksi)
+        //   tglAkhir -> EndDate / PerTgl (rekap)
+        // Untuk laporan single date, start == end jadi keduanya sama.
+        final query = <String, dynamic>{
+          item.baseApiStartDateParam: dateFormat.format(startDate),
+          item.baseApiEndDateParam: dateFormat.format(endDate),
+        };
+        debugPrint(
+          '[REPORT] URL => ${ApiConstants.baseUrl}$path?$query',
+        );
+        return await _apiClient.getPdfBytesForPath(
+          path,
+          query: query,
+          timeout: pdfTimeout,
+        );
       } else {
         uri = _buildCrystalUri(item.reportName, startDate, endDate);
         debugPrint('[REPORT] URL => $uri');
