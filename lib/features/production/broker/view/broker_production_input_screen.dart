@@ -1501,6 +1501,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                             : entry.key)
                       : entry.key;
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis
@@ -1610,6 +1611,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                         )
                       : entry.key;
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis
@@ -1704,6 +1706,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                 ),
                 children: washingGroups.entries.map((entry) {
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis
@@ -1783,6 +1786,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                 ),
                 children: crusherGroups.entries.map((entry) {
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis
@@ -1874,6 +1878,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                             : entry.key)
                       : entry.key;
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis
@@ -1984,6 +1989,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                             : entry.key)
                       : entry.key;
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis
@@ -2087,6 +2093,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                             : entry.key)
                       : entry.key;
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis

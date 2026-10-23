@@ -1626,6 +1626,7 @@ totalData: gilinganGroups.length,
           emptyMessage: 'Belum ada label Broker',
           constraints: constraints,
           tileBuilder: (key, items) => ProductionInputGroupTile(
+            listenable: vm,
             title: (items.isNotEmpty ? items.first.namaJenis : '-') ?? '-',
             headerSubtitle: key,
             tileMetrics: [
@@ -1665,6 +1666,7 @@ totalData: gilinganGroups.length,
           emptyMessage: 'Belum ada label Mixer',
           constraints: constraints,
           tileBuilder: (key, items) => ProductionInputGroupTile(
+            listenable: vm,
             title: (items.isNotEmpty ? items.first.namaJenis : '-') ?? '-',
             headerSubtitle: key,
             tileMetrics: [
@@ -1704,6 +1706,7 @@ totalData: gilinganGroups.length,
           emptyMessage: 'Belum ada label Gilingan',
           constraints: constraints,
           tileBuilder: (key, items) => ProductionInputGroupTile(
+            listenable: vm,
             title: (items.isNotEmpty ? items.first.namaJenis : '-') ?? '-',
             headerSubtitle: key,
             tileMetrics: [
@@ -1783,6 +1786,7 @@ totalData: gilinganGroups.length,
                           : entry.key)
                     : entry.key;
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title:
                       (entry.value.isNotEmpty
                           ? entry.value.first.namaJenis

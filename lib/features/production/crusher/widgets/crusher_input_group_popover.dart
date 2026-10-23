@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../view_model/crusher_production_input_view_model.dart';
 
 /// Cek apakah bucket TEMP untuk labelCode berisi item partial
-/// (BB dan Reject yang punya partial)
+/// (BB, Reject & Mixer yang punya partial)
 bool _hasPartialTempForLabel(
     CrusherProductionInputViewModel vm,
     String labelCode,
@@ -19,8 +19,11 @@ bool _hasPartialTempForLabel(
   final hasRejectPart = b.reject.any(
     (e) => (e.noRejectPartial ?? '').trim().isNotEmpty || e.isPartialRow,
   );
+  final hasMixerPart = b.mixerPartials.any(
+    (e) => (e.noMixerPartial ?? '').trim().isNotEmpty || e.isPartialRow,
+  );
 
-  return hasBbPart || hasRejectPart;
+  return hasBbPart || hasRejectPart || hasMixerPart;
 }
 
 /// ✅ Model untuk summary data - HANYA BERAT

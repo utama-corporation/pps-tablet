@@ -932,6 +932,7 @@ FloatingActionButton(
                             : entry.key)
                       : entry.key;
                   return ProductionInputGroupTile(
+                    listenable: vm,
                     title:
                         (entry.value.isNotEmpty
                             ? entry.value.first.namaJenis

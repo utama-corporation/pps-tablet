@@ -523,9 +523,12 @@ class _CrusherLookupLabelPartialDialogState
                         statusColor = Colors.orange;
                       }
 
-                      // BB & Reject punya partial; keduanya batasnya berat sisa dari backend
+                      // BB, Reject & Mixer punya partial; semuanya batasnya
+                      // berat sisa dari backend
                       final canEditWeight =
-                          (item is BbItem || item is RejectItem) &&
+                          (item is BbItem ||
+                              item is RejectItem ||
+                              item is MixerItem) &&
                           !isDisabled &&
                           isSelected;
 
@@ -988,6 +991,8 @@ class _CrusherLookupLabelPartialDialogState
       case PrefixType.crusher:
       // diasumsikan prefix untuk Bonggolan di Crusher
         return 'NO BONGGOL';
+      case PrefixType.mixer:
+        return 'SAK';
       default:
         return 'DETAIL';
     }
@@ -996,6 +1001,7 @@ class _CrusherLookupLabelPartialDialogState
   String _getDetailText(dynamic item, PrefixType type) {
     if (item is BbItem) return '${item.noSak ?? '-'}';
     if (item is BonggolanItem) return item.noBonggolan ?? '-';
+    if (item is MixerItem) return '${item.noSak ?? '-'}';
     if (item is RejectItem) {
       final part = (item.noRejectPartial ?? '').trim();
       return part.isNotEmpty ? part : (item.noReject ?? '-');
@@ -1038,6 +1044,12 @@ class _CrusherLookupLabelPartialDialogState
       return item.noBonggolan ?? '-';
     }
 
+    if (item is MixerItem) {
+      final part = (item.noMixerPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noMixer ?? '-';
+    }
+
     if (item is RejectItem) {
       final part = (item.noRejectPartial ?? '').trim();
       if (part.isNotEmpty) return part;
@@ -1050,6 +1062,7 @@ class _CrusherLookupLabelPartialDialogState
   static String? _namaJenisOf(dynamic item) {
     if (item is BbItem) return item.namaJenis;
     if (item is BonggolanItem) return item.namaJenis;
+    if (item is MixerItem) return item.namaJenis;
     if (item is RejectItem) return item.namaJenis;
     return null;
   }
@@ -1057,6 +1070,7 @@ class _CrusherLookupLabelPartialDialogState
   static double? _beratOf(dynamic item) {
     if (item is BbItem) return item.berat;
     if (item is BonggolanItem) return item.berat;
+    if (item is MixerItem) return item.berat;
     if (item is RejectItem) return item.berat;
     return null;
   }
@@ -1080,6 +1094,7 @@ class _CrusherLookupLabelPartialDialogState
 
     try {
       if (item is BbItem && item.isPartialRow == true) return true;
+      if (item is MixerItem && item.isPartialRow == true) return true;
       // kalau BonggolanItem → selalu false
     } catch (_) {}
     return false;

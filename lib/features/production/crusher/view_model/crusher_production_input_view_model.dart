@@ -28,6 +28,8 @@ class CrusherTempItemsByLabel {
   final List<BbItem> bbPartials;    // partial
   final List<BonggolanItem> bonggolan;  // full (tidak ada partial)
   final List<RejectItem> reject;   // full + partial digabung
+  final List<MixerItem> mixerItems;     // full
+  final List<MixerItem> mixerPartials;  // partial
 
   final DateTime addedAt;
 
@@ -37,11 +39,18 @@ class CrusherTempItemsByLabel {
     this.bbPartials = const [],
     this.bonggolan = const [],
     this.reject = const [],
+    this.mixerItems = const [],
+    this.mixerPartials = const [],
     DateTime? addedAt,
   }) : addedAt = addedAt ?? DateTime.now();
 
   int get totalCount =>
-      bbItems.length + bbPartials.length + bonggolan.length + reject.length;
+      bbItems.length +
+      bbPartials.length +
+      bonggolan.length +
+      reject.length +
+      mixerItems.length +
+      mixerPartials.length;
 
   bool get isEmpty => totalCount == 0;
 
@@ -50,6 +59,8 @@ class CrusherTempItemsByLabel {
     ...bbPartials,
     ...bonggolan,
     ...reject,
+    ...mixerItems,
+    ...mixerPartials,
   ];
 }
 
@@ -92,6 +103,11 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       if (part.isNotEmpty) return part;
       return _nn(it.noReject);
     }
+    if (it is MixerItem) {
+      final part = (it.noMixerPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return _nn(it.noMixer);
+    }
     return '-';
   }
 
@@ -131,6 +147,13 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           : '[REJ] $t • ${_kg(it.berat)}kg';
     }
 
+    if (it is MixerItem) {
+      final isPart = (it.noMixerPartial ?? '').trim().isNotEmpty || it.isPartialRow;
+      return isPart
+          ? '[MIX•PART] $t • sak ${_nn(it.noSak)} • ${_kg(it.berat)}kg'
+          : '[MIX] $t • sak ${_nn(it.noSak)} • ${_kg(it.berat)}kg';
+    }
+
     return '[UNKNOWN] $it';
   }
 
@@ -151,6 +174,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     _dumpList('tempBonggolan', tempBonggolan, _keyFromBonggolanItem);
     _dumpList('tempReject', tempReject, _keyFromRejectItem);
     _dumpList('tempRejectPartial', tempRejectPartial, _keyFromRejectItem);
+    _dumpList('tempMixer', tempMixer, _keyFromMixerItem);
+    _dumpList('tempMixerPartial', tempMixerPartial, _keyFromMixerItem);
     _d('TOTAL TEMP COUNT = $totalTempCount');
     _d('===============================================');
   }
@@ -360,6 +385,15 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     if (t.bonggolan.isNotEmpty) {
       s.add('${t.bonggolan.length} Bonggolan');
     }
+    if (t.reject.isNotEmpty) {
+      s.add('${t.reject.length} Reject');
+    }
+    if (t.mixerItems.isNotEmpty) {
+      s.add('${t.mixerItems.length} Mixer (full)');
+    }
+    if (t.mixerPartials.isNotEmpty) {
+      s.add('${t.mixerPartials.length} Mixer Partial');
+    }
 
     return s.join(', ');
   }
@@ -391,6 +425,10 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       } else if (item is RejectItem) {
         tempRejectPartial.remove(item);
         _tempKeys.remove(_keyFromRejectItem(item));
+      } else if (item is MixerItem) {
+        tempMixer.remove(item);
+        tempMixerPartial.remove(item);
+        _tempKeys.remove(_keyFromMixerItem(item));
       }
     }
 
@@ -409,8 +447,13 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     tempBonggolan.where((e) => _getItemLabelCode(e) == code).toList();
     final reject =
         tempReject.where((e) => _getItemLabelCode(e) == code).toList();
+    final mixFull =
+        tempMixer.where((e) => _getItemLabelCode(e) == code).toList();
+    final mixPart =
+        tempMixerPartial.where((e) => _getItemLabelCode(e) == code).toList();
 
-    if ([bbFull, bbPart, bonggolan, reject].every((l) => l.isEmpty)) {
+    if ([bbFull, bbPart, bonggolan, reject, mixFull, mixPart]
+        .every((l) => l.isEmpty)) {
       _tempItemsByLabel.remove(code);
       return;
     }
@@ -421,6 +464,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       bbPartials: bbPart,
       bonggolan: bonggolan,
       reject: reject,
+      mixerItems: mixFull,
+      mixerPartials: mixPart,
       addedAt: _tempItemsByLabel[code]?.addedAt ?? DateTime.now(),
     );
   }
@@ -446,6 +491,12 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       return item.noReject;
     }
 
+    if (item is MixerItem) {
+      final part = (item.noMixerPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noMixer;
+    }
+
     return null;
   }
 
@@ -459,6 +510,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
 
   final List<RejectItem> tempReject = [];
   final List<RejectItem> tempRejectPartial = [];
+
+  final List<MixerItem> tempMixer = [];
+  final List<MixerItem> tempMixerPartial = [];
 
   final Set<String> _pickedKeys = <String>{};
   final List<Map<String, dynamic>> _pickedRows = <Map<String, dynamic>>[];
@@ -481,6 +535,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
   String _keyFromRejectItem(RejectItem i) =>
       'BF.|RejectV2|${i.noReject ?? '-'}|';
 
+  String _keyFromMixerItem(MixerItem i) =>
+      'H.|Mixer_d|${i.noMixer ?? '-'}|${(i.noSak ?? '').toString().trim()}';
+
   // DB keys (untuk future: kalau mau gabung DB+TEMP)
   Set<String> _dbKeysFor(String noProduksi) {
     final keys = <String>{};
@@ -489,6 +546,7 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       for (final x in db.bb) keys.add(_keyFromBbItem(x));
       for (final x in db.bonggolan) keys.add(_keyFromBonggolanItem(x));
       for (final x in db.reject) keys.add(_keyFromRejectItem(x));
+      for (final x in db.mixer) keys.add(_keyFromMixerItem(x));
     }
     return keys;
   }
@@ -615,6 +673,10 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         final s =
         (row['NoRejectPartial'] ?? row['noRejectPartial'] ?? '').toString().trim();
         return s.isNotEmpty;
+      case PrefixType.mixer:
+        final s =
+        (row['NoMixerPartial'] ?? row['noMixerPartial'] ?? '').toString().trim();
+        return s.isNotEmpty;
       default:
         return false;
     }
@@ -630,6 +692,10 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       case PrefixType.reject:
         final noRej = row['NoReject'] ?? row['noReject'] ?? '';
         return 'BF.|RejectV2|$noRej';
+      case PrefixType.mixer:
+        final noMix = row['NoMixer'] ?? row['noMixer'] ?? '';
+        final noSak = row['NoSak'] ?? row['noSak'] ?? '';
+        return 'H.|Mixer_d|$noMix|$noSak';
       default:
         return '';
     }
@@ -650,6 +716,13 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           return existing;
         }
       }
+    } else if (item is MixerItem) {
+      for (final existing in tempMixerPartial) {
+        if (existing.noMixer == item.noMixer &&
+            existing.noSak == item.noSak) {
+          return existing;
+        }
+      }
     }
     return null;
   }
@@ -658,15 +731,17 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     if (item is BbItem) return item.berat;
     if (item is BonggolanItem) return item.berat;
     if (item is RejectItem) return item.berat;
+    if (item is MixerItem) return item.berat;
     return null;
   }
 
   // -------------------------------------------------------------------------
-  // Temp-partial numbering (BB & Reject)
+  // Temp-partial numbering (BB, Reject & Mixer)
   // -------------------------------------------------------------------------
   final Map<PrefixType, int> _tempPartialSeq = {
     PrefixType.bb: 0,
     PrefixType.reject: 0,
+    PrefixType.mixer: 0,
   };
 
   int _nextPartialSeq(PrefixType t) {
@@ -682,6 +757,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         return 'P.XXXXXXXX ($numStr)';
       case PrefixType.reject:
         return 'BK.XXXXXXXX ($numStr)';
+      case PrefixType.mixer:
+        return 'T.XXXXXXXX ($numStr)';
       default:
         return '';
     }
@@ -689,7 +766,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
 
   dynamic _withTempPartialIfNeeded(
       dynamic item, PrefixType t, bool isPartial) {
-    final supports = t == PrefixType.bb || t == PrefixType.reject;
+    final supports =
+        t == PrefixType.bb || t == PrefixType.reject || t == PrefixType.mixer;
     if (!supports || !isPartial) return item;
 
     if (item is BbItem) {
@@ -710,6 +788,15 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       return item;
     }
 
+    if (item is MixerItem) {
+      final already = (item.noMixerPartial ?? '').trim().isNotEmpty;
+      if (!already) {
+        final code = _formatTempPartial(t, _nextPartialSeq(t));
+        return item.copyWith(noMixerPartial: code);
+      }
+      return item;
+    }
+
     return item;
   }
 
@@ -718,7 +805,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           tempBbPartial.length +
           tempBonggolan.length +
           tempReject.length +
-          tempRejectPartial.length;
+          tempRejectPartial.length +
+          tempMixer.length +
+          tempMixerPartial.length;
 
   // -------------------------------------------------------------------------
   // Commit picked → TEMP (strict anti-duplicate)
@@ -753,7 +842,10 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       final rawRow = filteredData[i];
 
       // Hanya proses tipe yang relevan
-      if (item is! BbItem && item is! BonggolanItem && item is! RejectItem) {
+      if (item is! BbItem &&
+          item is! BonggolanItem &&
+          item is! RejectItem &&
+          item is! MixerItem) {
         _d('commitPickedToTemp: tipe item tidak didukung di Crusher ($item), skip');
         skipped++;
         continue;
@@ -795,6 +887,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           ? _keyFromBonggolanItem(item)
           : item is RejectItem
           ? _keyFromRejectItem(item)
+          : item is MixerItem
+          ? _keyFromMixerItem(item)
           : simpleKey;
 
       // Kalau key TEMP sudah ada → skip
@@ -832,6 +926,14 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
           tempRejectPartial.add(newItem);
         } else {
           tempReject.add(newItem);
+        }
+        itemAdded = true;
+      } else if (newItem is MixerItem) {
+        if (newItem.isPartialRow ||
+            (newItem.noMixerPartial ?? '').trim().isNotEmpty) {
+          tempMixerPartial.add(newItem);
+        } else {
+          tempMixer.add(newItem);
         }
         itemAdded = true;
       }
@@ -898,6 +1000,17 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void deleteTempMixerItem(MixerItem item) {
+    tempMixer.remove(item);
+    tempMixerPartial.remove(item);
+    _tempKeys.remove(_keyFromMixerItem(item));
+    final code = _getItemLabelCode(item);
+    if (code != null) _updateTempItemsByLabel(code);
+
+    debugDumpTempLists(tag: 'after deleteTempMixerItem');
+    notifyListeners();
+  }
+
   bool isInTempKeys(String key) => _tempKeys.contains(key);
 
   Set<String> getTempKeysForDebug() => Set.unmodifiable(_tempKeys);
@@ -908,6 +1021,8 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     tempBonggolan.clear();
     tempReject.clear();
     tempRejectPartial.clear();
+    tempMixer.clear();
+    tempMixerPartial.clear();
 
     _tempKeys.clear();
     _tempItemsByLabel.clear();
@@ -934,6 +1049,9 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     } else if (item is RejectItem) {
       ok = tempReject.remove(item) || tempRejectPartial.remove(item);
       if (ok) _tempKeys.remove(_keyFromRejectItem(item));
+    } else if (item is MixerItem) {
+      ok = tempMixer.remove(item) || tempMixerPartial.remove(item);
+      if (ok) _tempKeys.remove(_keyFromMixerItem(item));
     }
 
     if (ok) debugDumpTempLists(tag: 'after deleteIfTemp');
@@ -1008,6 +1126,27 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
       payload['rejectPartialNew'] = tempRejectPartial
           .map((e) => {
         'noReject': e.noReject,
+        'berat': e.berat,
+      })
+          .toList();
+    }
+
+    // Input mixer (sak-based). Key payload mengikuti proses broker:
+    // "mixer" untuk sak utuh, "mixerPartial" untuk sak yang dipotong sebagian.
+    if (tempMixer.isNotEmpty) {
+      payload['mixer'] = tempMixer
+          .map((e) => {
+        'noMixer': e.noMixer,
+        'noSak': e.noSak,
+      })
+          .toList();
+    }
+
+    if (tempMixerPartial.isNotEmpty) {
+      payload['mixerPartial'] = tempMixerPartial
+          .map((e) => {
+        'noMixer': e.noMixer,
+        'noSak': e.noSak,
         'berat': e.berat,
       })
           .toList();
@@ -1103,6 +1242,12 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
     if (tempRejectPartial.isNotEmpty) {
       parts.add('${tempRejectPartial.length} Reject Partial');
     }
+    if (tempMixer.isNotEmpty) {
+      parts.add('${tempMixer.length} Mixer');
+    }
+    if (tempMixerPartial.isNotEmpty) {
+      parts.add('${tempMixerPartial.length} Mixer Partial');
+    }
 
     return 'Total $totalTempCount items:\n${parts.join(', ')}';
   }
@@ -1157,6 +1302,20 @@ class CrusherProductionInputViewModel extends ChangeNotifier {
         } else {
           add('reject', {
             'noReject': it.noReject,
+          });
+        }
+      } else if (it is MixerItem) {
+        // Sama seperti reject: partial dihapus lewat kode partial-nya
+        // (NoMixerPartial), bukan lewat noMixer.
+        final code = (it.noMixerPartial ?? '').trim();
+        if (code.isNotEmpty) {
+          add('mixerPartial', {
+            'noMixerPartial': code,
+          });
+        } else {
+          add('mixer', {
+            'noMixer': it.noMixer,
+            'noSak': it.noSak,
           });
         }
       }

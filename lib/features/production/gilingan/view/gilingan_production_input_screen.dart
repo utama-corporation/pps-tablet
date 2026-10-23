@@ -841,6 +841,7 @@ class _GilinganProductionInputScreenState
                         : entry.key)
                   : entry.key;
               return ProductionInputGroupTile(
+                listenable: vm,
                 title:
                     (entry.value.isNotEmpty
                         ? entry.value.first.namaJenis
@@ -926,6 +927,7 @@ class _GilinganProductionInputScreenState
             ),
             children: groups.entries.map((entry) {
               return ProductionInputGroupTile(
+                listenable: vm,
                 title: entry.key,
                 headerSubtitle: 'Bonggolan',
                 tileMetrics: [
@@ -1000,6 +1002,7 @@ class _GilinganProductionInputScreenState
             ),
             children: groups.entries.map((entry) {
               return ProductionInputGroupTile(
+                listenable: vm,
                 title:
                     (entry.value.isNotEmpty
                         ? entry.value.first.namaJenis
@@ -1087,6 +1090,7 @@ class _GilinganProductionInputScreenState
                         : entry.key)
                   : entry.key;
               return ProductionInputGroupTile(
+                listenable: vm,
                 title:
                     (entry.value.isNotEmpty
                         ? entry.value.first.namaJenis

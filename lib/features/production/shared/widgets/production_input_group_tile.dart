@@ -1,14 +1,14 @@
 // lib/features/production/shared/widgets/production_input_group_tile.dart
 //
 // Tile kartu untuk satu grup label input produksi.
-// Klik → tampilkan detail dialog (sak chip atau list detail).
-// Long-press → callback opsional (misal: temp card options).
+// Klik â†’ tampilkan detail dialog (sak chip atau list detail).
+// Long-press â†’ callback opsional (misal: temp card options).
 
 import 'package:flutter/material.dart';
 import 'production_inline_stat.dart';
 import 'production_panel_decoration.dart';
 
-// ── Data chip per sak ─────────────────────────────────────────────────────────
+// â”€â”€ Data chip per sak â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ProductionSakChip {
   final String label;
@@ -26,7 +26,7 @@ class ProductionSakChip {
   });
 }
 
-// ── Input group tile ──────────────────────────────────────────────────────────
+// â”€â”€ Input group tile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ProductionInputGroupTile extends StatelessWidget {
   final String title;
@@ -41,11 +41,16 @@ class ProductionInputGroupTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
-  /// Jika diisi → dialog chip sak.
+  /// Jika diisi â†’ dialog chip sak.
   final List<ProductionSakChip> Function()? chipItemsBuilder;
 
-  /// Jika diisi → dialog list detail biasa.
+  /// Jika diisi â†’ dialog list detail biasa.
   final List<Widget> Function()? detailsBuilder;
+
+  /// VM (ChangeNotifier) sumber data tile. Jika diisi, dialog yang dibuka
+  /// akan rebuild otomatis saat VM berubah â€” jadi sak yang dihapus langsung
+  /// hilang dari dialog (tidak lagi menampilkan data basi).
+  final Listenable? listenable;
 
   const ProductionInputGroupTile({
     super.key,
@@ -62,6 +67,7 @@ class ProductionInputGroupTile extends StatelessWidget {
     this.onLongPress,
     this.chipItemsBuilder,
     this.detailsBuilder,
+    this.listenable,
   });
 
   Widget _buildHeader() {
@@ -166,7 +172,8 @@ class ProductionInputGroupTile extends StatelessWidget {
                     title: title,
                     subtitle: headerSubtitle ?? '-',
                     metrics: tileMetrics,
-                    chips: chipItemsBuilder!(),
+                    chipsBuilder: chipItemsBuilder!,
+                    listenable: listenable,
                   ),
                 );
               } else if (detailsBuilder != null) {
@@ -176,7 +183,8 @@ class ProductionInputGroupTile extends StatelessWidget {
                     title: title,
                     subtitle: headerSubtitle ?? '-',
                     metrics: tileMetrics,
-                    details: detailsBuilder!(),
+                    detailsBuilder: detailsBuilder!,
+                    listenable: listenable,
                   ),
                 );
               }
@@ -204,21 +212,56 @@ class ProductionInputGroupTile extends StatelessWidget {
   }
 }
 
-// ── Sak chip detail dialog ────────────────────────────────────────────────────
+// â”€â”€ Sak chip detail dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class ProductionSakChipDetailDialog extends StatelessWidget {
+class ProductionSakChipDetailDialog extends StatefulWidget {
   final String title;
   final String subtitle;
   final List<(IconData, String)> metrics;
-  final List<ProductionSakChip> chips;
+
+  /// Sumber data chip. Dipanggil ulang setiap dialog rebuild, jadi sak yang
+  /// baru dihapus tidak lagi muncul di dialog.
+  final List<ProductionSakChip> Function() chipsBuilder;
+
+  /// VM sumber data. Kalau diisi, dialog listen ke VM dan rebuild otomatis.
+  final Listenable? listenable;
 
   const ProductionSakChipDetailDialog({
     super.key,
     required this.title,
     required this.subtitle,
     required this.metrics,
-    required this.chips,
+    required this.chipsBuilder,
+    this.listenable,
   });
+
+  @override
+  State<ProductionSakChipDetailDialog> createState() =>
+      _ProductionSakChipDetailDialogState();
+}
+
+class _ProductionSakChipDetailDialogState
+    extends State<ProductionSakChipDetailDialog> {
+  /// Snapshot chip saat dialog dibuka. Dipakai sebagai fallback kalau tidak
+  /// ada [ProductionSakChipDetailDialog.listenable] â€” supaya chip yang
+  /// dihapus langsung hilang dari dialog.
+  late List<ProductionSakChip> _chips;
+
+  @override
+  void initState() {
+    super.initState();
+    _chips = List.of(widget.chipsBuilder());
+  }
+
+  void _handleDelete(ProductionSakChip chip) {
+    final onDelete = chip.onDelete;
+    if (onDelete == null) return;
+    onDelete();
+    if (!mounted) return;
+    setState(() {
+      _chips.removeWhere((c) => identical(c, chip));
+    });
+  }
 
   static String _fmt(double? v) {
     if (v == null) return '-';
@@ -229,6 +272,20 @@ class ProductionSakChipDetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final listenable = widget.listenable;
+    if (listenable == null) {
+      return _buildDialog(context, _chips);
+    }
+    return ListenableBuilder(
+      listenable: listenable,
+      builder: (context, _) => _buildDialog(context, widget.chipsBuilder()),
+    );
+  }
+
+  Widget _buildDialog(BuildContext context, List<ProductionSakChip> chips) {
+    final title = widget.title;
+    final subtitle = widget.subtitle;
+
     return Dialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -385,7 +442,7 @@ class ProductionSakChipDetailDialog extends StatelessWidget {
                                   top: 0,
                                   left: 0,
                                   child: GestureDetector(
-                                    onTap: chip.onDelete,
+                                    onTap: () => _handleDelete(chip),
                                     child: Container(
                                       width: 16,
                                       height: 16,
@@ -414,24 +471,61 @@ class ProductionSakChipDetailDialog extends StatelessWidget {
   }
 }
 
-// ── List detail dialog ────────────────────────────────────────────────────────
+// â”€â”€ List detail dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class ProductionInputGroupDetailDialog extends StatelessWidget {
+class ProductionInputGroupDetailDialog extends StatefulWidget {
   final String title;
   final String subtitle;
   final List<(IconData, String)> metrics;
-  final List<Widget> details;
+
+  /// Sumber data baris detail. Dipanggil ulang setiap dialog rebuild, jadi
+  /// data yang dihapus tidak lagi muncul di dialog.
+  final List<Widget> Function() detailsBuilder;
+
+  /// VM sumber data. Kalau diisi, dialog listen ke VM dan rebuild otomatis.
+  final Listenable? listenable;
 
   const ProductionInputGroupDetailDialog({
     super.key,
     required this.title,
     required this.subtitle,
     required this.metrics,
-    required this.details,
+    required this.detailsBuilder,
+    this.listenable,
   });
 
   @override
+  State<ProductionInputGroupDetailDialog> createState() =>
+      _ProductionInputGroupDetailDialogState();
+}
+
+class _ProductionInputGroupDetailDialogState
+    extends State<ProductionInputGroupDetailDialog> {
+  /// Snapshot detail saat dialog dibuka (fallback tanpa listenable).
+  late List<Widget> _details;
+
+  @override
+  void initState() {
+    super.initState();
+    _details = List.of(widget.detailsBuilder());
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final listenable = widget.listenable;
+    if (listenable == null) {
+      return _buildDialog(context, _details);
+    }
+    return ListenableBuilder(
+      listenable: listenable,
+      builder: (context, _) => _buildDialog(context, widget.detailsBuilder()),
+    );
+  }
+
+  Widget _buildDialog(BuildContext context, List<Widget> details) {
+    final title = widget.title;
+    final subtitle = widget.subtitle;
+
     return Dialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,

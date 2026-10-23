@@ -78,6 +78,7 @@ class _CrusherProductionInputScreenState
   static const _kategoriToTab = {
     'bahanbaku': 'bb',
     'bonggolan': 'bonggolan',
+    'mixer': 'mixer',
     'reject': 'reject',
   };
 
@@ -88,7 +89,7 @@ class _CrusherProductionInputScreenState
   }
 
   String? _firstAllowedTab(Set<String> kodes) {
-    for (final tab in ['bb', 'bonggolan', 'reject']) {
+    for (final tab in ['bb', 'bonggolan', 'mixer', 'reject']) {
       if (kodes.any((k) => _kategoriToTab[k] == tab)) return tab;
     }
     return null;
@@ -346,7 +347,7 @@ class _CrusherProductionInputScreenState
     final upper = trimmed.toUpperCase();
     // Prefix dicari dari daftar, bukan substring(0, 2): sebagian prefix punya
     // 3 karakter (BF.), sehingga potongan fixed-length akan kehilangan titik.
-    const validPrefixes = ['A.', 'M.', 'BF.'];
+    const validPrefixes = ['A.', 'M.', 'H.', 'BF.'];
     final prefix = validPrefixes.firstWhere(
       (p) => upper.startsWith(p),
       orElse: () => '',
@@ -354,7 +355,7 @@ class _CrusherProductionInputScreenState
     if (prefix.isEmpty) {
       return 'Label "$trimmed" tidak dapat diproses.\n'
           'Proses crusher hanya menerima label Bahan Baku (A.), '
-          'Bonggolan (M.), dan Reject (BF.).';
+          'Bonggolan (M.), Mixer (H.), dan Reject (BF.).';
     }
 
     if (_selectedMode == 'partial') {
@@ -405,6 +406,11 @@ class _CrusherProductionInputScreenState
     }
 
     final tab = _tabForLookupResult(res);
+    // Kategori label harus ada di formula produksi crusher (sama seperti
+    // proses broker) — kalau tidak, label mixer/BB/reject tidak boleh masuk.
+    if (tab != null && _allowedInputKategori != null && !_isTabAllowed(tab)) {
+      return 'Kategori label ini tidak sesuai dengan formula produksi crusher ini.';
+    }
     if (tab != null && tab != _selectedInputTab) {
       setState(() => _selectedInputTab = tab);
     }
@@ -425,6 +431,7 @@ class _CrusherProductionInputScreenState
     final item = res.typedItems.first;
     if (item is BbItem) return 'bb';
     if (item is BonggolanItem) return 'bonggolan';
+    if (item is MixerItem) return 'mixer';
     if (item is RejectItem) return 'reject';
     return null;
   }
@@ -526,6 +533,11 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
       return palletStr.isEmpty ? noBB : '$noBB-$palletStr';
     }
     if (item is BonggolanItem) return item.noBonggolan;
+    if (item is MixerItem) {
+      final part = (item.noMixerPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noMixer;
+    }
     if (item is RejectItem) {
       final part = (item.noRejectPartial ?? '').trim();
       if (part.isNotEmpty) return part;
@@ -544,17 +556,23 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
 
     final tempData = vm.getTemporaryDataForLabel(labelTitle);
 
-    // Sebagian: hanya BB (sak-based). Bonggolan & Reject tidak per sak.
+    // Sebagian: hanya kategori per-sak (BB & Mixer). Bonggolan & Reject tidak
+    // per sak.
     final isSakBased =
         tempData != null &&
-        (tempData.bbItems.isNotEmpty || tempData.bbPartials.isNotEmpty);
+        (tempData.bbItems.isNotEmpty ||
+            tempData.bbPartials.isNotEmpty ||
+            tempData.mixerItems.isNotEmpty ||
+            tempData.mixerPartials.isNotEmpty);
 
-    // Partial: BB & Reject. Bonggolan (M.) tidak mendukung partial.
+    // Partial: BB, Reject & Mixer. Bonggolan (M.) tidak mendukung partial.
     final supportsPartial =
         tempData != null &&
         (tempData.bbItems.isNotEmpty ||
             tempData.bbPartials.isNotEmpty ||
-            tempData.reject.isNotEmpty);
+            tempData.reject.isNotEmpty ||
+            tempData.mixerItems.isNotEmpty ||
+            tempData.mixerPartials.isNotEmpty);
 
     final result = await showDialog<String>(
       context: context,
@@ -603,6 +621,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
   SectionSummary _selectedInputSummary({
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
     required Map<String, List<RejectItem>> rejectGroups,
   }) {
     if (_selectedInputTab == 'bb') {
@@ -614,6 +633,18 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
       }
       return SectionSummary(
         totalData: bbGroups.length,
+        totalSak: totalSak,
+        totalBerat: totalBerat,
+      );
+    } else if (_selectedInputTab == 'mixer') {
+      int totalSak = 0;
+      double totalBerat = 0.0;
+      for (final items in mixerGroups.values) {
+        totalSak += items.length;
+        for (final i in items) totalBerat += i.berat ?? 0.0;
+      }
+      return SectionSummary(
+        totalData: mixerGroups.length,
         totalSak: totalSak,
         totalBerat: totalBerat,
       );
@@ -649,6 +680,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
     required bool canDelete,
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
     required Map<String, List<RejectItem>> rejectGroups,
     required bool showFooter,
   }) {
@@ -657,6 +689,14 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
         vm: vm,
         canDelete: canDelete,
         bbGroups: bbGroups,
+        showFooter: showFooter,
+      );
+    }
+    if (_selectedInputTab == 'mixer') {
+      return _buildMixerTab(
+        vm: vm,
+        canDelete: canDelete,
+        mixerGroups: mixerGroups,
         showFooter: showFooter,
       );
     }
@@ -725,10 +765,14 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
     required bool canDelete,
     required Map<String, List<BbItem>> bbGroups,
     required Map<String, List<BonggolanItem>> bonggolGroups,
+    required Map<String, List<MixerItem>> mixerGroups,
     required Map<String, List<RejectItem>> rejectGroups,
   }) {
     int grandLabel =
-        bbGroups.length + bonggolGroups.length + rejectGroups.length;
+        bbGroups.length +
+        bonggolGroups.length +
+        mixerGroups.length +
+        rejectGroups.length;
     int grandSak = 0;
     double grandBerat = 0.0;
     for (final items in bbGroups.values) {
@@ -736,6 +780,10 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
       for (final i in items) grandBerat += i.berat ?? 0.0;
     }
     for (final items in bonggolGroups.values) {
+      grandSak += items.length;
+      for (final i in items) grandBerat += i.berat ?? 0.0;
+    }
+    for (final items in mixerGroups.values) {
       grandSak += items.length;
       for (final i in items) grandBerat += i.berat ?? 0.0;
     }
@@ -747,6 +795,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
     final selectedSummary = _selectedInputSummary(
       bbGroups: bbGroups,
       bonggolGroups: bonggolGroups,
+      mixerGroups: mixerGroups,
       rejectGroups: rejectGroups,
     );
 
@@ -811,6 +860,12 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                           label: 'Bonggolan',
                           count: bonggolGroups.length,
                         ),
+                      if (_isTabAllowed('mixer'))
+                        ProductionTabItem(
+                          value: 'mixer',
+                          label: 'Mixer',
+                          count: mixerGroups.length,
+                        ),
                       if (_isTabAllowed('reject'))
                         ProductionTabItem(
                           value: 'reject',
@@ -839,6 +894,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                                   canDelete: canDelete,
                                   bbGroups: bbGroups,
                                   bonggolGroups: bonggolGroups,
+                                  mixerGroups: mixerGroups,
                                   rejectGroups: rejectGroups,
                                   showFooter: false,
                                 ),
@@ -851,6 +907,8 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                               vm,
                               _selectedInputTab == 'bonggolan'
                                   ? bonggolGroups
+                                  : _selectedInputTab == 'mixer'
+                                  ? mixerGroups
                                   : _selectedInputTab == 'reject'
                                   ? rejectGroups
                                   : bbGroups,
@@ -866,8 +924,11 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                                     ProductionCategorySummaryTile(
                                       summary: selectedSummary,
                                       accentColor: _kCrusherPrimary,
-                                      // Reject hanya pakai UOM berat, tidak ada pcs
-                                      showSak: _selectedInputTab == 'bb',
+                                      // Reject & Bonggolan hanya pakai UOM
+                                      // berat, tidak ada pcs
+                                      showSak:
+                                          _selectedInputTab == 'bb' ||
+                                          _selectedInputTab == 'mixer',
                                     ),
                                     const SizedBox(height: 10),
                                     ProductionInputGrandTotalBar(
@@ -968,6 +1029,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                       )
                     : entry.key;
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title:
                       (entry.value.isNotEmpty
                           ? entry.value.first.namaJenis
@@ -1087,6 +1149,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                         : null) ??
                     '-';
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title: namaJenis,
                   headerSubtitle: entry.key,
                   tileMetrics: [
@@ -1128,6 +1191,127 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                         isTemp: isTemp,
                         onDelete: isTemp
                             ? () => vm.deleteTempBonggolanItem(item)
+                            : null,
+                      );
+                    }).toList();
+                  },
+                );
+              }).toList(),
+            ),
+          );
+
+    return ProductionOutputCategoryContent(footer: footer, child: grid);
+  }
+
+  // ── Mixer tab ──────────────────────────────────────────────────────────────
+
+  Widget _buildMixerTab({
+    required CrusherProductionInputViewModel vm,
+    required bool canDelete,
+    required Map<String, List<MixerItem>> mixerGroups,
+    required bool showFooter,
+  }) {
+    int totalSak = 0;
+    double totalBerat = 0.0;
+    for (final entry in mixerGroups.entries) {
+      for (final item in entry.value) {
+        totalSak++;
+        totalBerat += item.berat ?? 0.0;
+      }
+    }
+
+    final footer = showFooter
+        ? ProductionCategorySummaryTile(
+            summary: SectionSummary(
+              totalData: mixerGroups.length,
+              totalSak: totalSak,
+              totalBerat: totalBerat,
+            ),
+            accentColor: _kCrusherPrimary,
+          )
+        : const SizedBox.shrink();
+
+    final grid = mixerGroups.isEmpty
+        ? const Center(
+            child: Text('Tidak ada data', style: TextStyle(fontSize: 11)),
+          )
+        : LayoutBuilder(
+            builder: (_, c) => GridView(
+              padding: const EdgeInsets.all(6),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: c.maxWidth < 380 ? 2 : 3,
+                crossAxisSpacing: 6,
+                mainAxisSpacing: 6,
+                mainAxisExtent: 72,
+              ),
+              children: mixerGroups.entries.map((entry) {
+                final hasPartial = entry.value.any((x) => x.isPartialRow);
+                // Selalu tampilkan noMixer (nomor label asli), bukan
+                // noMixerPartial — grouping key (entry.key) tetap dipakai
+                // untuk matching/delete temp item.
+                final displaySubtitle = entry.value.isNotEmpty
+                    ? ((entry.value.first.noMixer ?? '').trim().isNotEmpty
+                          ? entry.value.first.noMixer!.trim()
+                          : entry.key)
+                    : entry.key;
+                return ProductionInputGroupTile(
+                  listenable: vm,
+                  title:
+                      (entry.value.isNotEmpty
+                          ? entry.value.first.namaJenis
+                          : '-') ??
+                      '-',
+                  headerSubtitle: displaySubtitle,
+                  tileMetrics: [
+                    (Icons.inventory_2_outlined, '${entry.value.length} sak'),
+                    (
+                      Icons.scale_outlined,
+                      '${num2(entry.value.fold<double>(0.0, (s, i) => s + (i.berat ?? 0.0)))} kg',
+                    ),
+                  ],
+                  color: _kCrusherPrimary,
+                  isTemp: vm.hasTemporaryDataForLabel(entry.key),
+                  expandable: !hasPartial,
+                  isPartialGroup: hasPartial,
+                  partialReference: hasPartial
+                      ? (entry.value.firstWhere((x) => x.isPartialRow).noMixer ??
+                            '-')
+                      : null,
+                  isSelected: isInputGroupSelected(entry.key),
+                  onTap: isSelectingInput
+                      ? () => toggleInputGroup(entry.key, entry.value)
+                      : null,
+                  onLongPress: isSelectingInput
+                      ? null
+                      : vm.hasTemporaryDataForLabel(entry.key)
+                      ? () => _showTempCardOptions(entry.key)
+                      : () => startSelectingInput(entry.key, entry.value),
+                  detailsBuilder: () => [],
+                  chipItemsBuilder: () {
+                    final currentInputs = vm.inputsOf(widget.noCrusherProduksi);
+                    final dbItems = currentInputs == null
+                        ? <MixerItem>[]
+                        : currentInputs.mixer.where(
+                            (x) => mixerTitleKey(x) == entry.key,
+                          );
+                    final tempPart = vm.tempMixerPartial.where(
+                      (x) => mixerTitleKey(x) == entry.key,
+                    );
+                    final tempFull = vm.tempMixer.where(
+                      (x) => mixerTitleKey(x) == entry.key,
+                    );
+                    final items = [...tempPart, ...dbItems, ...tempFull];
+                    return items.map((item) {
+                      final isTemp =
+                          vm.tempMixer.contains(item) ||
+                          vm.tempMixerPartial.contains(item);
+                      return ProductionSakChip(
+                        label: 'Sak ${item.noSak ?? '-'}',
+                        berat: item.berat,
+                        isTemp: isTemp,
+                        isPartial: item.isPartialRow,
+                        onDelete: isTemp
+                            ? () => vm.deleteTempMixerItem(item)
                             : null,
                       );
                     }).toList();
@@ -1187,6 +1371,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                     '-';
                 final hasRejectPartial = entry.value.any((x) => x.isPartialRow);
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title: namaJenis,
                   headerSubtitle: entry.key,
                   tileMetrics: [
@@ -1793,6 +1978,13 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
         final bonggolAll = loading
             ? <BonggolanItem>[]
             : [...vm.tempBonggolan, ...?inputs?.bonggolan];
+        final mixerAll = loading
+            ? <MixerItem>[]
+            : [
+                ...vm.tempMixer.reversed,
+                ...vm.tempMixerPartial.reversed,
+                ...?inputs?.mixer,
+              ];
         final rejectAll = loading
             ? <RejectItem>[]
             : [
@@ -1806,6 +1998,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
           bonggolAll,
           (BonggolanItem e) => e.noBonggolan ?? '-',
         );
+        final mixerGroups = groupBy(mixerAll, mixerTitleKey);
         final rejectGroups = groupBy(rejectAll, _rejectTitleKey);
 
         return PopScope(
@@ -1866,6 +2059,8 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                       for (final i in bbAll) grandInputBerat += i.berat ?? 0.0;
                       for (final i in bonggolAll)
                         grandInputBerat += i.berat ?? 0.0;
+                      for (final i in mixerAll)
+                        grandInputBerat += i.berat ?? 0.0;
 
                       return Padding(
                         padding: const EdgeInsets.all(16),
@@ -1880,6 +2075,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                                 canDelete: canDelete,
                                 bbGroups: bbGroups,
                                 bonggolGroups: bonggolGroups,
+                                mixerGroups: mixerGroups,
                                 rejectGroups: rejectGroups,
                               ),
                             ),

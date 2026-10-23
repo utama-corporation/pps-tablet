@@ -403,9 +403,12 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
                           break;
                       }
 
-                      // Edit berat hanya relevan untuk BbItem (yang bisa partial)
+                      // Edit berat hanya relevan untuk item per-sak yang
+                      // bisa partial (BB & Mixer).
                       final canEditWeight =
-                          item is BbItem && isPartial && !isDuplicate;
+                          (item is BbItem || item is MixerItem) &&
+                          isPartial &&
+                          !isDuplicate;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -803,7 +806,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
     );
   }
 
-  // ===== Helpers: HANYA BbItem + BonggolanItem + RejectItem =====
+  // ===== Helpers: BbItem + BonggolanItem + RejectItem + MixerItem =====
 
   String _getDetailHeader(PrefixType type) {
     switch (type) {
@@ -811,6 +814,8 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
         return 'SAK';
       case PrefixType.crusher:
         return 'NO BONGGOL';
+      case PrefixType.mixer:
+        return 'SAK';
       case PrefixType.reject:
         return 'NO REJECT';
       default:
@@ -821,6 +826,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
   String _getDetailText(dynamic item, PrefixType type) {
     if (item is BbItem) return '${item.noSak ?? '-'}';
     if (item is BonggolanItem) return item.noBonggolan ?? '-';
+    if (item is MixerItem) return '${item.noSak ?? '-'}';
     if (item is RejectItem) {
       final part = (item.noRejectPartial ?? '').trim();
       return part.isNotEmpty ? part : (item.noReject ?? '-');
@@ -856,6 +862,12 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
       return item.noBonggolan ?? '-';
     }
 
+    if (item is MixerItem) {
+      final part = (item.noMixerPartial ?? '').trim();
+      if (part.isNotEmpty) return part;
+      return item.noMixer ?? '-';
+    }
+
     if (item is RejectItem) {
       final part = (item.noRejectPartial ?? '').trim();
       if (part.isNotEmpty) return part;
@@ -867,6 +879,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
   static String? _namaJenisOf(dynamic item) {
     if (item is BbItem) return item.namaJenis;
     if (item is BonggolanItem) return item.namaJenis;
+    if (item is MixerItem) return item.namaJenis;
     if (item is RejectItem) return item.namaJenis;
     return null;
   }
@@ -874,6 +887,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
   static double? _beratOf(dynamic item) {
     if (item is BbItem) return item.berat;
     if (item is BonggolanItem) return item.berat;
+    if (item is MixerItem) return item.berat;
     if (item is RejectItem) return item.berat;
     return null;
   }
@@ -893,6 +907,7 @@ class _CrusherLookupLabelDialogState extends State<CrusherLookupLabelDialog> {
     try {
       if (item is BbItem && item.isPartialRow == true) return true;
       // BonggolanItem tidak punya partial
+      if (item is MixerItem && item.isPartialRow == true) return true;
       if (item is RejectItem && item.isPartialRow == true) return true;
     } catch (_) {}
     return false;

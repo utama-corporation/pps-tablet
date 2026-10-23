@@ -1737,6 +1737,7 @@ class _WashingProductionInputScreenState
                       )
                     : entry.key;
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title:
                       (entry.value.isNotEmpty
                           ? entry.value.first.namaJenis
@@ -1850,6 +1851,7 @@ class _WashingProductionInputScreenState
               ),
               children: washingGroups.entries.map((entry) {
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title:
                       (entry.value.isNotEmpty
                           ? entry.value.first.namaJenis
@@ -1957,6 +1959,7 @@ class _WashingProductionInputScreenState
                           : entry.key)
                     : entry.key;
                 return ProductionInputGroupTile(
+                  listenable: vm,
                   title:
                       (entry.value.isNotEmpty
                           ? entry.value.first.namaJenis

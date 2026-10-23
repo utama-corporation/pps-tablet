@@ -2,12 +2,14 @@
 
 import '../../shared/models/bb_item.dart';
 import '../../shared/models/bonggolan_item.dart';
+import '../../shared/models/mixer_item.dart';
 import '../../shared/models/reject_item.dart';
 import '../../../../core/utils/model_helpers.dart';
 
 // ✅ Export item models
 export '../../shared/models/bb_item.dart';
 export '../../shared/models/bonggolan_item.dart';
+export '../../shared/models/mixer_item.dart';
 export '../../shared/models/reject_item.dart';
 
 /* ===================== ROOT AGGREGATOR ===================== */
@@ -20,6 +22,10 @@ class CrusherInputs {
   /// ditandai oleh `noRejectPartial` (lihat crusher-production-service.js:1360).
   final List<RejectItem> reject;
 
+  /// Input label mixer (prefix "H."). Full dan partial digabung pada satu
+  /// array; baris partial ditandai oleh `noMixerPartial`.
+  final List<MixerItem> mixer;
+
   final Map<String, int> summary;
 
   CrusherInputs({
@@ -27,6 +33,7 @@ class CrusherInputs {
     required this.bonggolan,
     required this.summary,
     this.reject = const [],
+    this.mixer = const [],
   });
 
   factory CrusherInputs.fromJson(Map<String, dynamic> j) {
@@ -44,6 +51,7 @@ class CrusherInputs {
       bb: _listOf(j['bb'], (m) => BbItem.fromJson(m)),
       bonggolan: _listOf(j['bonggolan'], (m) => BonggolanItem.fromJson(m)),
       reject: _listOf(j['reject'], (m) => RejectItem.fromJson(m)),
+      mixer: _listOf(j['mixer'], (m) => MixerItem.fromJson(m)),
       summary: _toSummary(j['summary']),
     );
   }
@@ -52,7 +60,12 @@ class CrusherInputs {
   double totalBeratBb() => bb.fold(0.0, (s, it) => s + (it.berat ?? 0));
   double totalBeratBonggolan() => bonggolan.fold(0.0, (s, it) => s + (it.berat ?? 0));
   double totalBeratReject() => reject.fold(0.0, (s, it) => s + (it.berat ?? 0));
+  double totalBeratMixer() => mixer.fold(0.0, (s, it) => s + (it.berat ?? 0));
 
   // Total keseluruhan
-  double totalBeratAll() => totalBeratBb() + totalBeratBonggolan() + totalBeratReject();
+  double totalBeratAll() =>
+      totalBeratBb() +
+      totalBeratBonggolan() +
+      totalBeratReject() +
+      totalBeratMixer();
 }
