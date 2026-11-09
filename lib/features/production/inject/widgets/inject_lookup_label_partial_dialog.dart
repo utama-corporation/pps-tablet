@@ -724,6 +724,7 @@ class _InjectLookupLabelPartialDialogState
                                                         await WeightInputDialog
                                                             .show(
                                                           context,
+                                                          maxDecimalPlaces: item is BrokerItem ? 2 : null,
                                                           maxWeight:
                                                           originalWeight,
                                                           currentWeight:

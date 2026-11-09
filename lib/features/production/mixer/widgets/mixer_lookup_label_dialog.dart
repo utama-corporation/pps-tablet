@@ -558,6 +558,7 @@ class _MixerLookupLabelDialogState extends State<MixerLookupLabelDialog> {
                                                       final newWeight =
                                                       await WeightInputDialog.show(
                                                         context,
+                                                        maxDecimalPlaces: item is BrokerItem ? 2 : null,
                                                         maxWeight: originalBerat,
                                                         currentWeight: _editedWeights[idx],
                                                       );

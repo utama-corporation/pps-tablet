@@ -600,6 +600,7 @@ class _InjectLookupLabelDialogState extends State<InjectLookupLabelDialog> {
                                                         final newWeight =
                                                         await WeightInputDialog.show(
                                                           context,
+                                                          maxDecimalPlaces: item is BrokerItem ? 2 : null,
                                                           maxWeight: originalBerat,
                                                           currentWeight: _editedWeights[idx],
                                                         );

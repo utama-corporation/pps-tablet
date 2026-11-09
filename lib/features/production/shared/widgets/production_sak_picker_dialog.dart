@@ -142,6 +142,7 @@ class _ProductionSakPickerDialogState
     if (original == null) return;
     final newWeight = await WeightInputDialog.show(
       context,
+      maxDecimalPlaces: item is BrokerItem ? 2 : null,
       maxWeight: original,
       currentWeight: _editedWeights[index] ?? original,
     );
@@ -186,9 +187,15 @@ class _ProductionSakPickerDialogState
     return v;
   }
 
+  bool get _brokerWeightPrecisionValid {
+    if (widget.getLookup()?.prefixType != PrefixType.broker) return true;
+    final text = _weightCtrl.text.trim();
+    return text.isEmpty || RegExp(r'^\d+(?:[,.]\d{1,2})?$').hasMatch(text);
+  }
+
   bool get _weightValid {
     final v = _editedWeight;
-    if (v == null || v <= 0) return false;
+    if (v == null || !v.isFinite || v <= 0 || !_brokerWeightPrecisionValid) return false;
     // Bandingkan dalam presisi timbangan (2 desimal) — hindari residu
     // floating-point dari berat sisa hasil hitung backend (mis.
     // 20 - 17.28 = 2.7199999999999989 melempar input "2.72" jadi over).
@@ -556,12 +563,14 @@ class _ProductionSakPickerDialogState
                           color: Colors.amber.shade700,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'Pilih satu sak, lalu isi berat yang diambil (maks. berat asli)',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.amber.shade800,
+                        Expanded(
+                          child: Text(
+                            'Pilih satu sak, lalu isi berat yang diambil (maks. berat asli)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.amber.shade800,
+                            ),
                           ),
                         ),
                       ],
@@ -935,6 +944,9 @@ class _ProductionSakPickerDialogState
                                           ),
                                           decoration: InputDecoration(
                                             suffixText: 'kg',
+                                            errorText: _brokerWeightPrecisionValid
+                                                ? null
+                                                : 'Maksimal 2 angka di belakang koma',
                                             suffixStyle: TextStyle(
                                               fontSize: 12,
                                               color: Colors.amber.shade700,

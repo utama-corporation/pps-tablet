@@ -630,6 +630,7 @@ class _LookupLabelPartialDialogState extends State<LookupLabelPartialDialog> {
                                                       // ✅ GUNAKAN WeightInputDialog
                                                       final newWeight = await WeightInputDialog.show(
                                                         context,
+                                                        maxDecimalPlaces: item is BrokerItem ? 2 : null,
                                                         maxWeight: originalWeight,
                                                         currentWeight: _editedWeight,
                                                       );

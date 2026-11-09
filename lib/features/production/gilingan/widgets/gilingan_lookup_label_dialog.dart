@@ -531,6 +531,7 @@ class _GilinganLookupLabelDialogState extends State<GilinganLookupLabelDialog> {
                                                     if (originalBerat != null) {
                                                       final newWeight = await WeightInputDialog.show(
                                                         context,
+                                                        maxDecimalPlaces: item is BrokerItem ? 2 : null,
                                                         maxWeight: originalBerat,
                                                         currentWeight: _editedWeights[idx],
                                                       );
