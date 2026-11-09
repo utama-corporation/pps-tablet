@@ -715,8 +715,14 @@ class BrokerProductionInputViewModel extends ChangeNotifier {
       'B.|Washing_d|${i.noWashing ?? '-'}|${(i.noSak ?? '').toString().trim()}';
   String _keyFromCrusherItem(CrusherItem i) =>
       'F.|Crusher|${i.noCrusher ?? '-'}|';
-  String _keyFromGilinganItem(GilinganItem i) =>
-      'V.|Gilingan|${i.noGilingan ?? '-'}|';
+  /// Key untuk item gilingan. Kode (temp/DB) partial ikut disertakan agar
+  /// beberapa partial untuk label yang sama tidak saling collision —
+  /// full input tetap memakai key tanpa kode (format sama seperti sebelumnya).
+  String _keyFromGilinganItem(GilinganItem i) {
+    final part = (i.noGilinganPartial ?? '').trim();
+    if (part.isEmpty) return 'V.|Gilingan|${i.noGilingan ?? '-'}|';
+    return 'V.|Gilingan|${i.noGilingan ?? '-'}|$part';
+  }
   String _keyFromMixerItem(MixerItem i) =>
       'H.|Mixer_d|${i.noMixer ?? '-'}|${(i.noSak ?? '').toString().trim()}';
   String _keyFromRejectItem(RejectItem i) =>
@@ -919,10 +925,6 @@ class BrokerProductionInputViewModel extends ChangeNotifier {
       bool shouldSkip = false;
 
       if (isPartial) {
-        // Untuk partial, cek dengan lebih teliti
-        // Kita perlu membandingkan key tanpa berat
-        final baseKey = _getBaseKeyWithoutWeight(rawRow, ctx.prefixType);
-
         // Cek apakah ada item dengan base key yang sama di temp
         final existingPartial = _findExistingPartialItem(item, ctx.prefixType);
 
@@ -938,9 +940,22 @@ class BrokerProductionInputViewModel extends ChangeNotifier {
           }
           // Jika berat beda, lanjutkan (anggap sebagai item baru)
         }
+
+        if (!shouldSkip) {
+          // Label yang sudah di-stage sebagai input FULL tidak boleh
+          // ditambahkan partial di atasnya (proteksi base-key).
+          final baseKey = _getBaseKeyWithoutWeight(rawRow, ctx.prefixType);
+          if (baseKey.isNotEmpty && seenTemp.contains(baseKey)) {
+            shouldSkip = true;
+          }
+        }
       } else {
         // Untuk non-partial, gunakan logika lama
         if (seenTemp.contains(simpleKey)) {
+          shouldSkip = true;
+        } else if (_findExistingPartialItem(item, ctx.prefixType) != null) {
+          // Sudah di-stage sebagai partial; input full untuk label yang sama
+          // tidak konsisten dengan partial tersebut.
           shouldSkip = true;
         }
       }
@@ -950,20 +965,24 @@ class BrokerProductionInputViewModel extends ChangeNotifier {
         continue;
       }
 
-      final String tempKey = item is BrokerItem
-          ? _keyFromBrokerItem(item)
-          : item is BbItem
-          ? _keyFromBbItem(item)
-          : item is WashingItem
-          ? _keyFromWashingItem(item)
-          : item is CrusherItem
-          ? _keyFromCrusherItem(item)
-          : item is GilinganItem
-          ? _keyFromGilinganItem(item)
-          : item is MixerItem
-          ? _keyFromMixerItem(item)
-          : item is RejectItem
-          ? _keyFromRejectItem(item)
+      // Kode partial sementara diperoleh SEBELUM key item dihitung supaya
+      // key tiap input partial terdiferensiasi per kode partial.
+      final newItem = _withTempPartialIfNeeded(item, ctx.prefixType, isPartial);
+
+      final String tempKey = newItem is BrokerItem
+          ? _keyFromBrokerItem(newItem)
+          : newItem is BbItem
+          ? _keyFromBbItem(newItem)
+          : newItem is WashingItem
+          ? _keyFromWashingItem(newItem)
+          : newItem is CrusherItem
+          ? _keyFromCrusherItem(newItem)
+          : newItem is GilinganItem
+          ? _keyFromGilinganItem(newItem)
+          : newItem is MixerItem
+          ? _keyFromMixerItem(newItem)
+          : newItem is RejectItem
+          ? _keyFromRejectItem(newItem)
           : simpleKey;
 
       // ⬇️ kalau key TEMP sama sudah ada, skip (ini juga TEMP-only)
@@ -973,9 +992,6 @@ class BrokerProductionInputViewModel extends ChangeNotifier {
       }
       // masukkan juga ke "seen" supaya batch berikutnya tahu
       seenTemp.add(simpleKey);
-
-      // inject kode partial sementara bila perlu
-      final newItem = _withTempPartialIfNeeded(item, ctx.prefixType, isPartial);
 
       bool itemAdded = false;
       if (newItem is BbItem) {
@@ -1061,7 +1077,8 @@ class BrokerProductionInputViewModel extends ChangeNotifier {
         return 'A.|BahanBaku_d|$noBb|$noPallet|$noSak';
       case PrefixType.gilingan:
         final noGil = row['NoGilingan'] ?? row['noGilingan'] ?? '';
-        return 'V.|Gilingan|$noGil';
+        //Harus identik dengan format key item FULL dari _keyFromGilinganItem
+        return 'V.|Gilingan|$noGil|';
       case PrefixType.mixer:
         final noMix = row['NoMixer'] ?? row['noMixer'] ?? '';
         final noSak = row['NoSak'] ?? row['noSak'] ?? '';

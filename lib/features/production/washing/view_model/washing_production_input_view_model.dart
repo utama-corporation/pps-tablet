@@ -517,8 +517,14 @@ class WashingProductionInputViewModel extends ChangeNotifier {
   }
   String _keyFromWashingItem(WashingItem i) =>
       'B.|Washing_d|${i.noWashing ?? '-'}|${(i.noSak ?? '').toString().trim()}';
-  String _keyFromGilinganItem(GilinganItem i) =>
-      'V.|Gilingan|${i.noGilingan ?? '-'}|';
+  /// Key untuk item gilingan. Kode (temp/DB) partial ikut disertakan agar
+  /// beberapa partial untuk label yang sama tidak saling collision —
+  /// full input tetap memakai key tanpa kode (format sama seperti sebelumnya).
+  String _keyFromGilinganItem(GilinganItem i) {
+    final part = (i.noGilinganPartial ?? '').trim();
+    if (part.isEmpty) return 'V.|Gilingan|${i.noGilingan ?? '-'}|';
+    return 'V.|Gilingan|${i.noGilingan ?? '-'}|$part';
+  }
 
   // ====== keys in DB (from cache) ======
   Set<String> _dbKeysFor(String noProduksi) {
@@ -706,8 +712,21 @@ class WashingProductionInputViewModel extends ChangeNotifier {
             shouldSkip = true;
           }
         }
+
+        if (!shouldSkip) {
+          // Label yang sudah di-stage sebagai input FULL tidak boleh
+          // ditambahkan partial di atasnya (proteksi base-key).
+          final baseKey = _getBaseKeyWithoutWeight(rawRow, ctx.prefixType);
+          if (baseKey.isNotEmpty && seenTemp.contains(baseKey)) {
+            shouldSkip = true;
+          }
+        }
       } else {
         if (seenTemp.contains(simpleKey)) {
+          shouldSkip = true;
+        } else if (_findExistingPartialItem(item, ctx.prefixType) != null) {
+          // Sudah di-stage sebagai partial; input full untuk label yang sama
+          // tidak konsisten dengan partial tersebut.
           shouldSkip = true;
         }
       }
@@ -717,12 +736,17 @@ class WashingProductionInputViewModel extends ChangeNotifier {
         continue;
       }
 
-      final String tempKey = item is BbItem
-          ? _keyFromBbItem(item)
-          : item is WashingItem
-          ? _keyFromWashingItem(item)
-          : item is GilinganItem
-          ? _keyFromGilinganItem(item)
+      // Kode partial sementara diperoleh SEBELUM key item dihitung supaya
+      // key tiap input partial terdiferensiasi per kode partial.
+      final newItem =
+      _withTempPartialIfNeeded(item, ctx.prefixType, isPartial);
+
+      final String tempKey = newItem is BbItem
+          ? _keyFromBbItem(newItem)
+          : newItem is WashingItem
+          ? _keyFromWashingItem(newItem)
+          : newItem is GilinganItem
+          ? _keyFromGilinganItem(newItem)
           : simpleKey;
 
       if (!_tempKeys.add(tempKey)) {
@@ -730,9 +754,6 @@ class WashingProductionInputViewModel extends ChangeNotifier {
         continue;
       }
       seenTemp.add(simpleKey);
-
-      final newItem =
-      _withTempPartialIfNeeded(item, ctx.prefixType, isPartial);
 
       bool itemAdded = false;
       if (newItem is BbItem) {
@@ -788,7 +809,8 @@ class WashingProductionInputViewModel extends ChangeNotifier {
         return 'A.|BahanBaku_d|$noBb|$noPallet|$noSak';
       case PrefixType.gilingan:
         final noGil = row['NoGilingan'] ?? row['noGilingan'] ?? '';
-        return 'V.|Gilingan|$noGil';
+        //Harus identik dengan format key item FULL dari _keyFromGilinganItem
+        return 'V.|Gilingan|$noGil|';
       default:
         return '';
     }

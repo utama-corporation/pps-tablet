@@ -436,7 +436,7 @@ class _PcsWeightInputDialogContentState
                             return 'Harus > 0';
                           }
 
-                          if (weight > widget.maxWeight) {
+                          if (beratLebihDari(weight, widget.maxWeight)) {
                             return 'Melebihi batas (${num2(widget.maxWeight)} kg)';
                           }
 

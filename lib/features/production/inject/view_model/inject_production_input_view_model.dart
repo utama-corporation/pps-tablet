@@ -843,8 +843,14 @@ class InjectProductionInputViewModel extends ChangeNotifier {
       'B|Broker|${i.noBroker ?? '-'}|${i.noSak ?? 0}';
   String _keyFromMixerItem(MixerItem i) =>
       'M|Mixer|${i.noMixer ?? '-'}|${i.noSak ?? 0}';
-  String _keyFromGilinganItem(GilinganItem i) =>
-      'G|Gilingan|${i.noGilingan ?? '-'}|';
+  /// Key untuk item gilingan. Kode (temp/DB) partial ikut disertakan agar
+  /// beberapa partial untuk label yang sama tidak saling collision —
+  /// full input tetap memakai key tanpa kode (format sama seperti sebelumnya).
+  String _keyFromGilinganItem(GilinganItem i) {
+    final part = (i.noGilinganPartial ?? '').trim();
+    if (part.isEmpty) return 'G|Gilingan|${i.noGilingan ?? '-'}|';
+    return 'G|Gilingan|${i.noGilingan ?? '-'}|$part';
+  }
   String _keyFromCrusherItem(CrusherItem i) =>
       'F|Crusher|${i.noCrusher ?? '-'}|';
   String _keyFromFurnitureWipItem(FurnitureWipItem i) =>
@@ -1049,8 +1055,20 @@ class InjectProductionInputViewModel extends ChangeNotifier {
             }
           }
         }
+
+        if (item is GilinganItem && !shouldSkip) {
+          // Label yang sudah di-stage sebagai input FULL tidak boleh
+          // ditambahkan partial di atasnya (proteksi base-key).
+          if (tempGilingan.any((e) => e.noGilingan == item.noGilingan)) {
+            shouldSkip = true;
+          }
+        }
       } else {
         if (seenTemp.contains(simpleKey)) {
+          shouldSkip = true;
+        } else if (_findExistingPartialItem(item, ctx.prefixType) != null) {
+          // Sudah di-stage sebagai partial; input full untuk label yang sama
+          // tidak konsisten dengan partial tersebut.
           shouldSkip = true;
         }
       }
@@ -1060,15 +1078,17 @@ class InjectProductionInputViewModel extends ChangeNotifier {
         continue;
       }
 
-      final String tempKey = _getTempKey(item);
+      // Kode partial sementara diperoleh SEBELUM key item dihitung supaya
+      // key tiap input partial terdiferensiasi per kode partial.
+      final newItem = _withTempPartialIfNeeded(item, ctx.prefixType, isPartial);
+
+      final String tempKey = _getTempKey(newItem);
 
       if (!_tempKeys.add(tempKey)) {
         skipped++;
         continue;
       }
       seenTemp.add(simpleKey);
-
-      final newItem = _withTempPartialIfNeeded(item, ctx.prefixType, isPartial);
 
       bool itemAdded = false;
       if (newItem is BrokerItem) {

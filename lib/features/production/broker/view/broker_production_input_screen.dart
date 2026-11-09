@@ -771,6 +771,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
 
       final newWeight = await WeightInputDialog.show(
         context,
+        maxDecimalPlaces: 2,
         maxWeight: originalBerat,
         currentWeight: null,
       );

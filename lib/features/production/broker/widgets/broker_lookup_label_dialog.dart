@@ -433,6 +433,7 @@ class _BrokerLookupLabelDialogState extends State<BrokerLookupLabelDialog> {
                                               final newWeight =
                                                   await WeightInputDialog.show(
                                                     context,
+                                                    maxDecimalPlaces: 2,
                                                     maxWeight: originalBerat,
                                                     currentWeight:
                                                         _editedWeights[idx],

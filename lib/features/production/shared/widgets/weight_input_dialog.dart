@@ -4,23 +4,27 @@ import '../../shared/utils/format.dart';
 class WeightInputDialog extends StatelessWidget {
   final double maxWeight;
   final double? currentWeight;
+  final int? maxDecimalPlaces;
 
   const WeightInputDialog({
     super.key,
     required this.maxWeight,
     this.currentWeight,
+    this.maxDecimalPlaces,
   });
 
   static Future<double?> show(
       BuildContext context, {
         required double maxWeight,
         double? currentWeight,
+        int? maxDecimalPlaces,
       }) {
     return showDialog<double>(
       context: context,
       builder: (context) => WeightInputDialog(
         maxWeight: maxWeight,
         currentWeight: currentWeight,
+        maxDecimalPlaces: maxDecimalPlaces,
       ),
     );
   }
@@ -125,12 +129,14 @@ class WeightInputDialog extends StatelessWidget {
                               color: Colors.grey.shade700,
                             ),
                           ),
-                          Text(
-                            '${num2(maxWeight)} kg',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey.shade900,
+                          Flexible(
+                            child: Text(
+                              '${num2(maxWeight)} kg',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey.shade900,
+                              ),
                             ),
                           ),
                         ],
@@ -191,8 +197,14 @@ class WeightInputDialog extends StatelessWidget {
                             return 'Wajib diisi';
                           }
 
-                          final weight = double.tryParse(value.trim());
-                          if (weight == null) {
+                          final normalized = value.trim().replaceAll(',', '.');
+                          if (maxDecimalPlaces != null &&
+                              !RegExp(r'^\d+(?:\.\d{1,' + maxDecimalPlaces.toString() + r'})?$')
+                                  .hasMatch(normalized)) {
+                            return 'Maksimal $maxDecimalPlaces angka di belakang koma';
+                          }
+                          final weight = double.tryParse(normalized);
+                          if (weight == null || !weight.isFinite) {
                             return 'Format tidak valid';
                           }
 
@@ -200,7 +212,7 @@ class WeightInputDialog extends StatelessWidget {
                             return 'Harus > 0';
                           }
 
-                          if (weight > maxWeight) {
+                          if (beratLebihDari(weight, maxWeight)) {
                             return 'Melebihi batas';
                           }
 
@@ -254,7 +266,7 @@ class WeightInputDialog extends StatelessWidget {
                       ),
                       onPressed: () {
                         if (formKey.currentState!.validate()) {
-                          final weight = double.parse(controller.text.trim());
+                          final weight = double.parse(controller.text.trim().replaceAll(',', '.'));
                           Navigator.pop(context, weight);
                         }
                       },

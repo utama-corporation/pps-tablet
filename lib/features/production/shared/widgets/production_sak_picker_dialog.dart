@@ -189,7 +189,12 @@ class _ProductionSakPickerDialogState
   bool get _weightValid {
     final v = _editedWeight;
     if (v == null || v <= 0) return false;
-    if (_originalWeight != null && v > _originalWeight!) return false;
+    // Bandingkan dalam presisi timbangan (2 desimal) — hindari residu
+    // floating-point dari berat sisa hasil hitung backend (mis.
+    // 20 - 17.28 = 2.7199999999999989 melempar input "2.72" jadi over).
+    if (_originalWeight != null && beratLebihDari(v, _originalWeight!)) {
+      return false;
+    }
     return true;
   }
 
@@ -1013,7 +1018,7 @@ class _ProductionSakPickerDialogState
                         ),
                         if (_editedWeight != null &&
                             _originalWeight != null &&
-                            _editedWeight! > _originalWeight!)
+                            beratLebihDari(_editedWeight!, _originalWeight!))
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Row(

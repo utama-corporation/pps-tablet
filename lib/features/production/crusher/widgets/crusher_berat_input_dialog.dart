@@ -72,7 +72,12 @@ class _CrusherBeratInputDialogState extends State<CrusherBeratInputDialog> {
   bool get _isValid {
     final v = _inputBerat;
     if (v == null || v <= 0) return false;
-    if (_originalBerat != null && v > _originalBerat!) return false;
+    // Bandingkan dalam presisi timbangan (2 desimal) — hindari residu
+    // floating-point dari berat sisa hasil hitung backend (mis.
+    // 20 - 17.28 = 2.7199999999999989 melempar input "2.72" jadi over).
+    if (_originalBerat != null && beratLebihDari(v, _originalBerat!)) {
+      return false;
+    }
     return true;
   }
 
@@ -85,7 +90,8 @@ class _CrusherBeratInputDialogState extends State<CrusherBeratInputDialog> {
     final origIsPartial = row['isPartial'];
 
     final isPartial =
-        _originalBerat != null && _inputBerat! < _originalBerat!;
+        _originalBerat != null &&
+        beratKurangDari(_inputBerat!, _originalBerat!);
 
     row['berat'] = _inputBerat;
     row['Berat'] = _inputBerat;
@@ -133,7 +139,7 @@ class _CrusherBeratInputDialogState extends State<CrusherBeratInputDialog> {
 
         final isOverMax = _inputBerat != null &&
             _originalBerat != null &&
-            _inputBerat! > _originalBerat!;
+            beratLebihDari(_inputBerat!, _originalBerat!);
 
         return Dialog(
           shape:
