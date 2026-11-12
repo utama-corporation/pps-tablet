@@ -2,7 +2,10 @@
 
 ## Project
 
-Flutter tablet app for PPS (manufacturing/warehouse management).  
+Flutter app for PPS (manufacturing/warehouse management). One codebase, one APK:
+**it adapts to the device** — phones show the ported `pps_mobile` phone UI,
+tablets keep the tablet UI. Detection mirrors `wps_tablet_v2`:
+`isPhoneDevice()` in `lib/core/utils/device_type.dart` (`MediaQuery.shortestSide < 600`).
 Single Flutter project (not a monorepo). Entrypoint: `lib/main.dart`.
 
 ## Environment & Build
@@ -34,6 +37,38 @@ Single Flutter project (not a monorepo). Entrypoint: `lib/main.dart`.
 - **Label scanning**: `mobile_scanner` (camera barcode)
 - **SMB file access**: `smb_connect`
 - **Printer master list**: fetched from API via `MasterPrinterRepository`
+
+## Adaptive mobile/tablet (merged pps_mobile, 2026-11-09)
+
+- Phone UI = the ported `pps_mobile` codebase under **`lib/mobile/`** (screens, VMs,
+  repositories, mobile-only `shared/`, `widgets/`, `constants/`, `utils/`). It keeps the
+  old mobile app's relative import graph; package imports were rewritten
+  `package:pps_mobile/` → `package:pps_tablet/mobile/`.
+- Tablet UI = `lib/features/…` + `lib/core/…` as before (untouched).
+- `isPhoneDevice()` (`lib/core/utils/device_type.dart`) picks the shell. Callers pick
+  phone routes by MediaQuery at the route builder (`lib/main.dart`), e.g.
+  `/home` → `lib/mobile/features/home/view/main_shell.dart` (phone) vs `AppShell` (tablet);
+  same device-aware pattern for `/stockopname` and `/mapping`.
+- Phone-only named routes exist only for the mobile modules: `/stockopname-v2`
+  (SoV2MyLokasiScreen), `/mapping-v2` (MappingV2Screen), `/bj-jual` (BjJualListScreen) —
+  pushed by the phone home (`lib/mobile/features/home/view/home_screen.dart`).
+- Phone-only VMs/repos are registered in the root `MultiProvider` aliased
+  (`as mobile`/`as mobile_*`) next to the tablet ones (mobile classes are identical in name;
+  alias avoids clashing imports). Phone pushes carry no Navigator-key semantics; login
+  gates `/home` via the route builder (single shared LoginScreen = tablet one, NIK gate included).
+- Login screen (shared, both device types) gained the network-mode switcher from
+  pps_mobile (`NetworkModeConfig` in `lib/core/network/network_mode_config.dart`):
+  `internal` (default; env `DEFAULT_NETWORK_MODE`) / `public` (`pps.padmoasm.com`) / `auto`.
+  `endpoints.dart` `ApiConstants.baseUrl` resolves via `NetworkModeConfig.apiBaseUrl`.
+  Tap the settings icon on the login screen to switch. New envs in both `.env.*`:
+  `API_BASE_URL_INTERNAL`, `API_BASE_URL_PUBLIC`, `UPDATE_BASE_URL_INTERNAL`,
+  `UPDATE_BASE_URL_PUBLIC`, `DEFAULT_NETWORK_MODE`.
+- pps_mobile itself is untouched (legacy archive). Merged APK installs as "PPS"
+  (`android:label="PPS"`, applicationId `com.example.pps_tablet`) — it does NOT replace
+  the old `com.example.pps_mobile` install.
+- `lib/mobile/**` providers are created in `main.dart`'s root MultiProvider.
+  Legacy `test/bs_v2_create_screen_test.dart` was already broken before the merge
+  (invalid_override) — unrelated to this change.
 
 ## Testing
 

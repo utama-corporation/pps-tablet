@@ -1,7 +1,11 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'network_mode_config.dart';
+
 class ApiConstants {
-  static String get baseUrl => dotenv.env['API_BASE_URL'] ?? '';
+  // Phone/tablet share satu backend; mode jaringan (internal/public) diatur
+  // lewat NetworkModeConfig (env DEFAULT_NETWORK_MODE / pemilih di login).
+  static String get baseUrl => NetworkModeConfig.apiBaseUrl;
   static String get socketBaseUrl => dotenv.env['SOCKET_BASE_URL'] ?? '';
   static String get deviceApiUrl =>
       dotenv.env['DEVICE_API_URL'] ?? 'http://localhost:3000';

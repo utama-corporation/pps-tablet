@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:pps_tablet/features/spk/view/spk_screen.dart';
+import 'package:pps_tablet/features/label/barang_dagang/view/barang_dagang_screen.dart';
+import 'package:pps_tablet/core/navigation/pps_menu_catalog.dart';
 import 'package:pps_tablet/core/services/permission_storage.dart';
 import 'package:pps_tablet/core/services/token_storage.dart';
 import 'package:pps_tablet/core/services/user_session_storage.dart';
@@ -8,6 +13,9 @@ import 'package:pps_tablet/features/audit/view/audit_screen.dart';
 import 'package:pps_tablet/features/bahan_pendukung/penerimaan/view/penerimaan_bahan_pendukung_screen.dart';
 import 'package:pps_tablet/features/bj_jual/view/bj_jual_screen.dart';
 import 'package:pps_tablet/features/bongkar_susun_v2/view/bs_v2_list_screen.dart';
+import 'package:pps_tablet/features/favorit/view/favorit_screen.dart';
+import 'package:pps_tablet/features/favorit/view_model/favorit_view_model.dart';
+import 'package:pps_tablet/features/favorit/widgets/favorite_button.dart';
 import 'package:pps_tablet/features/home/view/home_screen.dart';
 import 'package:pps_tablet/features/home/view/widgets/account_info_dialog.dart';
 import 'package:pps_tablet/features/home/view/widgets/home_sidebar.dart';
@@ -54,6 +62,15 @@ import 'package:pps_tablet/features/sortir_reject_v2/view/sr_v2_list_screen.dart
 import 'package:pps_tablet/features/stock/view/stock_selection_screen.dart';
 import 'package:pps_tablet/features/stock_opname/view/stock_opname_list_screen.dart';
 import 'package:pps_tablet/features/stock_opname_v2/view/so_v2_kategori_list_screen.dart';
+import 'package:pps_tablet/features/master_barang/view/master_barang_screen.dart';
+import 'package:pps_tablet/features/master_cetakan/view/master_cetakan_screen.dart';
+import 'package:pps_tablet/features/master_blok_lokasi/view/master_blok_lokasi_screen.dart';
+import 'package:pps_tablet/features/master_formula/view/master_formula_screen.dart';
+import 'package:pps_tablet/features/master_mesin/view/master_mesin_screen.dart';
+import 'package:pps_tablet/features/master_supplier/view/master_supplier_screen.dart';
+import 'package:pps_tablet/features/master_user/view/master_user_screen.dart';
+import 'package:pps_tablet/features/master_operator_regu/view/master_operator_regu_screen.dart';
+import 'package:pps_tablet/features/role/view/role_screen.dart';
 import 'package:pps_tablet/features/penerimaan_barang_dagang/view/penerimaan_barang_dagang_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -73,6 +90,13 @@ class AppShell extends StatefulWidget {
     const BreadcrumbSegment('Dashboard'),
   ]);
 
+  /// Route layar yang sedang tampil di inner navigator (null bila tidak diketahui).
+  static final currentRoute = ValueNotifier<String?>(null);
+
+  /// Kode favorit laporan yang sedang terbuka (null bila bukan layar laporan).
+  /// Saat terisi, bintang di app bar men-toggle favorit laporan, bukan menu.
+  static final currentReport = ValueNotifier<String?>(null);
+
   @override
   State<AppShell> createState() => _AppShellState();
 }
@@ -86,6 +110,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     AppShell.breadcrumb.addListener(_onBreadcrumbChanged);
+    unawaited(context.read<FavoritViewModel>().load());
     _loadUserInfo();
   }
 
@@ -237,9 +262,38 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
 
+          _buildFavoriteAction(),
           _buildUserChip(context, username),
         ],
       ),
+    );
+  }
+
+  /// Bintang favorit: laporan bila sedang membuka layar laporan,
+  /// selain itu menu bernama rute (semua menu sidebar).
+  Widget _buildFavoriteAction() {
+    return ValueListenableBuilder<String?>(
+      valueListenable: AppShell.currentReport,
+      builder: (context, reportKode, _) {
+        if (reportKode != null) {
+          return FavoriteButton(
+            tipe: 'laporan',
+            kode: reportKode,
+            iconSize: 20,
+          );
+        }
+        return ValueListenableBuilder<String?>(
+          valueListenable: AppShell.currentRoute,
+          builder: (context, route, _) {
+            if (route == null) return const SizedBox.shrink();
+            if (route == '/shell/favorit') return const SizedBox.shrink();
+            if (PpsMenuCatalog.forRoute(route) == null) {
+              return const SizedBox.shrink();
+            }
+            return FavoriteButton(tipe: 'menu', kode: route, iconSize: 20);
+          },
+        );
+      },
     );
   }
 
@@ -523,7 +577,33 @@ class _AppShellState extends State<AppShell> {
   }
 
   Route<dynamic> _generateRoute(RouteSettings settings) {
-    final Widget page = _pageForRoute(settings.name);
+    AppShell.currentRoute.value = settings.name;
+    final can = context.read<PermissionViewModel>().can;
+    final Widget page = PpsMenuCatalog.canOpenRoute(settings.name, can)
+        ? _pageForRoute(settings.name)
+        : const Scaffold(
+            body: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_outline, size: 40),
+                    SizedBox(height: 12),
+                    Text(
+                      'Akses ditolak',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Anda tidak memiliki akses ke menu ini. Hubungi administrator untuk informasi hak akses.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
     return MaterialPageRoute(builder: (_) => page, settings: settings);
   }
 
@@ -553,6 +633,10 @@ class _AppShellState extends State<AppShell> {
         return PackingScreen();
       case '/label/reject':
         return RejectScreen();
+      case '/label/barang-dagang':
+        return const BarangDagangScreen();
+      case '/production/spk-barang-jadi':
+        return const SpkScreen();
       case '/label/bahan-pendukung':
         return BahanPendukungScreen();
       case '/production':
@@ -618,8 +702,54 @@ class _AppShellState extends State<AppShell> {
         return const PenjualanListScreen();
       case '/shell/laporan':
         return const ReportListScreen();
+      case '/laporan/bahan-baku':
+        return const ReportListScreen(categoryKey: 'bahan-baku');
+      case '/laporan/washing':
+        return const ReportListScreen(categoryKey: 'washing');
+      case '/laporan/broker':
+        return const ReportListScreen(categoryKey: 'broker');
+      case '/laporan/bonggolan':
+        return const ReportListScreen(categoryKey: 'bonggolan');
+      case '/laporan/crusher':
+        return const ReportListScreen(categoryKey: 'crusher');
+      case '/laporan/gilingan':
+        return const ReportListScreen(categoryKey: 'gilingan');
+      case '/laporan/mixer':
+        return const ReportListScreen(categoryKey: 'mixer');
+      case '/laporan/reject':
+        return const ReportListScreen(categoryKey: 'reject');
+      case '/laporan/furniture-wip':
+        return const ReportListScreen(categoryKey: 'furniture-wip');
+      case '/laporan/barang-jadi':
+        return const ReportListScreen(categoryKey: 'barang-jadi');
+      case '/laporan/barang-dagang':
+        return const ReportListScreen(categoryKey: 'barang-dagang');
+      case '/laporan/rekap-produksi':
+        return const ReportListScreen(categoryKey: 'rekap-produksi');
+      case '/laporan/semua':
+        return const ReportListScreen(categoryKey: 'semua');
       case '/shell/history':
         return const AuditScreen();
+      case '/shell/user':
+        return const MasterUserScreen();
+      case '/master/operator-regu':
+        return const MasterOperatorReguScreen();
+      case '/master/mesin-produksi':
+        return const MasterMesinScreen();
+      case '/master/barang':
+        return const MasterBarangScreen();
+      case '/master/supplier':
+        return const MasterSupplierScreen();
+      case '/master/cetakan':
+        return const MasterCetakanScreen();
+      case '/master/formula':
+        return const MasterFormulaScreen();
+      case '/master/blok-lokasi':
+        return const MasterBlokLokasiScreen();
+      case '/shell/favorit':
+        return const FavoritScreen();
+      case '/shell/role':
+        return const RoleScreen();
       case '/shell/mapping':
         return const MappingScreen();
       case '/shell/goods-transfer':

@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'permission_rules.dart';
 
 class PermissionStorage {
   /// Simpan daftar permission (biasanya dipanggil setelah login)
@@ -16,7 +17,7 @@ class PermissionStorage {
   /// Cek apakah user memiliki permission tertentu
   static Future<bool> hasPermission(String code) async {
     final permissions = await getPermissions();
-    return permissions.contains(code);
+    return PermissionRules.allows(permissions, code);
   }
 
   /// Hapus permission (misalnya saat logout)

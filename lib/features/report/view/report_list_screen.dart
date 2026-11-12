@@ -1,287 +1,86 @@
 // lib/features/report/view/report_list_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../common/widgets/loading_dialog.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/network/api_error.dart';
+import '../../favorit/widgets/favorite_button.dart';
 import '../model/report_item.dart';
-import '../service/report_pdf_service.dart';
 import '../view_model/report_list_view_model.dart';
-import '../widgets/report_param_dialog.dart';
-import 'report_pdf_viewer_screen.dart';
+import 'report_open_helper.dart';
+
+const _sectionColors = <Color>[
+  Color(0xFF0C66E4),
+  Color(0xFF15803D),
+  Color(0xFFB45309),
+  Color(0xFF7C3AED),
+];
 
 class ReportListScreen extends StatelessWidget {
-  const ReportListScreen({super.key});
+  const ReportListScreen({super.key, this.categoryKey});
 
-  static const List<ReportItem> reports = [
-    ReportItem(
-      title: 'Mutasi Washing',
-      subtitle: '', // tidak dipakai di UI
-      reportName: 'MutasiWashing',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/washing/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Broker',
-      subtitle: '', // tidak dipakai di UI
-      reportName: 'MutasiBroker',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/broker/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Bonggolan',
-      subtitle: '', // tidak dipakai di UI
-      reportName: 'MutasiBonggolan',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/bonggolan/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Crusher',
-      subtitle: '',
-      reportName: 'MutasiCrusher',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/crusher/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Gilingan',
-      subtitle: '',
-      reportName: 'MutasiGilingan',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/gilingan/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Mixer',
-      subtitle: '',
-      reportName: 'MutasiMixer',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/mixer/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Furniture WIP',
-      subtitle: '',
-      reportName: 'MutasiFurnitureWIP',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/furniture-wip/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Barang Jadi',
-      subtitle: '',
-      reportName: 'MutasiBarangJadi',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/barang-jadi/pdf',
-    ),
-    ReportItem(
-      title: 'Mutasi Reject',
-      subtitle: '',
-      reportName: 'MutasiReject',
-      icon: Icons.picture_as_pdf_outlined,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/mutasi/reject/pdf',
-    ),
-    ReportItem(
-      title: 'Rekap Produksi',
-      subtitle: '',
-      reportName: 'RekapProduksi',
-      icon: Icons.summarize_outlined,
-      isSingleDate: true,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/rekap/inject-fwip/pdf',
-    ),
-    ReportItem(
-      title: 'Rekap Produksi BJ',
-      subtitle: '',
-      reportName: 'RekapProduksiBJ',
-      icon: Icons.summarize_outlined,
-      isSingleDate: true,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/rekap/inject-bj/pdf',
-    ),
-    ReportItem(
-      title: 'Packing BJ',
-      subtitle: '',
-      reportName: 'PackingBJ',
-      icon: Icons.inventory_2_outlined,
-      isSingleDate: true,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/rekap/packing/pdf',
-    ),
-    ReportItem(
-      title: 'Hot Stamping FWIP',
-      subtitle: '',
-      reportName: 'HotStampingFWIP',
-      icon: Icons.local_fire_department_outlined,
-      isSingleDate: true,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/rekap/hot-stamping/pdf',
-    ),
-    ReportItem(
-      title: 'Spanner FWIP',
-      subtitle: '',
-      reportName: 'SpannerFWIP',
-      icon: Icons.build_outlined,
-      isSingleDate: true,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/rekap/spanner/pdf',
-    ),
-    ReportItem(
-      title: 'Pasang Kunci FWIP',
-      subtitle: '',
-      reportName: 'PasangKunciFWIP',
-      icon: Icons.key_outlined,
-      isSingleDate: true,
-      source: ReportSource.baseApi,
-      baseApiPath: '/api/laporan/rekap/pasang-kunci/pdf',
-    ),
-  ];
+  /// Slug kategori (mis. 'washing') — dari route `/laporan/<slug>`.
+  /// null atau 'semua' â†’ tampilkan semua kategori.
+  final String? categoryKey;
 
   @override
   Widget build(BuildContext context) {
-    // TODO: ambil username dari session/login
-    const username = 'ADMIN';
-
     return ChangeNotifierProvider(
-      create: (_) => ReportListViewModel(
-        initialReports: reports,
-        pdfService: ReportPdfService(),
-        apiClient: ApiClient(),
-        username: username,
-      ),
-      child: const _ReportListView(),
+      create: (_) => ReportListViewModel(apiClient: context.read<ApiClient>()),
+      child: _ReportListView(categoryKey: categoryKey),
     );
   }
 }
 
 class _ReportListView extends StatefulWidget {
-  const _ReportListView();
+  const _ReportListView({this.categoryKey});
+
+  final String? categoryKey;
 
   @override
   State<_ReportListView> createState() => _ReportListViewState();
 }
 
 class _ReportListViewState extends State<_ReportListView> {
-  final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _search = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+  bool _searchFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocus.addListener(() {
+      if (mounted) setState(() => _searchFocused = _searchFocus.hasFocus);
+    });
+  }
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    _search.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ReportListViewModel>();
-    final items = vm.filteredReports;
+    final kategori = vm.filteredKategori(widget.categoryKey);
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: Column(
         children: [
-          // Search Bar
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [const Color(0xFF0D47A1), Colors.grey[100]!],
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _searchCtrl,
-                onChanged: (v) => vm.search = v,
-                style: const TextStyle(fontSize: 15),
-                decoration: InputDecoration(
-                  hintText: 'Cari laporan...',
-                  hintStyle: TextStyle(color: Colors.grey[400]),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: Colors.grey[600],
-                    size: 22,
-                  ),
-                  suffixIcon: _searchCtrl.text.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(
-                            Icons.clear_rounded,
-                            color: Colors.grey[600],
-                            size: 20,
-                          ),
-                          onPressed: () {
-                            _searchCtrl.clear();
-                            vm.search = '';
-                          },
-                        )
-                      : null,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Badge jumlah laporan (optional, boleh hapus kalau mau super minimal)
-          if (items.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D47A1).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${items.length} Laporan',
-                      style: const TextStyle(
-                        color: Color(0xFF0D47A1),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
+          _buildSearchBar(vm),
           Expanded(
-            child: items.isEmpty
+            child: kategori.isEmpty
                 ? Center(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.search_off_rounded,
-                          size: 72,
+                          size: 64,
                           color: Colors.grey[400],
                         ),
                         const SizedBox(height: 12),
@@ -296,20 +95,19 @@ class _ReportListViewState extends State<_ReportListView> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    itemCount: items.length,
-                    itemBuilder: (_, i) {
-                      final item = items[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _ReportCard(
-                          title: item.title,
-                          icon: item.icon,
-                          onTap: () => _openParamDialog(item),
+                : ListView(
+                    key: const ValueKey('laporan-scroll'),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    children: [
+                      for (final (index, section) in kategori.indexed) ...[
+                        if (index > 0) const SizedBox(height: 16),
+                        _SectionGrid(
+                          kategori: section,
+                          color: _sectionColors[index % _sectionColors.length],
+                          onTap: _openItem,
                         ),
-                      );
-                    },
+                      ],
+                    ],
                   ),
           ),
         ],
@@ -317,191 +115,260 @@ class _ReportListViewState extends State<_ReportListView> {
     );
   }
 
-  void _openParamDialog(ReportItem item) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => ReportParamDialog(
-        title: item.title,
-        icon: item.icon,
-        singleDate: item.isSingleDate,
-        onGenerate: (startDate, endDate) =>
-            _handleGenerateReport(item, startDate, endDate),
+  Widget _buildSearchBar(ReportListViewModel vm) {
+    final sections = reportSectionsFor(widget.categoryKey);
+    final single = sections.length == 1 ? sections.single : null;
+    final title = single?.nama ?? 'Semua Laporan';
+    final icon = single?.icon ?? Icons.apps_rounded;
+    final accent = single == null
+        ? const Color(0xFF0C66E4)
+        : _sectionColors[reportKategoriCatalog.indexOf(single) %
+            _sectionColors.length];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF172B4D),
+              ),
+            ),
+          ),
+          Text(
+            '${vm.filteredCount(widget.categoryKey)} laporan',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B778C),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 240,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _searchFocused
+                      ? const Color(0xFF1565C0).withValues(alpha: .5)
+                      : Colors.grey.shade300,
+                  width: _searchFocused ? 1.6 : 1,
+                ),
+                boxShadow: _searchFocused
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF1565C0).withValues(alpha: .12),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : null,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Row(
+                children: [
+                  const SizedBox(width: 6),
+                  Icon(Icons.search, color: Colors.grey.shade700),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      key: const ValueKey('laporan-search'),
+                      focusNode: _searchFocus,
+                      controller: _search,
+                      onChanged: (v) {
+                        setState(() {});
+                        vm.search = v;
+                      },
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Cari laporan…',
+                        hintStyle: TextStyle(color: Colors.grey.shade500),
+                        isCollapsed: true,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_search.text.trim().isNotEmpty)
+                    IconButton(
+                      tooltip: 'Hapus pencarian',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () {
+                        _search.clear();
+                        setState(() {});
+                        vm.search = '';
+                        _searchFocus.requestFocus();
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _handleGenerateReport(
-    ReportItem item,
-    DateTime startDate,
-    DateTime endDate,
-  ) async {
-    final vm = context.read<ReportListViewModel>();
+  void _openItem(ReportItem item) {
+    unawaited(openReportItem(context, item));
+  }
+}
 
-    // showDialog() default-nya useRootNavigator: true, jadi LoadingDialog
-    // di-push ke ROOT navigator. ReportPdfViewerScreen.push juga memakai
-    // rootNavigator: true.
-    //
-    // Navigator.of(context) tanpa rootNavigator memakai navigator TERDEKAT,
-    // yaitu shell navigator milik AppShell - dan shell navigator itu selalu
-    // hanya punya SATU route (home_sidebar memakai pushNamedAndRemoveUntil
-    // dengan (r) => false), sehingga pop() di sana tidak pernah mengubah
-    // apa pun. Akibatnya LoadingDialog tidak pernah tertutup: ia hanya
-    // tersembunyi di belakang PDF viewer, lalu muncul lagi begitu viewer
-    // ditutup.
-    //
-    // Karena itu popup DAN penutupannya harus memakai root navigator yang
-    // sama. Ditangkap di sini (sebelum await) supaya tetap aman kalau
-    // widget-nya ke-unmount saat download berjalan.
-    final rootNavigator = Navigator.of(context, rootNavigator: true);
+class _SectionGrid extends StatelessWidget {
+  const _SectionGrid({
+    required this.kategori,
+    required this.color,
+    required this.onTap,
+  });
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const LoadingDialog(message: 'Mengunduh laporan...'),
+  final ReportKategori kategori;
+  final Color color;
+  final ValueChanged<ReportItem> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1100
+            ? 3
+            : constraints.maxWidth >= 700
+                ? 2
+                : 1;
+        return GridView.count(
+          crossAxisCount: columns,
+          mainAxisExtent: 76,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            for (final item in kategori.items)
+              _ReportCard(
+                key: ValueKey('laporan-item-${item.path ?? item.route ?? item.title}'),
+                item: item,
+                color: color,
+                onTap: () => onTap(item),
+              ),
+          ],
+        );
+      },
     );
-
-    var loaderClosed = false;
-    void closeLoader() {
-      if (loaderClosed) return;
-      loaderClosed = true;
-      if (rootNavigator.mounted && rootNavigator.canPop()) {
-        rootNavigator.pop();
-      }
-    }
-
-    try {
-      final bytes = await vm.generateReport(
-        item: item,
-        startDate: startDate,
-        endDate: endDate,
-      );
-
-      if (!mounted) return;
-
-      closeLoader();
-
-      await ReportPdfViewerScreen.push(
-        context: context,
-        title: item.title,
-        pdfBytes: bytes,
-        isSingleDate: item.isSingleDate,
-        startDate: startDate,
-        endDate: endDate,
-        onRegenerate: (s, e) =>
-            vm.generateReport(item: item, startDate: s, endDate: e),
-      );
-    } catch (e) {
-      closeLoader();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Gagal membuka PDF: ${apiErrorMessage(e)}')),
-            ],
-          ),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    } finally {
-      closeLoader();
-    }
   }
 }
 
 class _ReportCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final VoidCallback onTap;
-
   const _ReportCard({
-    required this.title,
-    required this.icon,
+    super.key,
+    required this.item,
+    required this.color,
     required this.onTap,
   });
+
+  final ReportItem item;
+  final Color color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF0D47A1), Color(0xFF1565C0)],
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0D47A1).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 16),
-
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: Color(0xFF212121),
-                    ),
-                  ),
-                ),
-
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D47A1).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: Color(0xFF0D47A1),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        borderRadius: BorderRadius.circular(12),
+         child: Container(
+           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+           decoration: BoxDecoration(
+             borderRadius: BorderRadius.circular(12),
+             border: Border.all(
+               color: item.comingSoon
+                   ? const Color(0xFFFFE0B2)
+                   : const Color(0xFFE5E7EB),
+             ),
+             color: item.comingSoon ? const Color(0xFFFFF9F0) : null,
+           ),
+           child: Row(
+             children: [
+               Container(
+                 width: 44,
+                 height: 44,
+                 decoration: BoxDecoration(
+                   color: item.comingSoon
+                       ? Colors.amber.withValues(alpha: 0.14)
+                       : color.withValues(alpha: 0.12),
+                   borderRadius: BorderRadius.circular(10),
+                 ),
+                 child: Icon(
+                   item.icon,
+                   color: item.comingSoon ? const Color(0xFFB45309) : color,
+                   size: 22,
+                 ),
+               ),
+               const SizedBox(width: 12),
+               Expanded(
+                 child: Text(
+                   item.title,
+                   maxLines: 2,
+                   overflow: TextOverflow.ellipsis,
+                   style: TextStyle(
+                     fontSize: 13,
+                     fontWeight: FontWeight.w600,
+                     color: item.comingSoon
+                         ? const Color(0xFFB45309)
+                         : const Color(0xFF172B4D),
+                   ),
+                 ),
+               ),
+               FavoriteButton(
+                 tipe: 'laporan',
+                 kode: item.path ?? item.route ?? item.title,
+                 iconSize: 18,
+               ),
+               if (item.comingSoon)
+                 Container(
+                   padding: const EdgeInsets.symmetric(
+                     horizontal: 8,
+                     vertical: 3,
+                   ),
+                   decoration: BoxDecoration(
+                     color: Colors.amber.withValues(alpha: 0.18),
+                     borderRadius: BorderRadius.circular(20),
+                   ),
+                   child: const Text(
+                     'Segera',
+                     style: TextStyle(
+                       fontSize: 10.5,
+                       fontWeight: FontWeight.w700,
+                       color: Color(0xFFB26A00),
+                     ),
+                   ),
+                 )
+               else
+                 const Icon(
+                   Icons.chevron_right_rounded,
+                   size: 18,
+                   color: Color(0xFFC1C7D0),
+                 ),
+             ],
+           ),
+         ),
       ),
     );
   }

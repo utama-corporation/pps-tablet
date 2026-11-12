@@ -27,6 +27,11 @@ class AtlasTableColumn<T> {
   final double horizontalPadding;
   final AtlasCellBuilder<T> cellBuilder;
 
+  /// Optional sortable header: tappable with a trailing sort affordance.
+  final VoidCallback? onHeaderTap;
+  final Widget? headerTrailing;
+  final bool sortActive;
+
   const AtlasTableColumn({
     required this.title,
     required this.cellBuilder,
@@ -36,6 +41,9 @@ class AtlasTableColumn<T> {
     this.headerAlign = TextAlign.left,
     this.cellAlignment = Alignment.centerLeft,
     this.horizontalPadding = 10,
+    this.onHeaderTap,
+    this.headerTrailing,
+    this.sortActive = false,
   });
 }
 
@@ -118,6 +126,7 @@ class AtlasDataTable<T> extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               controller: scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
               itemCount: items.length + (isFetchingMore ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index == items.length) {
@@ -244,21 +253,47 @@ class AtlasDataTable<T> extends StatelessWidget {
                 alignment: column.headerAlign == TextAlign.center
                     ? Alignment.center
                     : Alignment.centerLeft,
-                child: Text(
-                  column.title,
-                  textAlign: column.headerAlign,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: _headerText,
-                    letterSpacing: 0.35,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: _buildHeaderCell(column),
               );
             })
             .toList(growable: false),
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(AtlasTableColumn<T> column) {
+    final active = column.sortActive;
+    final text = Text(
+      column.title,
+      textAlign: column.headerAlign,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: active ? const Color(0xFF0C66E4) : _headerText,
+        letterSpacing: 0.35,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: text),
+        if (column.headerTrailing != null) ...[
+          const SizedBox(width: 4),
+          column.headerTrailing!,
+        ],
+      ],
+    );
+
+    if (column.onHeaderTap == null) return row;
+
+    return InkWell(
+      onTap: column.onHeaderTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+        child: row,
       ),
     );
   }

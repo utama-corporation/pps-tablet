@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../../common/widgets/error_presenter.dart';
 import '../../../common/widgets/error_status_dialog.dart';
 import '../../../core/view_model/permission_view_model.dart';
+import '../../../core/network/network_mode_config.dart';
+import '../../../mobile/features/login/view/widgets/network_mode_bottom_sheet.dart';
 import '../../update/model/update_model.dart';
 import '../model/user_model.dart';
 import '../view_model/login_view_model.dart';
@@ -35,6 +37,9 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool _isPasswordVisible = false;
 
+  // 🔌 Mode jaringan (internal/public/auto) — sama seperti pilihan di pps_mobile
+  NetworkMode _selectedNetworkMode = NetworkModeConfig.currentMode;
+
   // ✅ State update yang diperluas
   bool _isCheckingUpdate = false;
   bool _lockLoginUi =
@@ -53,11 +58,71 @@ class _LoginScreenState extends State<LoginScreen>
   void initState() {
     super.initState();
     _initAnimations();
+    _selectedNetworkMode = NetworkModeConfig.currentMode;
 
     // ✅ Langsung check update saat init
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkForUpdatesWithRetry();
     });
+  }
+
+  Future<void> _onNetworkModeChanged(NetworkMode mode) async {
+    if (mode == _selectedNetworkMode) return;
+
+    setState(() {
+      _selectedNetworkMode = mode;
+      _errorMessage = '';
+      _errorType = '';
+      _detailCode = '';
+      _updateError = null;
+    });
+
+    await NetworkModeConfig.setMode(mode);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Mode jaringan: ${NetworkModeConfig.currentModeLabel}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    await _checkForUpdatesWithRetry();
+  }
+
+  Future<void> _showNetworkModeSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => NetworkModeBottomSheet(
+        selectedMode: _selectedNetworkMode,
+        isSelectionLocked: _isLoading,
+        onSelectMode: _onNetworkModeChanged,
+      ),
+    );
+  }
+
+  Widget _buildNetworkSettingsButton() {
+    return Positioned(
+      top: 44,
+      right: 18,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Material(
+          color: Colors.white.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(12),
+          child: IconButton(
+            tooltip: 'Pengaturan jaringan',
+            icon: const Icon(Icons.settings, color: Colors.white),
+            onPressed: _isLoading ? null : _showNetworkModeSheet,
+          ),
+        ),
+      ),
+    );
   }
 
   void _initAnimations() {
@@ -679,6 +744,7 @@ class _LoginScreenState extends State<LoginScreen>
         body: Stack(
           children: [
             const _GradientBackground(),
+            _buildNetworkSettingsButton(),
             Center(
               child: FadeTransition(
                 opacity: _fadeAnimation,
@@ -743,6 +809,7 @@ class _LoginScreenState extends State<LoginScreen>
         body: Stack(
           children: [
             const _GradientBackground(),
+            _buildNetworkSettingsButton(),
             Center(
               child: FadeTransition(
                 opacity: _fadeAnimation,
@@ -830,8 +897,9 @@ class _LoginScreenState extends State<LoginScreen>
         child: Stack(
           children: [
             const _GradientBackground(),
+            _buildNetworkSettingsButton(),
 
-            Positioned(
+            /*Positioned(
               top: 150,
               left: 0,
               right: 0,
@@ -852,7 +920,7 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                 ),
               ),
-            ),
+            ),*/
 
             AnimatedPositioned(
               duration: const Duration(milliseconds: 300),

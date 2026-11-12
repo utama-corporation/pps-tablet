@@ -1,137 +1,90 @@
 // lib/features/report/view_model/report_list_view_model.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import 'dart:typed_data';
 
 import '../../../core/network/api_client.dart';
-import '../../../core/network/endpoints.dart';
-import '../../../core/network/report_endpoints.dart';
 import '../model/report_item.dart';
-import '../service/report_pdf_service.dart';
 
 class ReportListViewModel extends ChangeNotifier {
-  /// Batas waktu download PDF laporan. PDF laporan dirender di sisi server
-  /// (Crystal Report / Puppeteer) dan server tidak mengirim satu byte pun
-  /// sampai selesai, jadi untuk rentang tanggal lebar prosesnya bisa jauh
-  /// melewati default 25-30 detik. 10 menit dipakai HANYA untuk request
-  /// laporan di [generateReport] - request lain (termasuk cetak label)
-  /// tetap memakai default masing-masing.
+  ReportListViewModel({required ApiClient apiClient}) : _api = apiClient;
+
+  final ApiClient _api;
+
+  /// PDF laporan dirender di sisi server (Puppeteer) dan server tidak
+  /// mengirim byte apa pun sampai selesai — untuk rentang tanggal lebar
+  /// bisa jauh melewati 25–30 detik. Dipakai HANYA untuk request laporan.
   static const Duration pdfTimeout = Duration(minutes: 10);
-
-  ReportListViewModel({
-    required List<ReportItem> initialReports,
-    required ReportPdfService pdfService,
-    required ApiClient apiClient,
-    required this.username,
-  }) : _pdfService = pdfService,
-       _apiClient = apiClient,
-       _allReports = initialReports,
-       _filteredReports = initialReports;
-
-  final ReportPdfService _pdfService;
-  final ApiClient _apiClient;
-  final String username;
-
-  final List<ReportItem> _allReports;
-  List<ReportItem> _filteredReports;
-
-  List<ReportItem> get filteredReports => _filteredReports;
 
   String _search = '';
   String get search => _search;
-
   set search(String value) {
+    if (_search == value) return;
     _search = value;
-    _filterReports();
+    notifyListeners();
   }
+
+  /// Section (dengan item terfilter) untuk [slug]; null/`semua` → semua.
+  /// Section tanpa item yang cocok disembunyikan.
+  List<ReportKategori> filteredKategori(String? slug) {
+    final sections = reportSectionsFor(slug);
+    final q = _search.trim().toLowerCase();
+    if (q.isEmpty) return sections;
+    return [
+      for (final kategori in sections)
+        if (kategori.items.any((i) => i.title.toLowerCase().contains(q)))
+          ReportKategori(
+            nama: kategori.nama,
+            slug: kategori.slug,
+            icon: kategori.icon,
+            items: [
+              for (final i in kategori.items)
+                if (i.title.toLowerCase().contains(q)) i,
+            ],
+          ),
+    ];
+  }
+
+  int filteredCount(String? slug) =>
+      filteredKategori(slug).fold(0, (sum, k) => sum + k.items.length);
 
   bool _loading = false;
   bool get loading => _loading;
 
-  final df = DateFormat('yyyy-MM-dd');
-
-  void _filterReports() {
-    if (_search.isEmpty) {
-      _filteredReports = _allReports;
-    } else {
-      final query = _search.toLowerCase();
-      _filteredReports = _allReports.where((r) {
-        return r.title.toLowerCase().contains(query) ||
-            r.subtitle.toLowerCase().contains(query);
-      }).toList();
-    }
-    notifyListeners();
-  }
-
-  Uri _buildCrystalUri(
-    String reportName,
-    DateTime startDate,
-    DateTime endDate,
-  ) {
-    final qp = <String, String>{
-      'reportName': reportName,
-      'StartDate': df.format(startDate),
-      'EndDate': df.format(endDate),
-      'Username': username,
-    };
-    return ReportEndpoints.exportPdf(qp);
+  /// Opsi warehouse dari `GET /api/laporan/warehouse-options` — selalu
+  /// diawali 'ALL'. Gagal memuat → hanya 'ALL' yang bisa dipilih.
+  Future<List<String>> loadWarehouseOptions() async {
+    try {
+      final body = await _api.getJson('/api/laporan/warehouse-options');
+      final options = body['options'];
+      if (options is List) {
+        final names = [
+          for (final v in options)
+            if (v != null && v.toString().trim().isNotEmpty) v.toString(),
+        ];
+        return ['ALL', ...names.where((n) => n != 'ALL')];
+      }
+    } catch (_) {}
+    return const ['ALL'];
   }
 
   Future<Uint8List> generateReport({
     required ReportItem item,
-    required DateTime startDate,
-    required DateTime endDate,
+    required Map<String, String> values,
   }) async {
     _loading = true;
     notifyListeners();
-
     try {
-      late Uri uri;
-
-      if (item.source == ReportSource.ppsApi) {
-        assert(
-          item.ppsApiPath != null,
-          'ppsApiPath wajib diisi untuk ReportSource.ppsApi',
-        );
-        final reportDate = DateFormat('dd-MM-yyyy').format(startDate);
-        uri = ReportEndpoints.ppsApiPdf(item.ppsApiPath!, reportDate);
-        debugPrint('[REPORT] URL => $uri');
-        return await _apiClient.getPdfBytes(uri, timeout: pdfTimeout);
-      } else if (item.source == ReportSource.baseApi) {
-        assert(
-          item.baseApiPath != null,
-          'baseApiPath wajib diisi untuk ReportSource.baseApi',
-        );
-        final dateFormat = DateFormat(item.baseApiDateFormat);
-        final path = item.baseApiPath!;
-        // Endpoint laporan backend selalu baca rentang tanggal:
-        //   tglAwal  -> StartDate  (mutasi/stok/umur/produksi)
-        //   tglAkhir -> EndDate / PerTgl (rekap)
-        // Untuk laporan single date, start == end jadi keduanya sama.
-        final query = <String, dynamic>{
-          item.baseApiStartDateParam: dateFormat.format(startDate),
-          item.baseApiEndDateParam: dateFormat.format(endDate),
-        };
-        debugPrint(
-          '[REPORT] URL => ${ApiConstants.baseUrl}$path?$query',
-        );
-        return await _apiClient.getPdfBytesForPath(
-          path,
-          query: query,
-          timeout: pdfTimeout,
-        );
-      } else {
-        uri = _buildCrystalUri(item.reportName, startDate, endDate);
-        debugPrint('[REPORT] URL => $uri');
-        return await _pdfService.downloadPdfBytes(
-          uri: uri,
-          timeout: pdfTimeout,
-        );
-      }
-    } catch (e) {
-      debugPrint('[REPORT] Error: $e');
-      rethrow;
+      final query = <String, dynamic>{
+        for (final entry in values.entries)
+          if (entry.value.trim().isNotEmpty) entry.key: entry.value.trim(),
+      };
+      debugPrint('[REPORT] GET ${item.path}?$query');
+      return await _api.getPdfBytesForPath(
+        item.path!,
+        query: query,
+        timeout: pdfTimeout,
+      );
     } finally {
       _loading = false;
       notifyListeners();

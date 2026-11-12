@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pps_tablet/core/view_model/permission_view_model.dart';
+import 'package:pps_tablet/features/favorit/repository/favorit_repository.dart';
+import 'package:pps_tablet/features/favorit/view_model/favorit_view_model.dart';
 import 'package:pps_tablet/core/view_model/label_print_lock_socket_manager.dart';
 import 'package:pps_tablet/core/view_model/label_qc_socket_manager.dart';
 import 'package:pps_tablet/features/stock_opname_v2/view_model/so_v2_socket_manager.dart';
 import 'package:pps_tablet/core/services/label_print_sync_queue.dart';
 import 'package:pps_tablet/features/audit/repository/audit_repository.dart';
+import 'package:pps_tablet/core/utils/device_type.dart';
 import 'package:pps_tablet/features/audit/view_model/audit_view_model.dart';
 import 'package:pps_tablet/features/bj_jual/repository/bj_jual_input_repository.dart';
 import 'package:pps_tablet/features/bj_jual/view_model/bj_jual_input_view_model.dart';
@@ -143,6 +146,24 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'core/network/network_mode_config.dart';
+import 'mobile/features/home/view/main_shell.dart' as mobile;
+import 'mobile/features/stock_opname/view/stock_opname_list_screen.dart' as mobile_so;
+import 'mobile/features/mapping/view/label_screen.dart' as mobile_map;
+import 'mobile/features/stock_opname_v2/view/so_v2_my_lokasi_screen.dart' as mobile_so_v2;
+import 'mobile/features/mapping_v2/view/mapping_v2_screen.dart' as mobile_map_v2;
+import 'mobile/features/bj_jual/view/bj_jual_list_screen.dart' as mobile_bj;
+import 'mobile/features/stock_opname/view_model/stock_opname_list_view_model.dart' as mobile_vm;
+import 'mobile/shared/lokasi/lokasi_repository.dart' as mobile_repo;
+import 'mobile/shared/lokasi/lokasi_view_model.dart' as mobile_lokasi_vm;
+import 'mobile/shared/blok/blok_repository.dart' as mobile_blok_repo;
+import 'mobile/shared/blok/blok_view_model.dart' as mobile_blok_vm;
+import 'mobile/features/profile/view_model/user_profile_view_model.dart' as mobile_profile_vm;
+import 'mobile/features/bj_jual/view_model/bj_jual_list_view_model.dart' as mobile_bj_list_vm;
+import 'mobile/features/bj_jual/view_model/bj_jual_detail_view_model.dart' as mobile_bj_detail_vm;
+import 'mobile/features/stock_opname/view_model/stock_opname_detail_view_model.dart' as mobile_so_detail_vm;
+import 'mobile/features/stock_opname/view_model/stock_opname_scan_view_model.dart' as mobile_so_scan_vm;
+import 'mobile/features/stock_opname_v2/view_model/so_v2_failed_scan_view_model.dart' as mobile_so_v2_failed_vm;
 
 // === imports kamu yang lain ===
 import 'package:pps_tablet/features/label/selection/view/label_selection_screen.dart';
@@ -188,6 +209,8 @@ Future<void> main() async {
       : '.env.development';
   await dotenv.load(fileName: envFile);
   await Hive.initFlutter();
+  await NetworkModeConfig.initialize();
+  NetworkModeConfig.attachNetworkChangeListener();
 
   // Locale Indonesia untuk nama hari/bulan (Intl)
   await initializeDateFormatting('id_ID', null);
@@ -260,6 +283,11 @@ class MyApp extends StatelessWidget {
         ),
         Provider<MaxSakService>(
           create: (_) => MaxSakService(MaxSakRepository()),
+        ),
+        ChangeNotifierProvider(
+          create: (ctx) => FavoritViewModel(
+            FavoritRepository(api: ctx.read<ApiClient>()),
+          ),
         ),
         ChangeNotifierProvider(
           create: (_) => PermissionViewModel()..loadPermissions(),
@@ -520,9 +548,42 @@ class MyApp extends StatelessWidget {
             ),
           ),
         ),
+
+        // 📱 Provider dari pps_mobile (layar HP memakai API/provider mobile)
+        ChangeNotifierProvider(
+          create: (_) => mobile_vm.StockOpnameViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_so_detail_vm.StockOpnameDetailViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_profile_vm.UserProfileViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_lokasi_vm.LokasiViewModel(
+            repository: mobile_repo.LokasiRepository(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_so_scan_vm.StockOpnameScanViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_blok_vm.BlokViewModel(
+            repository: mobile_blok_repo.BlokRepository(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_bj_list_vm.BjJualListViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_bj_detail_vm.BjJualDetailViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => mobile_so_v2_failed_vm.SoV2FailedScanViewModel(),
+        ),
       ],
       child: MaterialApp(
-        title: 'PPS Tablet',
+        title: 'PPS',
         navigatorKey: AppNav.key,
 
         // 🎨 THEME: pakai biru sebagai warna utama + atur default button
@@ -570,8 +631,18 @@ class MyApp extends StatelessWidget {
         initialRoute: '/',
         routes: {
           '/': (context) => LoginScreen(),
-          '/home': (context) => const AppShell(),
-          '/stockopname': (context) => StockOpnameListScreen(),
+          '/home': (context) => isPhoneDevice(context)
+              ? const mobile.MainShell()
+              : const AppShell(),
+          '/stockopname': (context) => isPhoneDevice(context)
+              ? mobile_so.StockOpnameListScreen()
+              : StockOpnameListScreen(),
+          '/stockopname-v2': (context) => const mobile_so_v2.SoV2MyLokasiScreen(),
+          '/mapping': (context) => isPhoneDevice(context)
+              ? mobile_map.LabelScreen()
+              : const MappingScreen(),
+          '/mapping-v2': (context) => const mobile_map_v2.MappingV2Screen(),
+          '/bj-jual': (context) => const mobile_bj.BjJualListScreen(),
           '/label': (context) => LabelSelectionScreen(),
           '/label/bahan-baku': (context) => BahanBakuScreen(),
           '/label/washing': (context) => WashingTableScreen(),

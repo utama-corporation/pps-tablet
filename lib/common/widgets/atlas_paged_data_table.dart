@@ -331,24 +331,52 @@ class _AtlasPagedDataTableState<T> extends State<AtlasPagedDataTable<T>> {
                           : c.headerAlign == TextAlign.right
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
-                      child: Text(
-                        c.title,
-                        textAlign: c.headerAlign,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AtlasPagedDataTable._headerText,
-                          letterSpacing: 0.35,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: _buildHeaderCell(c),
                     );
                   })
                   .toList(growable: false),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(AtlasTableColumn<T> column) {
+    final active = column.sortActive;
+    final text = Text(
+      column.title,
+      textAlign: column.headerAlign,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: active
+            ? const Color(0xFF0C66E4)
+            : AtlasPagedDataTable._headerText,
+        letterSpacing: 0.35,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: text),
+        if (column.headerTrailing != null) ...[
+          const SizedBox(width: 4),
+          column.headerTrailing!,
+        ],
+      ],
+    );
+
+    if (column.onHeaderTap == null) return row;
+
+    return InkWell(
+      onTap: column.onHeaderTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+        child: row,
       ),
     );
   }
