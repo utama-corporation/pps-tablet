@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../core/network/api_error.dart';
 import '../model/favorit_row.dart';
@@ -29,23 +30,52 @@ class FavoritViewModel extends ChangeNotifier {
     super.dispose();
   }
 
+  bool _notifyScheduled = false;
+
+  /// notifyListeners() di tengah fase build/layout (mis. load() dipanggil dari
+  /// initState) ditolak assert di debug, tapi di RELEASE provider jadi
+  /// ditandai dirty pada saat yang salah dan notifikasi berikutnya tidak lagi
+  /// me-rebuild bintang favorit — gejala "data masuk DB tapi ikon tidak
+  /// kuning" yang hanya muncul di APK production. Tunda ke setelah frame.
   void _notify() {
     if (_disposed) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks) {
+      if (_notifyScheduled) return;
+      _notifyScheduled = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _notifyScheduled = false;
+        if (!_disposed) notifyListeners();
+      });
+      SchedulerBinding.instance.ensureVisualUpdate();
+      return;
+    }
     notifyListeners();
   }
 
   List<FavoritRow> get rows => List.unmodifiable(_rows);
 
   bool isFavorite(String tipe, String kode) =>
-      _rows.any((r) => r.tipe == tipe && r.kode == kode);
+      _rows.any((r) => r.matches(tipe, kode));
 
-  Future<void> load() async {
+  /// Muat daftar dari server. Muat yang sedang jalan dipakai ulang, kecuali
+  /// [fresh]: setelah tulis (POST) fetch yang dimulai SEBELUM tulis berisi
+  /// data lama — di jaringan production yang lambat fetch awal app shell bisa
+  /// masih berjalan, dan hasilnya menimpa status favorit yang baru disimpan.
+  Future<void> load({bool fresh = false}) async {
     if (_disposed) return;
-    // Muat yang sedang jalan dipakai ulang, jangan di-skip diam-diam —
-    // toggle() memanggil load() setelah add, jadi caller harus menunggu
-    // fetch yang asli, bukan kembali langsung sementara data belum masuk.
     final inflight = _inflight;
-    if (inflight != null) return inflight;
+    if (inflight != null) {
+      if (!fresh) return inflight;
+      try {
+        await inflight;
+      } catch (_) {}
+      if (_disposed) return;
+      if (_inflight != null && !identical(_inflight, inflight)) {
+        // Fetch lain sudah dimulai setelah tulis → ikut menunggunya.
+        return _inflight;
+      }
+    }
     final future = _doLoad();
     _inflight = future;
     try {
@@ -84,14 +114,12 @@ class FavoritViewModel extends ChangeNotifier {
     _notify();
     final snapshot = List<FavoritRow>.from(_rows);
     try {
-      final existing = _rows.where(
-        (r) => r.tipe == tipe && r.kode == kode,
-      );
+      final existing = _rows.where((r) => r.matches(tipe, kode));
       if (existing.isNotEmpty) {
         // Optimistik: buang dari daftar langsung; rollback bila gagal.
         _rows = [
           for (final r in _rows)
-            if (!(r.tipe == tipe && r.kode == kode)) r,
+            if (!r.matches(tipe, kode)) r,
         ];
         _notify();
         try {
@@ -103,8 +131,8 @@ class FavoritViewModel extends ChangeNotifier {
       } else {
         // Optimistik: tampilkan sebagai favorit langsung; rollback bila gagal.
         final optimistic = FavoritRow(
-          tipe: tipe,
-          kode: kode,
+          tipe: tipe.trim().toLowerCase(),
+          kode: kode.trim(),
           urutan: _rows.isEmpty
               ? 1
               : _rows.map((r) => r.urutan).reduce(math.max) + 1,
@@ -117,12 +145,19 @@ class FavoritViewModel extends ChangeNotifier {
         } catch (e) {
           _rows = [
             for (final r in _rows)
-              if (r.tipe != tipe || r.kode != kode) r,
+              if (!r.matches(tipe, kode)) r,
           ];
           rethrow;
         }
-        // Reload untuk relasi & urutan konsisten dengan server.
-        await load();
+        // Reload (fetch baru, bukan fetch lama yang masih jalan) supaya urutan
+        // konsisten dengan server.
+        await load(fresh: true);
+        // Server sudah menerima POST (201). Bila daftar hasil reload belum
+        // memuatnya (replika/caching lambat, format kolom berbeda), status
+        // favorit tetap ditampilkan — jangan dibalik jadi abu-abu.
+        if (!_disposed && !isFavorite(tipe, kode)) {
+          _rows = [..._rows, optimistic];
+        }
       }
     } finally {
       if (!_disposed) {
@@ -140,7 +175,7 @@ class FavoritViewModel extends ChangeNotifier {
     try {
       _rows = [
         for (final r in _rows)
-          if (!(r.tipe == row.tipe && r.kode == row.kode)) r,
+          if (!r.matches(row.tipe, row.kode)) r,
       ];
       _notify();
       try {

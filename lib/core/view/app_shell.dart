@@ -110,7 +110,13 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     AppShell.breadcrumb.addListener(_onBreadcrumbChanged);
-    unawaited(context.read<FavoritViewModel>().load());
+    // Setelah frame pertama: load() memanggil notifyListeners, yang tidak
+    // boleh terjadi di tengah build (di release membuat bintang favorit
+    // berhenti ter-update).
+    final favorit = context.read<FavoritViewModel>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(favorit.load());
+    });
     _loadUserInfo();
   }
 
@@ -592,7 +598,10 @@ class _AppShellState extends State<AppShell> {
                     SizedBox(height: 12),
                     Text(
                       'Akses ditolak',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     SizedBox(height: 8),
                     Text(

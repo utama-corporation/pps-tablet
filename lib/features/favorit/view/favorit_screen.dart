@@ -41,11 +41,7 @@ class _FavoritScreenState extends State<FavoritScreen> {
             );
           }
           if (vm.error.isNotEmpty && rows.isEmpty) {
-            return _message(
-              vm.error,
-              error: true,
-              onRetry: vm.load,
-            );
+            return _message(vm.error, error: true, onRetry: vm.load);
           }
           if (rows.isEmpty) {
             return _message(
@@ -64,10 +60,10 @@ class _FavoritScreenState extends State<FavoritScreen> {
               itemBuilder: (context, index) {
                 final row = rows[index];
                 return _FavoritTile(
-            key: ValueKey('${row.tipe}:${row.kode}'),
-            row: row,
-            index: index,
-          );
+                  key: ValueKey('${row.tipe}:${row.kode}'),
+                  row: row,
+                  index: index,
+                );
               },
             ),
           );
@@ -91,11 +87,11 @@ class _FavoritScreenState extends State<FavoritScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Icon(
-                  error ? Icons.error_outline_rounded : Icons.star_border_rounded,
+                  error
+                      ? Icons.error_outline_rounded
+                      : Icons.star_border_rounded,
                   size: 44,
-                  color: error
-                      ? Colors.red.shade300
-                      : const Color(0xFFC1C7D0),
+                  color: error ? Colors.red.shade300 : const Color(0xFFC1C7D0),
                 ),
               ),
               Text(
@@ -103,9 +99,7 @@ class _FavoritScreenState extends State<FavoritScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
-                  color: error
-                      ? Colors.red.shade700
-                      : const Color(0xFF6B778C),
+                  color: error ? Colors.red.shade700 : const Color(0xFF6B778C),
                 ),
               ),
               const SizedBox(height: 12),
@@ -233,10 +227,7 @@ class _FavoritTile extends StatelessWidget {
     return last[0].toUpperCase() + last.substring(1).replaceAll('-', ' ');
   }
 
-  Future<void> _confirmRemove(
-    BuildContext context,
-    FavoritViewModel vm,
-  ) async {
+  Future<void> _confirmRemove(BuildContext context, FavoritViewModel vm) async {
     final meta = _resolveMeta(row);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -266,7 +257,9 @@ class _FavoritTile extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal menghapus favorit: ${apiErrorMessage(e)}')),
+        SnackBar(
+          content: Text('Gagal menghapus favorit: ${apiErrorMessage(e)}'),
+        ),
       );
     }
   }

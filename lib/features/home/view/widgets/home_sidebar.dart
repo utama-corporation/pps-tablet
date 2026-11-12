@@ -139,7 +139,7 @@ class _HomeSidebarState extends State<HomeSidebar> {
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
-                  'PPS Tablet',
+                  'PPS Mobile',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,

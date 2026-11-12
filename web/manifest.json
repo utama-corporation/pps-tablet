@@ -1,11 +1,11 @@
 {
-  "name": "pps_tablet",
-  "short_name": "pps_tablet",
+  "name": "PPS Mobile",
+  "short_name": "PPS Mobile",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0175C2",
   "theme_color": "#0175C2",
-  "description": "A new Flutter project.",
+  "description": "PPS Mobile",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [

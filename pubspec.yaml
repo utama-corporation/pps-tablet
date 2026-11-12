@@ -1,8 +1,8 @@
 name: pps_tablet
-description: "A new Flutter project."
+description: "PPS Mobile"
 publish_to: "none"
 
-version: 1.0.204+363
+version: 1.0.206+365
 
 environment:
   sdk: ^3.8.0

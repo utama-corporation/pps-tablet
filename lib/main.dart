@@ -583,7 +583,7 @@ class MyApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'PPS',
+        title: 'PPS Mobile',
         navigatorKey: AppNav.key,
 
         // 🎨 THEME: pakai biru sebagai warna utama + atur default button

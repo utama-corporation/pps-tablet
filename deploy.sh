@@ -80,7 +80,7 @@ NEXT_BUILD=$((CURRENT_BUILD + 1))
 
 echo ""
 echo "=================================================="
-echo " PPS Tablet — Deploy Script"
+echo " PPS Mobile — Deploy Script"
 echo "=================================================="
 echo " Mode        : $MODE"
 echo " Server      : $API_BASE_URL"

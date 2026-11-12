@@ -1,32 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../../shared/components/app_bottom_nav.dart';
-import '../../profile/view/profil_tab.dart';
-import 'aktivitas_tab.dart';
 import 'home_screen.dart';
 
-/// App shell hosting the top-level tabs (Beranda/Aktivitas/Profil) behind
-/// a single persistent bottom nav. Beranda doubles as the module menu, so
-/// there is no separate Menu tab. Feature screens (Stock Opname, Mapping
-/// V2, Penjualan BJ, ...) are pushed on top of this shell via Navigator
-/// and are not tabs themselves.
-class MainShell extends StatefulWidget {
+/// App shell for the phone: Beranda doubles as the module menu. Feature
+/// screens (Stock Opname, Mapping V2, Penjualan BJ, ...) are pushed on top
+/// of this shell via Navigator. There is no bottom navigation; the user
+/// screen is opened from the profile icon in the Beranda header.
+class MainShell extends StatelessWidget {
   const MainShell({super.key});
 
-  @override
-  State<MainShell> createState() => _MainShellState();
-}
-
-class _MainShellState extends State<MainShell> {
-  int _index = 0;
-
-  static const _tabs = [
-    BerandaTab(),
-    AktivitasTab(),
-    ProfilTab(),
-  ];
-
-  Future<bool> _confirmExit() async {
+  Future<bool> _confirmExit(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -58,16 +41,12 @@ class _MainShellState extends State<MainShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (await _confirmExit() && mounted) {
+        if (await _confirmExit(context) && context.mounted) {
           Navigator.of(context).pop();
         }
       },
-      child: Scaffold(
-        body: IndexedStack(index: _index, children: _tabs),
-        bottomNavigationBar: AppBottomNav(
-          currentIndex: _index,
-          onTap: (i) => setState(() => _index = i),
-        ),
+      child: const Scaffold(
+        body: BerandaTab(),
       ),
     );
   }

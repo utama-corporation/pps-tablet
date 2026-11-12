@@ -47,7 +47,7 @@
 
     <!-- === APPLICATION === -->
     <application
-        android:label="PPS"
+        android:label="PPS Mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">

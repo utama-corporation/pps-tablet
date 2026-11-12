@@ -48,3 +48,6 @@ app.*.map.json
 .env
 .env.*
 /windows/
+
+# Local asset backups
+/backups/

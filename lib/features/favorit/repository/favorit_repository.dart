@@ -27,16 +27,15 @@ class FavoritRepository {
     required String tipe,
     required String kode,
     String? komentar,
-  }) =>
-      api.postJson(
-        path,
-        body: {
-          'tipe': tipe,
-          'kode': kode,
-          if (komentar != null && komentar.trim().isNotEmpty)
-            'komentar': komentar.trim(),
-        },
-      );
+  }) => api.postJson(
+    path,
+    body: {
+      'tipe': tipe,
+      'kode': kode,
+      if (komentar != null && komentar.trim().isNotEmpty)
+        'komentar': komentar.trim(),
+    },
+  );
 
   Future<void> remove({required String tipe, required String kode}) =>
       api.deleteJson(

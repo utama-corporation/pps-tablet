@@ -26,9 +26,7 @@ class FavoriteButton extends StatelessWidget {
         return IconButton(
           tooltip: active ? 'Hapus dari favorit' : 'Tambah ke favorit',
           visualDensity: VisualDensity.compact,
-          onPressed: vm.busy
-              ? null
-              : () => _toggle(context, vm, active),
+          onPressed: vm.busy ? null : () => _toggle(context, vm, active),
           icon: Icon(
             active ? Icons.star_rounded : Icons.star_border_rounded,
             size: iconSize,
@@ -69,7 +67,9 @@ class FavoriteButton extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengubah favorit: ${apiErrorMessage(e)}')),
+        SnackBar(
+          content: Text('Gagal mengubah favorit: ${apiErrorMessage(e)}'),
+        ),
       );
     }
   }
