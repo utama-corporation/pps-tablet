@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/network/api_error.dart';
 import '../../../core/navigation/pps_menu_catalog.dart';
 import '../../../core/view/app_shell.dart';
 import '../../report/model/report_item.dart';
@@ -9,8 +10,23 @@ import '../model/favorit_row.dart';
 import '../view_model/favorit_view_model.dart';
 
 /// Layar Favorit — daftar favorit milik user; bisa digeser & dihapus.
-class FavoritScreen extends StatelessWidget {
+class FavoritScreen extends StatefulWidget {
   const FavoritScreen({super.key});
+
+  @override
+  State<FavoritScreen> createState() => _FavoritScreenState();
+}
+
+class _FavoritScreenState extends State<FavoritScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Muat ulang saat layar dibuka supaya daftar selalu sesuai server.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<FavoritViewModel>().load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -244,7 +260,15 @@ class _FavoritTile extends StatelessWidget {
       ),
     );
     if (confirmed != true) return;
-    await vm.removeItem(row);
+    if (!context.mounted) return;
+    try {
+      await vm.removeItem(row);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menghapus favorit: ${apiErrorMessage(e)}')),
+      );
+    }
   }
 
   Future<void> _open(BuildContext context, FavoritRow row) async {

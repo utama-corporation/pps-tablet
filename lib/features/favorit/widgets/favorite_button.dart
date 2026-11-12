@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/network/api_error.dart';
 import '../view_model/favorit_view_model.dart';
 
 /// Tombol bintang favorit — tap menambahkan (dengan dialog komentar) bila
@@ -44,7 +45,7 @@ class FavoriteButton extends StatelessWidget {
     bool active,
   ) async {
     if (active) {
-      await vm.toggle(tipe: tipe, kode: kode);
+      await _runToggle(context, () => vm.toggle(tipe: tipe, kode: kode));
       return;
     }
     final komentar = await showDialog<String>(
@@ -52,7 +53,25 @@ class FavoriteButton extends StatelessWidget {
       builder: (_) => const FavoriteCommentDialog(),
     );
     if (komentar == null) return;
-    await vm.toggle(tipe: tipe, kode: kode, komentar: komentar);
+    if (!context.mounted) return;
+    await _runToggle(
+      context,
+      () => vm.toggle(tipe: tipe, kode: kode, komentar: komentar),
+    );
+  }
+
+  Future<void> _runToggle(
+    BuildContext context,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengubah favorit: ${apiErrorMessage(e)}')),
+      );
+    }
   }
 }
 

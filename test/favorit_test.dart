@@ -37,6 +37,10 @@ class FakeApi extends ApiClient {
   String lastPath = '';
   Map<String, dynamic>? lastBody;
   int getCalls = 0, postCalls = 0, putCalls = 0, deleteCalls = 0;
+  bool failWrites = false;
+
+  Exception _writeError() =>
+      ApiException(500, 'boom', responseBody: '{"success":false,"message":"boom"}');
 
   @override
   Future<Map<String, dynamic>> getJson(
@@ -59,6 +63,7 @@ class FakeApi extends ApiClient {
     lastPath = path;
     lastBody = body is Map<String, dynamic> ? body : null;
     final map = body is Map<String, dynamic> ? body : <String, dynamic>{};
+    if (failWrites) throw _writeError();
     rows = [
       ...rows,
       {
@@ -88,9 +93,10 @@ class FakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
     Object? body,
-  }) async {
+  }  ) async {
     deleteCalls++;
     lastPath = path;
+    if (failWrites) throw _writeError();
     final parts = path.split('/');
     if (parts.length >= 4 && parts[1] == 'api' && parts[2] == 'favorit') {
       final tipe = Uri.decodeComponent(parts[3]);
@@ -136,6 +142,42 @@ void main() {
       {'tipe': 'menu', 'kode': '/master/barang'},
     ]);
     expect(api.putCalls, 1);
+  });
+
+  test('toggle rolls back and rethrows when the server write fails', () async {
+    final api = FakeApi()..failWrites = true;
+    final vm = FavoritViewModel(FavoritRepository(api: api));
+
+    await vm.load();
+    final before = vm.rows.length;
+    expect(vm.isFavorite('menu', '/master/barang'), isTrue);
+
+    // Gagal menambahkan -> rollback, bintang tetap tidak kuning
+    await expectLater(
+      vm.toggle(tipe: 'menu', kode: '/master/mesin', komentar: 'x'),
+      throwsA(isA<ApiException>()),
+    );
+    expect(vm.rows.length, before);
+    expect(vm.isFavorite('menu', '/master/mesin'), isFalse);
+
+    // Gagal menghapus -> rollback, entri lama tetap ada
+    final row = vm.rows.first;
+    await expectLater(
+      vm.removeItem(row),
+      throwsA(isA<ApiException>()),
+    );
+    expect(vm.rows.length, before);
+    expect(vm.isFavorite(row.tipe, row.kode), isTrue);
+
+    // Gagal toggle keluar -> rollback, entri lama tetap ada
+    await expectLater(
+      vm.toggle(tipe: 'menu', kode: '/master/barang'),
+      throwsA(isA<ApiException>()),
+    );
+    expect(vm.rows.length, before);
+    expect(vm.isFavorite('menu', '/master/barang'), isTrue);
+
+    vm.dispose();
   });
 
   test('view model toggle, isFavorite, remove and reorder', () async {

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_error.dart';
@@ -14,6 +17,7 @@ class FavoritViewModel extends ChangeNotifier {
   bool loading = false;
   bool busy = false;
   String error = '';
+  Future<void>? _inflight;
 
   // notifyListeners() pada VM yang sudah di-dispose melempar error saat
   // tree dibongkar (assert framework _dependents.isEmpty).
@@ -37,7 +41,22 @@ class FavoritViewModel extends ChangeNotifier {
 
   Future<void> load() async {
     if (_disposed) return;
-    if (loading) return;
+    // Muat yang sedang jalan dipakai ulang, jangan di-skip diam-diam —
+    // toggle() memanggil load() setelah add, jadi caller harus menunggu
+    // fetch yang asli, bukan kembali langsung sementara data belum masuk.
+    final inflight = _inflight;
+    if (inflight != null) return inflight;
+    final future = _doLoad();
+    _inflight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_inflight, future)) _inflight = null;
+    }
+  }
+
+  Future<void> _doLoad() async {
+    if (_disposed) return;
     loading = true;
     error = '';
     _notify();
@@ -63,17 +82,47 @@ class FavoritViewModel extends ChangeNotifier {
     if (busy) return;
     busy = true;
     _notify();
+    final snapshot = List<FavoritRow>.from(_rows);
     try {
-      final existing = _rows.where((r) => r.tipe == tipe && r.kode == kode);
+      final existing = _rows.where(
+        (r) => r.tipe == tipe && r.kode == kode,
+      );
       if (existing.isNotEmpty) {
-        await repository.remove(tipe: tipe, kode: kode);
+        // Optimistik: buang dari daftar langsung; rollback bila gagal.
         _rows = [
           for (final r in _rows)
             if (!(r.tipe == tipe && r.kode == kode)) r,
         ];
+        _notify();
+        try {
+          await repository.remove(tipe: tipe, kode: kode);
+        } catch (e) {
+          _rows = snapshot;
+          rethrow;
+        }
       } else {
-        await repository.add(tipe: tipe, kode: kode, komentar: komentar);
-        await load(); // dimuat ulang supaya relasi & urutan konsisten
+        // Optimistik: tampilkan sebagai favorit langsung; rollback bila gagal.
+        final optimistic = FavoritRow(
+          tipe: tipe,
+          kode: kode,
+          urutan: _rows.isEmpty
+              ? 1
+              : _rows.map((r) => r.urutan).reduce(math.max) + 1,
+          komentar: komentar?.trim() ?? '',
+        );
+        _rows = [..._rows, optimistic];
+        _notify();
+        try {
+          await repository.add(tipe: tipe, kode: kode, komentar: komentar);
+        } catch (e) {
+          _rows = [
+            for (final r in _rows)
+              if (r.tipe != tipe || r.kode != kode) r,
+          ];
+          rethrow;
+        }
+        // Reload untuk relasi & urutan konsisten dengan server.
+        await load();
       }
     } finally {
       if (!_disposed) {
@@ -87,12 +136,19 @@ class FavoritViewModel extends ChangeNotifier {
     if (busy) return;
     busy = true;
     _notify();
+    final snapshot = List<FavoritRow>.from(_rows);
     try {
-      await repository.remove(tipe: row.tipe, kode: row.kode);
       _rows = [
         for (final r in _rows)
           if (!(r.tipe == row.tipe && r.kode == row.kode)) r,
       ];
+      _notify();
+      try {
+        await repository.remove(tipe: row.tipe, kode: row.kode);
+      } catch (e) {
+        _rows = snapshot;
+        rethrow;
+      }
     } finally {
       if (!_disposed) {
         busy = false;
