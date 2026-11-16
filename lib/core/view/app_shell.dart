@@ -97,6 +97,14 @@ class AppShell extends StatefulWidget {
   /// Saat terisi, bintang di app bar men-toggle favorit laporan, bukan menu.
   static final currentReport = ValueNotifier<String?>(null);
 
+  /// Kembalikan state navigasi global ke kondisi awal (dipakai saat shell
+  /// dibuat ulang setelah login, dan saat logout).
+  static void resetNavigationState() {
+    breadcrumb.value = const [BreadcrumbSegment('Dashboard')];
+    currentRoute.value = null;
+    currentReport.value = null;
+  }
+
   @override
   State<AppShell> createState() => _AppShellState();
 }
@@ -109,6 +117,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    AppShell.resetNavigationState();
     AppShell.breadcrumb.addListener(_onBreadcrumbChanged);
     // Setelah frame pertama: load() memanggil notifyListeners, yang tidak
     // boleh terjadi di tengah build (di release membuat bintang favorit
@@ -569,6 +578,7 @@ class _AppShellState extends State<AppShell> {
     if (shouldLogout != true) return;
 
     socketMgr.disconnect();
+    AppShell.resetNavigationState();
     await TokenStorage.clear();
     await PermissionStorage.clear();
     await UserSessionStorage.clear();

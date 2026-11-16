@@ -30,6 +30,7 @@ import '../../../label/gilingan/repository/gilingan_repository.dart';
 import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 const _kGilinganPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kGilinganSurface = Color(0xFFF8F9FB);
@@ -1764,6 +1765,7 @@ class _GilinganProductionInputScreenState
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     primaryColor: _kGilinganPrimary,
                     idMesin: _header?.idMesin,
@@ -1778,6 +1780,11 @@ class _GilinganProductionInputScreenState
                     },
                     onGanti: _canModifyInput ? _openSplitDialog : null,
                     onRiwayat: _openTimelineDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.gilingan,
+                      noProduksi: widget.noProduksi,
+                    ),
                     showGantiRiwayat:
                         _header?.tglProduksi != null &&
                         _header!.tglProduksi!.year == DateTime.now().year &&

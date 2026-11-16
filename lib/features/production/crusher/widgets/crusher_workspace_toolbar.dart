@@ -16,6 +16,7 @@ class CrusherWorkspaceToolbar extends StatelessWidget {
   final VoidCallback? onRefresh;
   final VoidCallback? onGanti;
   final VoidCallback? onRiwayat;
+  final VoidCallback? onCetak;
   final bool showGantiRiwayat;
   final VoidCallback? onComplete;
   final VoidCallback? onUncomplete;
@@ -35,6 +36,7 @@ class CrusherWorkspaceToolbar extends StatelessWidget {
     this.onRefresh,
     this.onGanti,
     this.onRiwayat,
+    this.onCetak,
     this.showGantiRiwayat = true,
     this.onComplete,
     this.onUncomplete,
@@ -56,6 +58,7 @@ class CrusherWorkspaceToolbar extends StatelessWidget {
       primaryColor: _kCrusherPrimary,
       onGanti: onGanti,
       onRiwayat: onRiwayat,
+      onCetak: onCetak,
       onRefresh: onRefresh,
       showGantiRiwayat: showGantiRiwayat,
       onComplete: onComplete,

@@ -44,6 +44,10 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
   final VoidCallback? onRiwayat;
+  // Tombol "Cetak" (ikon printer) — dicetak untuk report PDF produksi
+  // (/api/production/{jenis}/{noProduksi}/report/pdf). Diletakkan tepat di
+  // kanan tombol Riwayat.
+  final VoidCallback? onCetak;
   final VoidCallback? onRefresh;
   final List<Widget>? trailingActions;
   final bool showGantiRiwayat;
@@ -80,6 +84,7 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
     this.onApprove,
     this.onReject,
     this.onRiwayat,
+    this.onCetak,
     this.onRefresh,
     this.trailingActions,
     this.showGantiRiwayat = true,
@@ -477,6 +482,48 @@ class ProductionWorkspaceToolbar extends StatelessWidget {
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (onCetak != null) ...[
+                const SizedBox(width: 6),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onCetak,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: primaryColor.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.print_rounded,
+                            size: 13,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Cetak',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: primaryColor,
                             ),
                           ),
                         ],

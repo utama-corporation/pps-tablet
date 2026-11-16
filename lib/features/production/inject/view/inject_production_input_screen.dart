@@ -38,6 +38,7 @@ import '../widgets/inject_sak_picker_dialog.dart';
 import '../widgets/inject_split_time_dialog_v1.dart';
 import '../../shared/widgets/bahan_pendukung_qty_dialog.dart';
 import '../../../label/packing/repository/packing_repository.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const _kInjectPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
@@ -2936,6 +2937,7 @@ totalData: gilinganGroups.length,
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     idMesin: _header?.idMesin,
                     namaJenis: _header?.namaJenis ?? _header?.namaMesin,
@@ -2956,6 +2958,11 @@ totalData: gilinganGroups.length,
                         ? _handleUncomplete
                         : null,
                     onGanti: _openSplitTimeDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.inject,
+                      noProduksi: widget.noProduksi,
+                    ),
                   ),
                 Expanded(
                   child: Builder(

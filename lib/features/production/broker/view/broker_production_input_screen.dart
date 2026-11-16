@@ -38,6 +38,7 @@ import '../../../broker_type/model/broker_type_model.dart';
 import '../../../broker_type/widgets/broker_type_dropdown.dart';
 import 'package:shimmer/shimmer.dart';
 import '../widgets/broker_workspace_toolbar.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 const _kBrokerPrimary = Color(0xFF1E6FD9);
 const _kBrokerSurface = Color(0xFFF8F9FB);
@@ -2373,6 +2374,7 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                       _buildToolbarSkeleton()
                     else
                       BrokerWorkspaceToolbar(
+                        noProduksi: widget.noProduksi,
                         idMesin: _header?.idMesin,
                         shift: _header?.shift,
                         tglProduksi: _header?.tglProduksi,
@@ -2382,6 +2384,11 @@ class _BrokerProductionInputScreenState extends State<BrokerProductionInputScree
                         namaJenis: _header?.outputJenisNama,
                         onGanti: _openSplitDialog,
                         onTimeline: _openTimelineDialog,
+                        onCetak: () => openProductionReportPdf(
+                          context,
+                          jenisProduksi: ProductionJenis.broker,
+                          noProduksi: widget.noProduksi,
+                        ),
                         onRefresh: () {
                           final vm = context
                               .read<BrokerProductionInputViewModel>();

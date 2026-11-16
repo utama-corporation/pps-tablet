@@ -33,6 +33,7 @@ import '../../../label/crusher/repository/crusher_repository.dart';
 import '../../../../core/network/endpoints.dart';
 
 import 'package:pps_tablet/features/production/shared/shared.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 const _kCrusherPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kCrusherSurface = Color(0xFFF8F9FB);
@@ -2020,6 +2021,7 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                   _buildToolbarSkeleton()
                 else
                   CrusherWorkspaceToolbar(
+                    noProduksi: widget.noCrusherProduksi,
                     isLocked: locked,
                     idMesin: _header?.idMesin,
                     namaJenis: _header?.outputJenisNama,
@@ -2033,6 +2035,11 @@ final freshCount = vm.countNewRowsInLastLookup(widget.noCrusherProduksi);
                     },
                     onGanti: locked ? null : _openSplitDialog,
                     onRiwayat: _openTimelineDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.crusher,
+                      noProduksi: widget.noCrusherProduksi,
+                    ),
                     showGantiRiwayat:
                         _header?.tanggal != null &&
                         _header!.tanggal!.year == DateTime.now().year &&

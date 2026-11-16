@@ -31,6 +31,7 @@ import '../../../label/reject/repository/reject_repository.dart';
 import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
 import 'package:shimmer/shimmer.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const _kSpannerPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
@@ -1428,6 +1429,7 @@ backgroundColor: Colors.green,
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     idMesin: _header?.idMesin,
                     namaJenis: _header?.outputJenisNama,
@@ -1437,6 +1439,11 @@ backgroundColor: Colors.green,
                     hourEnd: _header?.hourEnd,
                     primaryColor: _kSpannerPrimary,
                     onGanti: locked ? null : _openSplitDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.spanner,
+                      noProduksi: widget.noProduksi,
+                    ),
                   onComplete: (_header == null || _isLockedOrComplete)
                       ? null
                       : _handleComplete,

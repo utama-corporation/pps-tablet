@@ -46,6 +46,7 @@ import '../../../../core/network/label_print_lock_api.dart';
 import '../../../../core/services/label_print_sync_queue.dart';
 import '../../../../core/utils/pdf_print_service.dart';
 import '../../../../core/view_model/label_print_lock_socket_manager.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 // Jeda setelah jam akhir bucket sebelum input-nya terbuka (mis. range
 // 07:00-08:00 langsung bisa diinput mulai jam 08:00, begitu jamnya
@@ -3480,6 +3481,7 @@ gilinganGroups: gilinganGroups,
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     idMesin: _header?.idMesin,
                     namaJenis: _header?.namaJenis ?? _header?.namaMesin,
@@ -3503,6 +3505,11 @@ gilinganGroups: gilinganGroups,
                         ? null
                         : 'Tidak dapat terminate: data pada jam saat ini sudah diinput. Tunggu jam berikutnya.',
                     onRiwayat: _openTimelineDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.inject,
+                      noProduksi: widget.noProduksi,
+                    ),
 
                     trailingActions: const [],
                   ),

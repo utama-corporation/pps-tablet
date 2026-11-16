@@ -33,6 +33,7 @@ import '../../../label/furniture_wip/repository/furniture_wip_repository.dart';
 import '../../../label/reject/repository/reject_repository.dart';
 import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 const _kPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
 const _kOutput = Color(0xFF00796B);
@@ -1381,6 +1382,7 @@ FloatingActionButton(
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     idMesin: _header?.idMesin,
                     namaJenis: _header?.outputJenisNama,
@@ -1390,6 +1392,11 @@ FloatingActionButton(
                     hourEnd: _header?.hourEnd,
                     primaryColor: _kPrimary,
                     onGanti: locked ? null : _openSplitDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.keyFitting,
+                      noProduksi: widget.noProduksi,
+                    ),
                   onComplete: (_header == null || _isLockedOrComplete)
                       ? null
                       : _handleComplete,

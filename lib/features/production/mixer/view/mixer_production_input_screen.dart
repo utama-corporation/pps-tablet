@@ -36,6 +36,7 @@ import '../widgets/mixer_production_output_form_dialog.dart';
 import '../../../label/mixer/repository/mixer_repository.dart';
 import '../../../../core/network/endpoints.dart';
 import 'package:pps_tablet/features/production/shared/shared.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 // ── Mixer colour palette ──────────────────────────────────────────────────────
 const _kMixerPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
@@ -2088,6 +2089,7 @@ gilinganGroups: gilinganGroups,
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     idMesin: _header?.idMesin,
                     namaJenis: _header?.outputJenisNama,
@@ -2098,6 +2100,11 @@ gilinganGroups: gilinganGroups,
                     primaryColor: _kMixerPrimary,
                     onGanti: _canModifyInput ? _openSplitDialog : null,
                     onRiwayat: _openTimelineDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.mixer,
+                      noProduksi: widget.noProduksi,
+                    ),
                     onRefresh: () {
                       vm.loadInputs(widget.noProduksi, force: true);
                       vm.loadOutputs(widget.noProduksi, force: true);

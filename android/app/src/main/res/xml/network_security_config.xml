@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Backend internal & update server masih pakai HTTP polos, bukan HTTPS.
+         Android 9+ (API 28+) memblokir cleartext traffic secara default,
+         jadi host-host ini perlu diizinkan eksplisit di sini. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.11.153</domain>
+        <domain includeSubdomains="false">192.168.11.79</domain>
+        <domain includeSubdomains="true">pps.padmoasm.com</domain>
+    </domain-config>
+</network-security-config>

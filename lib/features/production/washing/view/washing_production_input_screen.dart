@@ -33,6 +33,7 @@ import '../widgets/washing_lookup_label_dialog.dart';
 import '../widgets/washing_lookup_label_partial_dialog.dart';
 import '../../shared/widgets/unsaved_temp_warning_dialog.dart';
 import '../model/washing_production_model.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 // ── Washing colour palette ─────────────────────────────────────────────────────
 
@@ -2128,6 +2129,7 @@ class _WashingProductionInputScreenState
                   _buildToolbarSkeleton()
                 else
                   WashingWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     idMesin: _header!.idMesin,
                     namaJenis: _header!.outputJenisNama,
@@ -2142,6 +2144,11 @@ class _WashingProductionInputScreenState
                     },
                     onGanti: _openSplitDialog,
                     onRiwayat: _openTimelineDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.washing,
+                      noProduksi: widget.noProduksi,
+                    ),
                     showGantiRiwayat:
                         _header!.tglProduksi != null &&
                         _header!.tglProduksi!.year == DateTime.now().year &&

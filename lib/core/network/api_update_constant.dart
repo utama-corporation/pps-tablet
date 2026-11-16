@@ -1,8 +1,9 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'network_mode_config.dart';
+
 class UpdateConstants {
-  static String get updateBaseUrl =>
-      (dotenv.env['UPDATE_BASE_URL'] ?? '').trim();
+  static String get updateBaseUrl => NetworkModeConfig.updateBaseUrl;
   static String get appId =>
       (dotenv.env['APP_ID'] ?? 'tablet').trim(); // default tablet
 

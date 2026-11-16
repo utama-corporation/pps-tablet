@@ -64,21 +64,14 @@ class SisaJenisDraft {
   void removeBonggolan(int index) => bonggolan.removeAt(index).dispose();
   void removeReject(int index) => reject.removeAt(index).dispose();
 
-  /// id jenis yang sudah dipakai baris lain (untuk greying out di picker).
-  Set<int> get usedBonggolanIds => {
-    for (final r in bonggolan)
-      if (r.jenis != null) r.jenis!.idBonggolan,
-  };
-
-  Set<int> get usedRejectIds => {
-    for (final r in reject)
-      if (r.jenis != null) r.jenis!.idReject,
-  };
-
   static double? beratOf(TextEditingController ctrl) =>
       double.tryParse(ctrl.text.replaceAll(',', '.'));
 
   /// Baris dianggap tersimpan hanya bila jenis dipilih DAN berat > 0.
+  ///
+  /// Jenis yang sama boleh muncul di beberapa baris (mis. 2 karung jenis A
+  /// ditimbang terpisah) — tiap entri dikirim apa adanya dan backend
+  /// membuatkan label tersendiri per entri.
   List<Map<String, dynamic>> get bonggolanPayload => [
     for (final r in bonggolan)
       if (r.jenis != null && (beratOf(r.beratCtrl) ?? 0) > 0)
@@ -106,8 +99,9 @@ class SisaJenisDraft {
 /// Editor baris-repeatable untuk "Sisa Akhir Shift".
 ///
 /// Tiap baris = [Jenis] + [Berat (kg)] + tombol hapus, dengan tombol
-/// "+ Tambah Baris" per kategori. Jenis yang sudah dipakai baris lain
-/// ditampilkan non-interaktif supaya user tidak bisa memilih duplikat.
+/// "+ Tambah Baris" per kategori. Jenis yang sama boleh dipilih di lebih
+/// dari satu baris (mis. item A lebih dari sekali) — tiap entri dibuatkan
+/// label tersendiri oleh backend.
 class SisaJenisEditor extends StatefulWidget {
   const SisaJenisEditor({super.key, required this.draft, required this.accent});
 
@@ -135,9 +129,6 @@ class _SisaJenisEditorState extends State<SisaJenisEditor> {
         items: vm.list,
         labelOf: (e) => e.namaBonggolan,
         subtitleOf: (_) => null,
-        idOf: (e) => e.idBonggolan,
-        excludedIds: {...draft.usedBonggolanIds}
-          ..remove(draft.bonggolan[index].jenis?.idBonggolan),
       ),
     );
     if (picked == null || !mounted) return;
@@ -163,9 +154,6 @@ class _SisaJenisEditorState extends State<SisaJenisEditor> {
         labelOf: (e) => e.namaReject,
         subtitleOf: (e) =>
             (e.itemCode ?? '').trim().isEmpty ? null : e.itemCode,
-        idOf: (e) => e.idReject,
-        excludedIds: {...draft.usedRejectIds}
-          ..remove(draft.reject[index].jenis?.idReject),
       ),
     );
     if (picked == null || !mounted) return;
@@ -788,9 +776,8 @@ class _ReadOnlyBeratField extends StatelessWidget {
   }
 }
 
-/// Picker jenis dengan dukungan pengecualian — jenis yang sudah dipakai baris
-/// lain ditampilkan non-interaktif (abu-abu + cent) supaya user melihat
-/// jenismya memang ada tapi tidak bisa dipilih dua kali.
+/// Picker jenis sederhana — jenis yang sama boleh dipilih di lebih dari satu
+/// baris (mis. item A lebih dari sekali).
 class _SisaJenisPickerDialog<T> extends StatelessWidget {
   const _SisaJenisPickerDialog({
     required this.title,
@@ -798,8 +785,6 @@ class _SisaJenisPickerDialog<T> extends StatelessWidget {
     required this.items,
     required this.labelOf,
     required this.subtitleOf,
-    required this.idOf,
-    required this.excludedIds,
   });
 
   final String title;
@@ -807,8 +792,6 @@ class _SisaJenisPickerDialog<T> extends StatelessWidget {
   final List<T> items;
   final String Function(T) labelOf;
   final String? Function(T) subtitleOf;
-  final int Function(T) idOf;
-  final Set<int> excludedIds;
 
   @override
   Widget build(BuildContext context) {
@@ -883,68 +866,62 @@ class _SisaJenisPickerDialog<T> extends StatelessWidget {
                   itemBuilder: (ctx, i) {
                     final item = items[i];
                     final sub = subtitleOf(item);
-                    final isUsed = excludedIds.contains(idOf(item));
                     return InkWell(
-                      onTap: isUsed ? null : () => Navigator.of(ctx).pop(item),
-                      child: Opacity(
-                        opacity: isUsed ? 0.45 : 1,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 26,
-                                height: 26,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: accent.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  '${i + 1}',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: accent,
-                                  ),
+                      onTap: () => Navigator.of(ctx).pop(item),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 26,
+                              height: 26,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${i + 1}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: accent,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    labelOf(item),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF1F2937),
+                                    ),
+                                  ),
+                                  if (sub != null && sub.isNotEmpty)
                                     Text(
-                                      labelOf(item),
+                                      sub,
                                       style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF1F2937),
+                                        fontSize: 10,
+                                        color: Color(0xFF9CA3AF),
                                       ),
                                     ),
-                                    if (sub != null && sub.isNotEmpty)
-                                      Text(
-                                        sub,
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: Color(0xFF9CA3AF),
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                                ],
                               ),
-                              Icon(
-                                isUsed
-                                    ? Icons.check_rounded
-                                    : Icons.chevron_right,
-                                size: 18,
-                                color: const Color(0xFF9CA3AF),
-                              ),
-                            ],
-                          ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ],
                         ),
                       ),
                     );

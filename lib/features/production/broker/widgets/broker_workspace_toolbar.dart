@@ -15,6 +15,7 @@ class BrokerWorkspaceToolbar extends StatelessWidget {
   final String? namaJenis;
   final VoidCallback? onGanti;
   final VoidCallback? onTimeline;
+  final VoidCallback? onCetak;
   final VoidCallback? onRefresh;
   final bool showGantiRiwayat;
   final VoidCallback? onComplete;
@@ -34,6 +35,7 @@ class BrokerWorkspaceToolbar extends StatelessWidget {
     this.namaJenis,
     this.onGanti,
     this.onTimeline,
+    this.onCetak,
     this.onRefresh,
     this.showGantiRiwayat = true,
     this.onComplete,
@@ -56,6 +58,7 @@ class BrokerWorkspaceToolbar extends StatelessWidget {
       primaryColor: _kBrokerPrimary,
       onGanti: onGanti,
       onRiwayat: onTimeline,
+      onCetak: onCetak,
       onRefresh: onRefresh,
       showGantiRiwayat: showGantiRiwayat,
       onComplete: onComplete,

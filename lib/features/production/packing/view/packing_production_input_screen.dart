@@ -25,6 +25,7 @@ import 'package:pps_tablet/features/production/shared/shared.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../packing_type/model/packing_type_model.dart';
 import '../../../packing_type/widgets/packing_type_dropdown.dart';
+import '../../shared/utils/production_report_helper.dart';
 
 // ── Colour palette ──────────────────────────────────────────────────────────────
 const _kPrimary = Color(0xFF1E6FD9); // biru — input section (seragam)
@@ -1326,6 +1327,7 @@ class _PackingProductionInputScreenState
                   _buildToolbarSkeleton()
                 else
                   ProductionWorkspaceToolbar(
+                    noProduksi: widget.noProduksi,
                     isLocked: locked,
                     primaryColor: _kPrimary,
                     idMesin: _header?.idMesin,
@@ -1335,6 +1337,11 @@ class _PackingProductionInputScreenState
                     hourEnd: _header?.hourEnd,
                     namaJenis: _header?.outputJenisNama,
                     onGanti: locked ? null : _openSplitDialog,
+                    onCetak: () => openProductionReportPdf(
+                      context,
+                      jenisProduksi: ProductionJenis.packing,
+                      noProduksi: widget.noProduksi,
+                    ),
                     onComplete: (_header == null || _isLockedOrComplete)
                         ? null
                         : _handleComplete,
