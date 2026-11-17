@@ -47,6 +47,7 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
       if (!mounted) return;
       if (context.read<PermissionViewModel>().can('datamastermesin:read')) {
         unawaited(vm.load());
+        unawaited(vm.loadUom());
       }
     });
   }
@@ -67,7 +68,7 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
   Future<void> _openForm({MstMesin? edit}) async {
     if (edit == null && !_can('create')) return;
     if (edit != null && !_can('update')) return;
-    final saved = await showDialog<String>(
+    final result = await showDialog<MesinFormResult>(
       context: context,
       barrierDismissible: false,
       builder: (_) => ChangeNotifierProvider.value(
@@ -75,13 +76,21 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
         child: MesinFormDialog(viewModel: vm, edit: edit),
       ),
     );
-    if (saved == null || !mounted) return;
+    if (result == null || !mounted) return;
+    if (result.outcome == MesinFormOutcome.deactivated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mesin ${result.name} berhasil dinonaktifkan'),
+        ),
+      );
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           edit == null
-              ? 'Mesin baru berhasil disimpan: $saved'
-              : 'Data mesin berhasil diubah: $saved',
+              ? 'Mesin baru berhasil disimpan: ${result.name}'
+              : 'Data mesin berhasil diubah: ${result.name}',
         ),
       ),
     );
@@ -104,6 +113,8 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
         accent: const Color(0xFF0E7490),
         canUpdate: _can('update'),
         canDelete: _can('delete'),
+        deleteLabel: 'Nonaktifkan',
+        deleteIcon: Icons.visibility_off_outlined,
         onEdit: () => _openForm(edit: mesin),
         onDelete: () => _confirmDelete(mesin),
         onClose: _popover.hide,
@@ -120,23 +131,30 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
 
   Future<void> _confirmDelete(MstMesin mesin) async {
     if (!_can('delete')) return;
+    final idBagianMesin = mesin.idBagianMesin;
+    if (idBagianMesin == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bagian mesin tidak diketahui.')),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => ConfirmDialog(
-        title: 'Hapus Mesin',
+        title: 'Nonaktifkan Mesin',
         message:
-            'Hapus mesin ${mesin.namaMesin}? Tindakan ini tidak dapat dibatalkan.',
-        confirmLabel: 'Hapus',
-        confirmIcon: Icons.delete_outline_rounded,
+            'Nonaktifkan mesin ${mesin.namaMesin}? Mesin tidak dihapus permanen; bisa diaktifkan kembali lewat ubah.',
+        confirmLabel: 'Nonaktifkan',
+        confirmIcon: Icons.visibility_off_outlined,
       ),
     );
     if (confirmed != true || !mounted) return;
     try {
-      await vm.delete(mesin.idMesin);
+      await vm.delete(mesin.idMesin, idBagianMesin: idBagianMesin);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Mesin ${mesin.namaMesin} berhasil dihapus'),
+          content: Text('Mesin ${mesin.namaMesin} berhasil dinonaktifkan'),
         ),
       );
     } catch (e) {
@@ -176,7 +194,7 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '${vm.items.length} dari ${vm.totalCount} mesin · Ketuk lama baris untuk opsi',
+                    '${vm.items.length} mesin terdaftar · Ketuk lama baris, atau buka dialog ubah untuk opsi',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF6B778C),
@@ -303,21 +321,19 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<int?>(
+        child: DropdownButton<int>(
           key: const ValueKey('mesin-bagian-filter'),
           value: vm.bagianFilter,
           borderRadius: BorderRadius.circular(12),
           icon: const Icon(Icons.filter_list_rounded, size: 18),
-          hint: const Text('Semua Bagian'),
           items: [
-            const DropdownMenuItem<int?>(
-              value: null,
-              child: Text('Semua Bagian'),
-            ),
             for (final b in masterBagianMesin)
-              DropdownMenuItem<int?>(value: b.id, child: Text(b.label)),
+              DropdownMenuItem<int>(value: b.id, child: Text(b.label)),
           ],
-          onChanged: vm.setBagianFilter,
+          onChanged: (v) {
+            if (v == null) return;
+            unawaited(vm.setBagianFilter(v));
+          },
         ),
       ),
     );
@@ -468,7 +484,7 @@ class _MasterMesinScreenState extends State<MasterMesinScreen> {
       headerAlign: TextAlign.center,
       cellAlignment: Alignment.center,
       cellBuilder: (_, m, r) => Text(
-        m.idUom == null ? '—' : '${m.idUom}',
+        m.idUom == null ? '—' : (m.namaUom ?? vm.uomLabel(m.idUom)),
         style: TextStyle(fontSize: 14, color: r.textColor),
       ),
     ),

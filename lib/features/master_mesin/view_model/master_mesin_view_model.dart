@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/network/api_error.dart';
 import '../../mesin/model/mesin_model.dart';
 import '../model/bagian_mesin.dart';
+import '../model/uom_option.dart';
 import '../repository/master_mesin_repository.dart';
 
 class MasterMesinViewModel extends ChangeNotifier {
@@ -12,7 +13,7 @@ class MasterMesinViewModel extends ChangeNotifier {
 
   List<MstMesin> _items = [];
   String query = '';
-  int? bagianFilter; // null = semua bagian
+  int bagianFilter = 2; // default Broker
   bool loading = false;
   String error = '';
 
@@ -20,7 +21,7 @@ class MasterMesinViewModel extends ChangeNotifier {
     final q = query.trim().toLowerCase();
     return List.unmodifiable(
       _items.where((m) {
-        if (bagianFilter != null && m.idBagianMesin != bagianFilter) {
+        if (m.idBagianMesin != bagianFilter) {
           return false;
         }
         if (q.isEmpty) return true;
@@ -36,16 +37,46 @@ class MasterMesinViewModel extends ChangeNotifier {
 
   int get totalCount => _items.length;
 
+  List<UomOption> _uomOptions = const [];
+  bool uomLoading = false;
+  String uomError = '';
+
+  List<UomOption> get uomOptions => List.unmodifiable(_uomOptions);
+
+  /// Nama UOM untuk ditampilkan; fallback ke id mentah bila belum termuat.
+  String uomLabel(int? id) {
+    if (id == null) return '—';
+    for (final o in _uomOptions) {
+      if (o.idUom == id) return o.namaUom;
+    }
+    return '$id';
+  }
+
+  Future<void> loadUom() async {
+    uomLoading = true;
+    uomError = '';
+    notifyListeners();
+    try {
+      _uomOptions = await repository.fetchUomOptions();
+    } catch (e) {
+      uomError = apiErrorMessage(e);
+      _uomOptions = const [];
+    } finally {
+      uomLoading = false;
+      notifyListeners();
+    }
+  }
+
   void setQuery(String value) {
     if (query == value.trim()) return;
     query = value.trim();
     notifyListeners();
   }
 
-  void setBagianFilter(int? value) {
+  Future<void> setBagianFilter(int value) async {
     if (bagianFilter == value) return;
     bagianFilter = value;
-    notifyListeners();
+    await load();
   }
 
   Future<void> load() async {
@@ -53,9 +84,10 @@ class MasterMesinViewModel extends ChangeNotifier {
     error = '';
     notifyListeners();
     try {
-      _items = await repository.fetchAll(includeDisabled: true);
+      _items = await repository.fetchByBagian(bagianFilter);
     } catch (e) {
       error = apiErrorMessage(e);
+      _items = const [];
     } finally {
       loading = false;
       notifyListeners();
@@ -69,6 +101,9 @@ class MasterMesinViewModel extends ChangeNotifier {
     num? kapasitas,
     int? idUom,
     required bool enable,
+    num? shortWeightPs,
+    num? klemLebar,
+    num? klemTinggi,
   }) async {
     final name = namaMesin.trim();
     if (idMesin == null) {
@@ -78,6 +113,9 @@ class MasterMesinViewModel extends ChangeNotifier {
         kapasitas: kapasitas,
         idUom: idUom,
         enable: enable,
+        shortWeightPs: shortWeightPs,
+        klemLebar: klemLebar,
+        klemTinggi: klemTinggi,
       );
     } else {
       await repository.update(
@@ -87,14 +125,21 @@ class MasterMesinViewModel extends ChangeNotifier {
         kapasitas: kapasitas,
         idUom: idUom,
         enable: enable,
+        shortWeightPs: shortWeightPs,
+        klemLebar: klemLebar,
+        klemTinggi: klemTinggi,
       );
     }
+    // Baris bisa pindah bagian (dropdown Bagian saat edit) — ikuti
+    // bagian baris supaya tetap terlihat setelah simpan.
+    bagianFilter = idBagianMesin;
     await load();
     return name;
   }
 
-  Future<void> delete(int idMesin) async {
-    await repository.delete(idMesin);
+  /// Nonaktifkan mesin (Enable = 0), bukan hapus permanen.
+  Future<void> delete(int idMesin, {required int idBagianMesin}) async {
+    await repository.delete(idMesin, idBagianMesin: idBagianMesin);
     await load();
   }
 }

@@ -22,6 +22,25 @@ const masterBagianMesin = <BagianMesin>[
   BagianMesin(11, 'Gilingan'),
 ];
 
+/// Slug `:type` untuk API `/api/mst-mesin-produksi/{type}` per bagian.
+const masterBagianMesinSlug = <int, String>{
+  2: 'broker',
+  3: 'crusher',
+  4: 'inject',
+  5: 'mixer',
+  6: 'packing',
+  7: 'washing',
+  8: 'hot-stamping',
+  9: 'spanner',
+  10: 'pasang-kunci',
+  11: 'gilingan',
+};
+
+String? bagianMesinSlug(int? id) {
+  if (id == null) return null;
+  return masterBagianMesinSlug[id];
+}
+
 String bagianMesinLabel(int? id) {
   if (id == null) return '—';
   for (final b in masterBagianMesin) {

@@ -11,6 +11,7 @@ class MstMesin {
   final num? klemPanjang;
   final int? idBagianMesin;
   final num? target;
+  final String? namaUom;
 
   const MstMesin({
     required this.idMesin,
@@ -25,6 +26,7 @@ class MstMesin {
     this.klemPanjang,
     this.idBagianMesin,
     this.target,
+    this.namaUom,
   });
 
   bool get isActive => enable == true;
@@ -36,6 +38,11 @@ class MstMesin {
       if (v is num) return v.toInt();
       if (v is String) return int.tryParse(v);
       return null;
+    }
+
+    String? _toStr(dynamic v) {
+      final s = (v ?? '').toString().trim();
+      return s.isEmpty ? null : s;
     }
 
     int _toInt(dynamic v) => _toIntN(v) ?? 0;
@@ -71,6 +78,7 @@ class MstMesin {
       klemPanjang: _toNum(j['KlemPanjang']),
       idBagianMesin: _toIntN(j['IdBagianMesin']),
       target: _toNum(j['Target']),
+      namaUom: _toStr(j['NamaUOM'] ?? j['namaUOM']),
     );
   }
 
@@ -87,6 +95,7 @@ class MstMesin {
     'KlemPanjang': klemPanjang,
     'IdBagianMesin': idBagianMesin,
     'Target': target,
+    'NamaUOM': namaUom,
   };
 
   MstMesin copyWith({
@@ -102,6 +111,7 @@ class MstMesin {
     num? klemPanjang,
     int? idBagianMesin,
     num? target,
+    String? namaUom,
   }) {
     return MstMesin(
       idMesin: idMesin ?? this.idMesin,
@@ -116,6 +126,7 @@ class MstMesin {
       klemPanjang: klemPanjang ?? this.klemPanjang,
       idBagianMesin: idBagianMesin ?? this.idBagianMesin,
       target: target ?? this.target,
+      namaUom: namaUom ?? this.namaUom,
     );
   }
 
