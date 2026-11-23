@@ -2,7 +2,7 @@ name: pps_tablet
 description: "PPS Mobile"
 publish_to: "none"
 
-version: 1.0.209+368
+version: 1.0.210+369
 
 environment:
   sdk: ^3.8.0
