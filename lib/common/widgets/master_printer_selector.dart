@@ -14,11 +14,15 @@ class PrintOutcome {
   /// pemanggil lama.
   final PrinterTarget target;
 
+  /// Jumlah rangkap pilihan operator di [PdfViewerScreen] (default 1).
+  final int copies;
+
   PrintOutcome({
     required this.id,
     required this.mac,
     required this.printerName,
     PrinterTarget? target,
+    this.copies = 1,
   }) : target =
            target ?? BtPrinterTarget(mac: mac, name: printerName);
 }

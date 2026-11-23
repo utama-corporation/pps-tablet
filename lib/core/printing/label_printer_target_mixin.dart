@@ -4,6 +4,7 @@ import '../../common/widgets/master_printer_selector.dart';
 import '../utils/bt_print_service.dart';
 import '../utils/device_printer_service.dart';
 import '../utils/pdf_print_service.dart';
+import 'label_copies.dart';
 import 'label_printer.dart';
 import 'printer_target.dart';
 
@@ -107,10 +108,14 @@ mixin LabelPrinterTargetMixin<T extends StatefulWidget> on State<T> {
   /// Tidak pernah melempar exception — kegagalan dilaporkan lewat [onError] dan
   /// dikembalikan `false`, sama seperti `BtPrintService.printLabelFromUrl`, jadi
   /// pemanggil tidak perlu try/catch dan tidak akan menggantung di state "busy".
+  ///
+  /// [copies] = jumlah rangkap (lihat [LabelPrinter.printPdf]); bila null,
+  /// diambil dari jenis label ([LabelCopies.forPdfUrl], mis. Barang Jadi = 2).
   Future<bool> printPdfViaTarget(
     Uri url, {
     PrintStatus? onStatus,
     PrintError? onError,
+    int? copies,
   }) async {
     // Fallback: printer lama yang tersimpan sebagai MAC saja.
     final target =
@@ -132,7 +137,12 @@ mixin LabelPrinterTargetMixin<T extends StatefulWidget> on State<T> {
       onStatus?.call('Mengirim ke printer...');
       return await LabelPrinter.forTarget(
         target,
-      ).printPdf(bytes, onStatus: onStatus, onError: onError);
+      ).printPdf(
+        bytes,
+        onStatus: onStatus,
+        onError: onError,
+        copies: copies ?? LabelCopies.forPdfUrl(url),
+      );
     } catch (e, st) {
       debugPrint('❌ printPdfViaTarget gagal: $e\n$st');
       onError?.call('$e');

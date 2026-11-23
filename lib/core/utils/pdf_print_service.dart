@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' show max;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'dart:async';
 import '../../common/widgets/loading_dialog.dart';
 import '../../common/widgets/pdf_viewer_screen.dart';
+import '../printing/label_copies.dart';
 import '../printing/label_printer.dart';
 import '../services/dialog_service.dart';
 import '../services/token_storage.dart';
@@ -285,6 +287,7 @@ class PdfPrintService {
     required List<Uri> pdfUrls,
     String? title,
     List<VoidCallback?>? onPrintedCallbacks,
+    int? defaultCopies,
   }) async {
     if (pdfUrls.isEmpty) return;
 
@@ -376,6 +379,10 @@ class PdfPrintService {
       context: context,
       title: title ?? '${pdfUrls.length} Label',
       pdfBytes: mergedBytes,
+      // Tanpa nilai eksplisit: rangkap terbesar dari jenis label di batch.
+      defaultCopies:
+          defaultCopies ??
+          pdfUrls.map(LabelCopies.forPdfUrl).fold<int>(1, max),
     );
 
     if (outcome == null || !context.mounted) return;
@@ -390,7 +397,17 @@ class PdfPrintService {
       var ok = false;
       try {
         final bytes = await _fetchPdfBytes(pdfUrls[i]);
-        ok = await printer.printPdf(bytes, onError: (e) => errorMsg = e);
+        // Rangkap pilihan operator hanya untuk label yang memang rangkap
+        // (mis. BJ); label lain di batch yang sama tetap 1 lembar.
+        final copies =
+            defaultCopies != null || LabelCopies.forPdfUrl(pdfUrls[i]) > 1
+            ? outcome.copies
+            : 1;
+        ok = await printer.printPdf(
+          bytes,
+          onError: (e) => errorMsg = e,
+          copies: copies,
+        );
       } catch (e) {
         errorMsg = '$e';
       }
@@ -415,11 +432,16 @@ class PdfPrintService {
 
   /// Variant [previewReport80mm] yang menerima URL langsung (tidak melalui
   /// Crystal Report URL builder). Digunakan untuk endpoint PDF baru.
+  ///
+  /// [defaultCopies] > 1 menampilkan pemilih rangkap di viewer; bila null,
+  /// diambil dari jenis label ([LabelCopies.forPdfUrl], mis. Barang Jadi = 2).
+  /// Print tetap tercatat sekali lewat [onPrinted].
   Future<void> previewFromUrl({
     required BuildContext context,
     required Uri pdfUrl,
     String? title,
     VoidCallback? onPrinted,
+    int? defaultCopies,
   }) async {
     Uint8List pdfBytes;
     try {
@@ -459,6 +481,7 @@ class PdfPrintService {
       context: context,
       title: title ?? 'Label',
       pdfBytes: pdfBytes,
+      defaultCopies: defaultCopies ?? LabelCopies.forPdfUrl(pdfUrl),
     );
 
     if (outcome == null || !context.mounted) return;
@@ -469,6 +492,7 @@ class PdfPrintService {
     final ok = await LabelPrinter.forTarget(outcome.target).printPdf(
       pdfBytes,
       onError: (e) => errorMsg = e,
+      copies: outcome.copies,
     );
 
     if (!context.mounted) return;
@@ -492,6 +516,7 @@ class PdfPrintService {
     required Uint8List pdfBytes,
     String? title,
     VoidCallback? onPrinted,
+    int defaultCopies = 1,
   }) async {
     if (!context.mounted) return;
 
@@ -499,6 +524,7 @@ class PdfPrintService {
       context: context,
       title: title ?? 'Label',
       pdfBytes: pdfBytes,
+      defaultCopies: defaultCopies,
     );
 
     if (outcome == null || !context.mounted) return;
@@ -509,6 +535,7 @@ class PdfPrintService {
     final ok = await LabelPrinter.forTarget(outcome.target).printPdf(
       pdfBytes,
       onError: (e) => errorMsg = e,
+      copies: outcome.copies,
     );
 
     if (!context.mounted) return;

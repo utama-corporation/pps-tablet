@@ -234,12 +234,17 @@ class BtPrintService {
   /// Print langsung dari PDF bytes yang sudah tersedia di memori (mis. hasil
   /// generate lokal dengan `package:pdf`, tanpa endpoint backend). Sama
   /// dengan [printLabelFromUrl] tapi melewati langkah download.
+  ///
+  /// [copies] = jumlah rangkap: PDF di-raster sekali, lalu data ESC/POS
+  /// dikirim [copies] kali dalam satu koneksi.
   Future<bool> printBytes({
     required Uint8List pdfBytes,
     required String mac,
     Function(String)? onStatus,
     Function(String)? onError,
+    int copies = 1,
   }) async {
+    final n = copies < 1 ? 1 : copies;
     try {
       final granted = await ensurePermissions();
       if (!granted) {
@@ -288,9 +293,12 @@ class BtPrintService {
         return false;
       }
 
-      onStatus?.call('Mencetak...');
-      final ok = await PrintBluetoothThermal.writeBytes(escBytes);
-      debugPrint('🖨️ Write bytes result: $ok');
+      var ok = true;
+      for (var i = 1; i <= n && ok; i++) {
+        onStatus?.call(n > 1 ? 'Mencetak rangkap $i dari $n...' : 'Mencetak...');
+        ok = await PrintBluetoothThermal.writeBytes(escBytes);
+        debugPrint('🖨️ Write bytes result (rangkap $i/$n): $ok');
+      }
 
       if (ok) {
         onStatus?.call('✅ Berhasil dicetak!');

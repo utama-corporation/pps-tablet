@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../../common/widgets/master_printer_selector.dart';
 import '../../common/widgets/printer_selector_tile.dart';
+import '../../core/printing/label_printer.dart';
 import '../../core/printing/printer_target.dart';
 import '../../core/utils/bt_print_service.dart';
 import '../../core/utils/device_printer_service.dart';
@@ -16,21 +17,31 @@ class PdfViewerScreen extends StatefulWidget {
   final String title;
   final Uint8List pdfBytes;
 
+  /// Rangkap awal. Bila > 1, pemilih "Rangkap" ditampilkan supaya operator
+  /// bisa menguranginya (mis. cetak ulang satu lembar yang rusak).
+  final int defaultCopies;
+
   const PdfViewerScreen({
     super.key,
     required this.title,
     required this.pdfBytes,
+    this.defaultCopies = 1,
   });
 
   static Future<PrintOutcome?> push({
     required BuildContext context,
     required String title,
     required Uint8List pdfBytes,
+    int defaultCopies = 1,
   }) {
     return Navigator.of(context, rootNavigator: true).push<PrintOutcome>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => PdfViewerScreen(title: title, pdfBytes: pdfBytes),
+        builder: (_) => PdfViewerScreen(
+          title: title,
+          pdfBytes: pdfBytes,
+          defaultCopies: defaultCopies,
+        ),
       ),
     );
   }
@@ -47,6 +58,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _printerName;
   PrinterTarget? _printerTarget; // BT/ESC-POS atau jaringan/TSPL
   bool _printing = false;
+  late int _copies = LabelPrinter.clampCopies(widget.defaultCopies);
+
+  bool get _showCopies => widget.defaultCopies > 1;
 
   bool get _hasPrinter =>
       _printerTarget != null ||
@@ -148,6 +162,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           mac: _printerMac ?? '',
           printerName: _printerName ?? _printerMac ?? '',
           target: _printerTarget,
+          copies: _copies,
         ),
       );
     } finally {
@@ -270,6 +285,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   _buildSectionLabel('PRINTER'),
                   const SizedBox(height: 8),
                   _buildPrinterTile(hasPrinter),
+                  if (_showCopies) ...[
+                    const SizedBox(height: 20),
+                    _buildSectionLabel('RANGKAP'),
+                    const SizedBox(height: 8),
+                    _buildCopiesPicker(),
+                  ],
                 ],
               ),
             ),
@@ -567,6 +588,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildPrinterTile(hasPrinter),
+                if (_showCopies) ...[
+                  const SizedBox(height: 10),
+                  _buildCopiesPicker(),
+                ],
                 const SizedBox(height: 12),
                 _buildPrintButton(hasPrinter),
               ],
@@ -586,6 +611,53 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       printerId: _printerId,
       onSelect: _selectPrinter,
       disabled: _printing,
+    );
+  }
+
+  /// Pemilih rangkap: − [n] +, batas 1..[LabelPrinter.maxCopies].
+  Widget _buildCopiesPicker() {
+    Widget step(IconData icon, int delta, String key) {
+      final next = _copies + delta;
+      final enabled =
+          !_printing && next >= 1 && next <= LabelPrinter.maxCopies;
+      return IconButton.outlined(
+        key: ValueKey(key),
+        visualDensity: VisualDensity.compact,
+        onPressed: enabled ? () => setState(() => _copies = next) : null,
+        icon: Icon(icon, size: 18),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.copy_all_rounded, size: 18, color: _kBlue),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Jumlah rangkap per label',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+          step(Icons.remove_rounded, -1, 'copies-minus'),
+          SizedBox(
+            width: 34,
+            child: Text(
+              '$_copies',
+              key: const ValueKey('copies-value'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+          ),
+          step(Icons.add_rounded, 1, 'copies-plus'),
+        ],
+      ),
     );
   }
 
@@ -615,14 +687,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   color: Colors.white,
                 ),
               )
-            : const Row(
+            : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.print_rounded, size: 20),
-                  SizedBox(width: 10),
+                  const Icon(Icons.print_rounded, size: 20),
+                  const SizedBox(width: 10),
                   Text(
-                    'CETAK LABEL',
-                    style: TextStyle(
+                    _copies > 1 ? 'CETAK $_copies RANGKAP' : 'CETAK LABEL',
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.6,

@@ -25,7 +25,9 @@ class NetworkTsplPrinter implements LabelPrinter {
     Uint8List pdfBytes, {
     PrintStatus? onStatus,
     PrintError? onError,
+    int copies = 1,
   }) async {
+    final n = LabelPrinter.clampCopies(copies);
     try {
       onStatus?.call('Memproses PDF...');
 
@@ -52,7 +54,7 @@ class NetworkTsplPrinter implements LabelPrinter {
           ),
         );
         if (mono == null) continue;
-        payload.addAll(_pageCommands(mono, wMm, hMm));
+        payload.addAll(_pageCommands(mono, wMm, hMm, n));
         pageCount++;
       }
 
@@ -62,7 +64,7 @@ class NetworkTsplPrinter implements LabelPrinter {
       }
 
       debugPrint(
-        '🖨️ [TSPL] $pageCount halaman → ${payload.length} bytes, '
+        '🖨️ [TSPL] $pageCount halaman × $n rangkap → ${payload.length} bytes, '
         'relay ke ${target.host} (label ${target.labelWidthMm.round()}×'
         '${target.labelHeightMm.round()}mm)',
       );
@@ -85,8 +87,19 @@ class NetworkTsplPrinter implements LabelPrinter {
     }
   }
 
+  /// Perintah cetak TSPL `PRINT set,copy`: satu set, [copies] lembar. Printer
+  /// mencetak ulang bitmap yang sama tanpa dikirim ulang.
+  @visibleForTesting
+  static String printCommand(int copies) =>
+      '\r\nPRINT 1,${LabelPrinter.clampCopies(copies)}\r\n';
+
   /// Bangun blok perintah TSPL untuk satu halaman dengan `SIZE` [widthMm]×[heightMm].
-  List<int> _pageCommands(MonoRaster mono, int widthMm, int heightMm) {
+  List<int> _pageCommands(
+    MonoRaster mono,
+    int widthMm,
+    int heightMm,
+    int copies,
+  ) {
     final widthBytes = (mono.width + 7) ~/ 8;
     final packed = Uint8List(widthBytes * mono.height);
 
@@ -120,7 +133,7 @@ class NetworkTsplPrinter implements LabelPrinter {
     return <int>[
       ...ascii.encode(header),
       ...packed,
-      ...ascii.encode('\r\nPRINT 1,1\r\n'),
+      ...ascii.encode(printCommand(copies)),
     ];
   }
 }

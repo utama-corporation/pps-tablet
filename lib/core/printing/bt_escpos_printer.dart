@@ -19,12 +19,14 @@ class BtEscPosPrinter implements LabelPrinter {
     Uint8List pdfBytes, {
     PrintStatus? onStatus,
     PrintError? onError,
+    int copies = 1,
   }) {
     return BtPrintService(baseUrl: ApiConstants.baseUrl).printBytes(
       pdfBytes: pdfBytes,
       mac: target.mac,
       onStatus: onStatus,
       onError: onError,
+      copies: LabelPrinter.clampCopies(copies),
     );
   }
 }
