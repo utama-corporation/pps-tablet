@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../home/model/user_profile_model.dart';
 import '../../../core/network/endpoints.dart';
 
-
 class UserProfileViewModel extends ChangeNotifier {
   String _errorMessage = '';
   String _successMessage = '';
@@ -22,9 +21,7 @@ class UserProfileViewModel extends ChangeNotifier {
   }
 
   // Fungsi untuk mengganti password
-  Future<void> changePassword({
-    required UserProfileModel userProfile,
-  }) async {
+  Future<void> changePassword({required UserProfileModel userProfile}) async {
     _isLoading = true;
     notifyListeners();
 
@@ -41,7 +38,8 @@ class UserProfileViewModel extends ChangeNotifier {
       final response = await http.post(
         Uri.parse(ApiConstants.changePassword),
         headers: {
-          'Authorization': 'Bearer $token', // Menambahkan token di header Authorization
+          'Authorization':
+              'Bearer $token', // Menambahkan token di header Authorization
           'Content-Type': 'application/json',
         },
         body: json.encode({
@@ -58,7 +56,9 @@ class UserProfileViewModel extends ChangeNotifier {
         _errorMessage = 'Unauthorized: Token is invalid or expired';
       } else {
         final responseBody = json.decode(response.body);
-        _errorMessage = responseBody['message'] ?? 'Terjadi kesalahan saat mengganti password';
+        _errorMessage =
+            responseBody['message'] ??
+            'Terjadi kesalahan saat mengganti password';
       }
     } catch (error) {
       _errorMessage = 'Failed to connect to the server';

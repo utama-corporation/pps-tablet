@@ -14,6 +14,10 @@ import 'package:pps_tablet/features/bahan_pendukung/penerimaan/view/penerimaan_b
 import 'package:pps_tablet/features/bj_jual/view/bj_jual_screen.dart';
 import 'package:pps_tablet/features/bongkar_susun_v2/view/bs_v2_list_screen.dart';
 import 'package:pps_tablet/features/favorit/view/favorit_screen.dart';
+import 'package:pps_tablet/features/kpi/view/kpi_screen.dart';
+import 'package:pps_tablet/features/manual/manual_screen.dart';
+import 'package:pps_tablet/features/my_work/view/my_work_screen.dart';
+import 'package:pps_tablet/features/retur_beli/view/retur_beli_list_screen.dart';
 import 'package:pps_tablet/features/favorit/view_model/favorit_view_model.dart';
 import 'package:pps_tablet/features/favorit/widgets/favorite_button.dart';
 import 'package:pps_tablet/features/home/view/home_screen.dart';
@@ -630,6 +634,14 @@ class _AppShellState extends State<AppShell> {
     switch (name) {
       case '/shell/welcome':
         return const HomeScreen();
+      case '/shell/my-work':
+        return const MyWorkScreen();
+      case '/shell/kpi':
+        return const KpiScreen();
+      case '/shell/retur-beli':
+        return const ReturBeliListScreen();
+      case '/shell/manual':
+        return const ManualScreen();
       case '/label':
         return LabelSelectionScreen();
       case '/label/bahan-baku':

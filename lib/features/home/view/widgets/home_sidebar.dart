@@ -276,8 +276,11 @@ class _HomeSidebarState extends State<HomeSidebar> {
     final selected = item.isAvailable && item.matchesRoute(_selectedRoute);
     final enabled = item.isAvailable;
     final color = selected ? Colors.white : Colors.white70;
+    final soon = item.comingSoon;
     final tooltip = !enabled
-        ? '${item.title} — Belum tersedia di tablet'
+        ? (soon
+              ? '${item.title} — Segera hadir'
+              : '${item.title} — Belum tersedia di tablet')
         : (_collapsed ? item.title : '');
     return Padding(
       padding: EdgeInsets.only(
@@ -335,7 +338,7 @@ class _HomeSidebarState extends State<HomeSidebar> {
                                       : FontWeight.normal,
                                 ),
                               ),
-                              if (!enabled)
+                              if (!enabled && !soon)
                                 const Padding(
                                   padding: EdgeInsets.only(top: 3),
                                   child: Text(
@@ -349,7 +352,9 @@ class _HomeSidebarState extends State<HomeSidebar> {
                             ],
                           ),
                         ),
-                        if (!enabled)
+                        if (soon)
+                          const _SoonBadge()
+                        else if (!enabled)
                           const Padding(
                             padding: EdgeInsets.only(left: 6),
                             child: Icon(
@@ -362,6 +367,33 @@ class _HomeSidebarState extends State<HomeSidebar> {
                     ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Badge "SEGERA" untuk menu yang sudah direncanakan tapi belum dibuat
+/// ([PpsMenuItem.comingSoon]).
+class _SoonBadge extends StatelessWidget {
+  const _SoonBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Text(
+        'SEGERA',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
         ),
       ),
     );

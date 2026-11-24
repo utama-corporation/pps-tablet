@@ -142,9 +142,8 @@ class _UserProfileDialogState extends State<UserProfileDialog> {
                       label: 'Konfirmasi Password Baru',
                       hint: 'Ulangi password baru',
                       obscure: _obscureConfirm,
-                      onToggle: () => setState(
-                        () => _obscureConfirm = !_obscureConfirm,
-                      ),
+                      onToggle: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
 
                     const SizedBox(height: 16),
@@ -183,8 +182,9 @@ class _UserProfileDialogState extends State<UserProfileDialog> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: FilledButton(
-                            onPressed:
-                                (!_canSubmit || isLoading) ? null : _submit,
+                            onPressed: (!_canSubmit || isLoading)
+                                ? null
+                                : _submit,
                             style: FilledButton.styleFrom(
                               backgroundColor: _primary,
                               disabledBackgroundColor: const Color(0xFFCBD5E1),
@@ -313,10 +313,7 @@ class _PasswordField extends StatelessWidget {
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF94A3B8),
-            ),
+            hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
             prefixIcon: const Icon(Icons.lock_outline, size: 19),
             suffixIcon: IconButton(
               onPressed: onToggle,

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/navigation/pps_menu_catalog.dart';
 import '../../../core/view/app_shell.dart';
-import '../../report/model/report_item.dart';
+import '../favorit_links.dart';
 import '../../report/view/report_open_helper.dart';
 import '../model/favorit_row.dart';
 import '../view_model/favorit_view_model.dart';
@@ -126,7 +126,7 @@ class _FavoritTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final vm = context.read<FavoritViewModel>();
-    final meta = _resolveMeta(row);
+    final meta = favoritMeta(row);
     return Material(
       color: Colors.white,
       elevation: 1,
@@ -205,30 +205,8 @@ class _FavoritTile extends StatelessWidget {
     );
   }
 
-  _FavoritMeta _resolveMeta(FavoritRow row) {
-    if (row.tipe == 'menu') {
-      final item = PpsMenuCatalog.forRoute(row.kode);
-      if (item != null) {
-        return _FavoritMeta(item.title, 'Menu');
-      }
-      return _FavoritMeta(_fallbackTitle(row.kode), 'Menu');
-    }
-    final item = _findReport(row.kode);
-    if (item != null) {
-      return _FavoritMeta(item.title, 'Laporan');
-    }
-    return _FavoritMeta(_fallbackTitle(row.kode), 'Laporan');
-  }
-
-  String _fallbackTitle(String kode) {
-    final clean = kode.split('/').where((p) => p.isNotEmpty).toList();
-    if (clean.isEmpty) return kode;
-    final last = clean.last;
-    return last[0].toUpperCase() + last.substring(1).replaceAll('-', ' ');
-  }
-
   Future<void> _confirmRemove(BuildContext context, FavoritViewModel vm) async {
-    final meta = _resolveMeta(row);
+    final meta = favoritMeta(row);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -282,7 +260,7 @@ class _FavoritTile extends StatelessWidget {
       );
       return;
     }
-    final item = _findReport(row.kode);
+    final item = findFavoritReport(row.kode);
     if (item == null) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -292,19 +270,4 @@ class _FavoritTile extends StatelessWidget {
     }
     await openReportItem(context, item);
   }
-
-  ReportItem? _findReport(String kode) {
-    for (final item in reportCatalogFlat) {
-      final current = item.path ?? item.route ?? item.title;
-      if (current == kode || item.title == kode) return item;
-    }
-    return null;
-  }
-}
-
-class _FavoritMeta {
-  const _FavoritMeta(this.title, this.subtitle);
-
-  final String title;
-  final String subtitle;
 }

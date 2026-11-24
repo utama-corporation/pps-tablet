@@ -124,8 +124,9 @@ class AccountInfoDialog extends StatelessWidget {
 
   // ── Body ─────────────────────────────────────────────────────────────────
   Widget _buildBody(_AccountInfo info) {
-    final displayName =
-        (info.fullName ?? '').isNotEmpty ? info.fullName! : info.username;
+    final displayName = (info.fullName ?? '').isNotEmpty
+        ? info.fullName!
+        : info.username;
 
     final infoRows = <_RowData>[
       _RowData('Nama Lengkap', info.fullName),
@@ -228,10 +229,7 @@ class AccountInfoDialog extends StatelessWidget {
               _sectionLabel('Hak Akses'),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: _primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -273,13 +271,13 @@ class AccountInfoDialog extends StatelessWidget {
   }
 
   Widget _sectionLabel(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF334155),
-        ),
-      );
+    text,
+    style: const TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF334155),
+    ),
+  );
 
   List<Widget> _buildPermissionGroups(List<String> permissions) {
     final groups = <String, List<String>>{};
@@ -310,10 +308,7 @@ class AccountInfoDialog extends StatelessWidget {
           children: [
             for (final action in groups[module]!..sort())
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 9,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(6),
